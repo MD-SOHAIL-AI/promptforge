@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 216 18% 8%;
+    --foreground: 210 17% 90%;
+    --border: 215 13% 19%;
+    --input: 215 13% 19%;
+    --ring: 210 100% 68%;
+    --primary: 18 79% 57%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 14% 15%;
+    --secondary-foreground: 210 17% 88%;
+    --muted: 215 12% 14%;
+    --muted-foreground: 215 10% 52%;
+    --accent: 215 13% 17%;
+    --accent-foreground: 210 17% 92%;
+    --destructive: 2 68% 48%;
+    --destructive-foreground: 0 0% 100%;
+  }
+
+  * { @apply border-border; }
+  html { color-scheme: dark; }
+  body { @apply m-0 bg-background font-sans text-foreground antialiased; }
+  button, textarea, input { font: inherit; }
+  ::selection { background: rgba(56, 139, 253, 0.35); }
+}
+
+@layer utilities {
+  .workspace-grid {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr) 320px;
+  }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #30363d; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #484f58; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: #111419; }
+
+.hljs { background: transparent !important; padding: 0 !important; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #ff7b72; }
+.hljs-string, .hljs-attr { color: #a5d6ff; }
+.hljs-title, .hljs-title.function_, .hljs-type { color: #d2a8ff; }
+.hljs-number, .hljs-symbol { color: #79c0ff; }
+.hljs-comment { color: #8b949e; font-style: italic; }
+.hljs-meta { color: #ffa657; }
+.hljs-built_in { color: #ffa657; }
+
+@media (max-width: 1220px) {
+  .workspace-grid { grid-template-columns: 220px minmax(0, 1fr) 280px; }
+}
+
+@media (max-width: 1020px) {
+  .workspace-grid { grid-template-columns: 220px minmax(0, 1fr); }
+  .task-inspector { display: none; }
+}
+
+@media (max-width: 820px) {
+  .workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-sidebar { display: none; }
+}

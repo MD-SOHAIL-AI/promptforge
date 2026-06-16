@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-06-16T13:32:18.215394Z",
+  "files": [
+    {
+      "file_type": "ini",
+      "path": "platformio.ini"
+    },
+    {
+      "file_type": "cpp",
+      "path": "src/main.cpp"
+    }
+  ],
+  "framework": "PlatformIO",
+  "metadata": {
+    "task_id": "task-53b00c56-aa2e-4a0a-86f5-b9e8aab8f2c1"
+  },
+  "project_id": "project-716a79bfbe2343a98c0fd016ab536a17",
+  "project_name": "task-53b00c56-aa2e-4a0a-86f5-b9e8aab8f2c1",
+  "schema_version": 1,
+  "target_board": "ESP32",
+  "updated_at": "2026-06-16T13:32:18.215394Z"
+}

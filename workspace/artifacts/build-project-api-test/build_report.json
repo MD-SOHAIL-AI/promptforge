@@ -1,0 +1,17 @@
+{
+  "board": "esp32dev",
+  "build_size_bytes": 8,
+  "duration_ms": 12,
+  "failure": null,
+  "firmware_path": "C:\\Users\\diwan\\AppData\\Local\\Temp\\pytest-of-diwan\\pytest-140\\test_build_success_and_missing0\\firmware\\firmware.bin",
+  "message": "Build completed",
+  "metadata": {},
+  "platform": "platformio",
+  "process_exit_code": null,
+  "process_timed_out": null,
+  "status": "SUCCESS",
+  "success": true,
+  "timestamp": 1781580317.2199998,
+  "toolchain_version": "test",
+  "warnings_count": 0
+}

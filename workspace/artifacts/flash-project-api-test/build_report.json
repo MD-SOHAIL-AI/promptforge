@@ -1,0 +1,17 @@
+{
+  "board": "",
+  "build_size_bytes": 0,
+  "duration_ms": 0,
+  "failure": null,
+  "firmware_path": null,
+  "message": "Compiler failed",
+  "metadata": {},
+  "platform": "",
+  "process_exit_code": null,
+  "process_timed_out": null,
+  "status": "FAILED",
+  "success": false,
+  "timestamp": 1781580317.6302228,
+  "toolchain_version": "",
+  "warnings_count": 0
+}
