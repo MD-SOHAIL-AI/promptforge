@@ -12,6 +12,11 @@ from .common import APIModel
 class ExecuteRequest(APIModel):
     prompt: str = Field(min_length=1, max_length=20_000)
     task_id: str | None = Field(default=None, min_length=1, max_length=128)
+    project_id: str | None = Field(default=None, min_length=1, max_length=128)
+    workspace_root: str | None = Field(default=None, min_length=1, max_length=4096)
+    selected_board: str | None = Field(default=None, min_length=1, max_length=128)
+    selected_framework: str | None = Field(default=None, min_length=1, max_length=128)
+    generation_mode: str | None = Field(default=None, pattern="^(new_project|modify_existing_project|generate_into_open_folder)$")
 
     @field_validator("prompt")
     @classmethod
@@ -32,12 +37,35 @@ class ExecuteRequest(APIModel):
             raise ValueError("task_id must be a safe identifier beginning with 'task-'")
         return value
 
+    @field_validator("project_id", "selected_board", "selected_framework")
+    @classmethod
+    def validate_safe_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not _safe_identifier(value):
+            raise ValueError("value must be a safe identifier")
+        return value
+
+    @field_validator("workspace_root")
+    @classmethod
+    def validate_workspace_root(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or "\x00" in value:
+            raise ValueError("workspace_root must be non-empty and NUL-free")
+        return value
+
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
             "example": {
                 "prompt": "Blink LED on ESP32",
                 "task_id": "task-client-001",
+                "project_id": "external-blink-demo-001",
+                "selected_board": "esp32dev",
+                "selected_framework": "PlatformIO",
+                "generation_mode": "generate_into_open_folder",
             }
         },
     )

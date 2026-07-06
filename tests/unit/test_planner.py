@@ -30,15 +30,9 @@ def test_plans_esp32_led_generation_workflow(planner: Planner) -> None:
     assert plan.execution_steps == (
         ExecutionStep.GENERATE_CODE,
         ExecutionStep.BUILD_FIRMWARE,
-        ExecutionStep.DETECT_BOARD,
-        ExecutionStep.FLASH_FIRMWARE,
-        ExecutionStep.START_MONITOR,
     )
     assert plan.estimated_tools == (
         "build_firmware",
-        "board_detector",
-        "flash_firmware",
-        "serial_monitor",
     )
 
 

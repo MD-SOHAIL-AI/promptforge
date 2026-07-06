@@ -12,6 +12,10 @@ const statusIcon = {
   active: LoaderCircle,
   success: Check,
   failed: X,
+  cancelled: X,
+  blocked: Circle,
+  skipped: Circle,
+  waiting_for_device: Circle,
 };
 
 export function WorkflowTimeline({ stages }: WorkflowTimelineProps) {
@@ -32,6 +36,8 @@ export function WorkflowTimeline({ stages }: WorkflowTimelineProps) {
                 index > 0 && "border-l border-border",
                 stage.status === "active" && "bg-[#1d2733]",
                 stage.status === "failed" && "bg-[#2a1e20]",
+                stage.status === "cancelled" && "bg-[#2a2418]",
+                (stage.status === "blocked" || stage.status === "skipped" || stage.status === "waiting_for_device") && "bg-[#2a2418]",
               )}
             >
               {stage.status === "active" && <div className="absolute inset-x-0 top-0 h-0.5 animate-pulse-bar bg-[#58a6ff]" />}
@@ -43,6 +49,8 @@ export function WorkflowTimeline({ stages }: WorkflowTimelineProps) {
                     stage.status === "active" && "border-[#58a6ff] bg-[#1f6feb]/15 text-[#58a6ff]",
                     stage.status === "success" && "border-[#3fb950] bg-[#238636]/15 text-[#3fb950]",
                     stage.status === "failed" && "border-[#f85149] bg-[#da3633]/15 text-[#ff7b72]",
+                    stage.status === "cancelled" && "border-[#d29922] bg-[#d29922]/15 text-[#d29922]",
+                    (stage.status === "blocked" || stage.status === "skipped" || stage.status === "waiting_for_device") && "border-[#d29922] bg-[#d29922]/15 text-[#d29922]",
                   )}
                 >
                   <Icon className={cn("h-2.5 w-2.5", stage.status === "active" && "animate-spin")} strokeWidth={2.5} />

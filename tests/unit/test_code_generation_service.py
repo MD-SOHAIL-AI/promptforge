@@ -60,6 +60,25 @@ class FakeLLMService(LLMService):
         return True
 
 
+class SequentialLLMService(FakeLLMService):
+    def __init__(self, contents: list[str], *, provider: LLMProvider = LLMProvider.OPENAI, model: str = "fake-model") -> None:
+        super().__init__(contents[0] if contents else "")
+        self.contents = contents
+        self.provider = provider
+        self.model = model
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        index = min(len(self.requests) - 1, len(self.contents) - 1)
+        return LLMResponse(
+            content=self.contents[index],
+            provider=self.provider,
+            model=self.model,
+            token_usage={},
+            latency_ms=1,
+        )
+
+
 def plan(
     *,
     board: TargetBoard = TargetBoard.ESP32,
@@ -111,6 +130,24 @@ def platformio_files() -> list[dict[str, str]]:
             "content": "#include <Arduino.h>\nvoid setup() {}\nvoid loop() {}\n",
         },
     ]
+
+
+def advanced_platformio_files() -> list[dict[str, str]]:
+    return [
+        platformio_files()[0],
+        {
+            "path": "src/main.cpp",
+            "content": (
+                "#include <Arduino.h>\n#include <WiFi.h>\n#include <WebServer.h>\n"
+                "WebServer server(80);\nvoid setup() { pinMode(2, OUTPUT); digitalWrite(2, LOW); server.begin(); }\n"
+                "void loop() { server.handleClient(); }\n"
+            ),
+        },
+    ]
+
+
+def readme_file() -> dict[str, str]:
+    return {"path": "README.md", "content": "# ESP32 Project\n"}
 
 
 def run(coro: Any) -> Any:
@@ -198,6 +235,33 @@ def test_context_unknown_values_allow_plan_to_remain_authoritative() -> None:
     )
 
     assert request.plan.target_board is TargetBoard.ESP32
+
+
+def test_simple_platformio_blink_uses_verified_builtin_scaffold() -> None:
+    class RouterLikeLLM(FakeLLMService):
+        registry = type("EmptyRegistry", (), {"list_providers": lambda self: []})()
+
+        async def generate_model(self, request: object) -> object:
+            raise AssertionError(f"model router should not be called: {request}")
+
+    llm = RouterLikeLLM("this response must not be used")
+    service = CodeGenerationService(llm)
+    blink_context = ExecutionContext(
+        task_id="task-123",
+        project_path="workspace/projects/blink-demo",
+        target_board="ESP32",
+        framework="PlatformIO",
+        metadata={"prompt": "Create an ESP32 blink LED project using PlatformIO."},
+    )
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=blink_context)))
+
+    assert project.list_files() == ("platformio.ini", "src/main.cpp")
+    assert "board = esp32dev" in project.get_file("platformio.ini").content  # type: ignore[union-attr]
+    assert "BLINK_INTERVAL_MS" in project.get_file("src/main.cpp").content  # type: ignore[union-attr]
+    report = project.metadata["generation_report"]
+    assert report["provider_id"] == "forgex_builtin"  # type: ignore[index]
+    assert llm.requests == []
 
 
 def test_service_requires_injected_llm_service() -> None:
@@ -350,7 +414,11 @@ def test_generate_project_calls_injected_service_once_and_builds_prompt() -> Non
     assert len(project.files) == 2
     assert project.project_id.startswith("project-")
     assert project.created_at.tzinfo is not None
-    assert project.metadata == {"task_id": "task-123"}
+    assert project.metadata["task_id"] == "task-123"
+    report = project.metadata["generation_report"]
+    assert report["attempt_count"] == 1
+    assert report["repair_used"] is False
+    assert report["fallback_used"] is False
     assert project.list_files() == ("platformio.ini", "src/main.cpp")
     assert project.get_file("src/main.cpp") is project.files[1]
     assert tuple(item.file_type for item in project.files) == ("ini", "cpp")
@@ -358,18 +426,174 @@ def test_generate_project_calls_injected_service_once_and_builds_prompt() -> Non
     sent = llm.requests[0]
     assert sent.temperature == 0.1
     assert sent.max_tokens == 4000
-    assert sent.metadata == {
-        "task_id": "task-123",
-        "project_name": "blink-demo",
-        "target_board": "ESP32",
-        "framework": "PlatformIO",
-    }
+    assert sent.metadata["task_id"] == "task-123"
+    assert sent.metadata["project_name"] == "blink-demo"
+    assert sent.metadata["target_board"] == "ESP32"
+    assert sent.metadata["framework"] == "PlatformIO"
+    assert sent.metadata["attempt_type"] == "initial"
+    assert sent.metadata["attempt_number"] == 1
     specification = json.loads(sent.prompt.split("\n", 1)[1])
     assert specification["requirements"] == ["LED output", "serial output"]
     assert specification["context_metadata"] == {"pin": 2}
     assert specification["simulation_enabled"] is True
     assert "platformio.ini" in sent.system_prompt
     assert "src/main.cpp" in sent.system_prompt
+
+
+def test_missing_platformio_ini_triggers_repair_attempt() -> None:
+    llm = SequentialLLMService(
+        [
+            manifest([{"path": "src/main.cpp", "content": "#include <Arduino.h>\nvoid setup() {}\nvoid loop() {}\n"}]),
+            manifest(platformio_files()),
+        ]
+    )
+    service = CodeGenerationService(llm, retry_backoff_s=0)
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert project.list_files() == ("platformio.ini", "src/main.cpp")
+    assert len(llm.requests) == 2
+    assert llm.requests[1].metadata["attempt_type"] == "repair"
+    report = project.metadata["generation_report"]
+    assert report["attempt_count"] == 2
+    assert report["repair_used"] is True
+    assert report["fallback_used"] is False
+    attempts = service.list_attempts(task_id="task-123")
+    assert attempts[-2]["success"] is False
+    assert attempts[-1]["success"] is True
+
+
+def test_missing_src_main_cpp_triggers_repair_attempt() -> None:
+    llm = SequentialLLMService(
+        [
+            manifest([{"path": "platformio.ini", "content": "[env:esp32dev]\nplatform = espressif32\nboard = esp32dev\n"}]),
+            manifest(platformio_files()),
+        ]
+    )
+    service = CodeGenerationService(llm, retry_backoff_s=0)
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert project.get_file("src/main.cpp") is not None
+    assert len(llm.requests) == 2
+    assert "src/main.cpp" in llm.requests[1].prompt
+
+
+def test_unsafe_path_is_rejected_and_repaired() -> None:
+    llm = SequentialLLMService(
+        [
+            manifest([{"path": "../src/main.cpp", "content": "bad"}]),
+            manifest(platformio_files()),
+        ]
+    )
+    service = CodeGenerationService(llm, retry_backoff_s=0)
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert project.list_files() == ("platformio.ini", "src/main.cpp")
+    assert len(llm.requests) == 2
+    attempts = project.metadata["generation_report"]["attempts"]
+    assert attempts[0]["error_code"] == "INVALID_GENERATED_OUTPUT"
+
+
+def test_repair_failure_returns_clear_generation_error() -> None:
+    llm = SequentialLLMService(["This is only an explanation.", "Still no files."])
+    service = CodeGenerationService(llm, retry_backoff_s=0, fallback_enabled=False)
+
+    with pytest.raises(GeneratedOutputError) as exc_info:
+        run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert "Try a stronger model or enable fallback" in str(exc_info.value)
+    assert len(llm.requests) == 2
+    assert len(exc_info.value.details["generation_attempts"]) == 2
+
+
+def test_fallback_model_is_used_when_repair_fails() -> None:
+    primary = SequentialLLMService(["Explanation only.", "Still invalid."], provider=LLMProvider.OPENAI, model="weak")
+    fallback = SequentialLLMService([manifest(platformio_files())], provider=LLMProvider.OPENROUTER, model="strong")
+    service = CodeGenerationService(
+        primary,
+        fallback_llm_service=fallback,
+        retry_backoff_s=0,
+    )
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert len(primary.requests) == 2
+    assert len(fallback.requests) == 1
+    report = project.metadata["generation_report"]
+    assert report["fallback_used"] is True
+    assert report["model_id"] == "strong"
+
+
+def test_fallback_is_not_used_when_disabled() -> None:
+    primary = SequentialLLMService(["Explanation only.", "Still invalid."])
+    fallback = SequentialLLMService([manifest(platformio_files())], provider=LLMProvider.OPENROUTER, model="strong")
+    service = CodeGenerationService(
+        primary,
+        fallback_llm_service=fallback,
+        fallback_enabled=False,
+        retry_backoff_s=0,
+    )
+
+    with pytest.raises(GeneratedOutputError):
+        run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert len(primary.requests) == 2
+    assert fallback.requests == []
+
+
+def test_advanced_prompt_missing_readme_triggers_repair() -> None:
+    advanced_plan = plan()
+    advanced_context = ExecutionContext(
+        task_id="task-123",
+        project_path="workspace/projects/advanced",
+        target_board="ESP32",
+        framework="PlatformIO",
+        metadata={
+            "prompt": "Create an advanced ESP32 control hub with README and WebServer Preferences",
+            "generation_strategy": "one_shot",
+        },
+    )
+    llm = SequentialLLMService(
+        [
+            manifest(advanced_platformio_files()),
+            manifest([*advanced_platformio_files(), readme_file()]),
+        ]
+    )
+    service = CodeGenerationService(llm, retry_backoff_s=0)
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=advanced_plan, context=advanced_context)))
+
+    assert project.get_file("README.md") is not None
+    assert project.metadata["generation_report"]["repair_used"] is True
+
+
+def test_advanced_prompt_missing_requested_capabilities_is_rejected() -> None:
+    advanced_context = ExecutionContext(
+        task_id="task-123",
+        project_path="workspace/projects/advanced",
+        target_board="ESP32",
+        framework="PlatformIO",
+        metadata={
+            "prompt": "Create an advanced ESP32 control hub with README, WebServer, WiFi, and Preferences",
+            "generation_strategy": "one_shot",
+        },
+    )
+    llm = FakeLLMService(manifest([*platformio_files(), readme_file()]))
+    service = CodeGenerationService(llm)
+
+    with pytest.raises(ProjectValidationError, match="missing requested capabilities"):
+        run(service.generate_project(CodeGenerationRequest(plan=plan(), context=advanced_context)))
+
+
+def test_simple_blink_prompt_does_not_record_advanced_warning() -> None:
+    llm = FakeLLMService(manifest(platformio_files()))
+    service = CodeGenerationService(llm)
+
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+
+    assert tuple(project.metadata["warnings"]) == ()
 
 
 def test_prompt_generation_is_deterministic() -> None:
@@ -423,6 +647,53 @@ def test_extract_files_accepts_raw_json_and_single_json_fence() -> None:
     assert service.extract_files(raw) == service.extract_files(
         f"```json\n{raw}\n```"
     )
+    assert service.extract_files(raw) == service.extract_files(
+        f"Here is the project manifest:\n```json\n{raw}\n```\nBuild it with PlatformIO."
+    )
+
+
+def test_extract_files_accepts_markdown_file_blocks() -> None:
+    service = CodeGenerationService(FakeLLMService("unused"))
+    content = """```file:platformio.ini
+[env:esp32dev]
+platform = espressif32
+board = esp32dev
+framework = arduino
+```
+
+```file:src/main.cpp
+#include <Arduino.h>
+void setup() {}
+void loop() {}
+```"""
+
+    files = service.extract_files(content)
+
+    assert [item.path for item in files] == ["platformio.ini", "src/main.cpp"]
+    assert files[0].file_type == "ini"
+    assert "board = esp32dev" in files[0].content
+    assert "void loop()" in files[1].content
+
+
+def test_extract_files_accepts_heading_blocks() -> None:
+    service = CodeGenerationService(FakeLLMService("unused"))
+    content = """### platformio.ini
+[env:esp32dev]
+platform = espressif32
+board = esp32dev
+framework = arduino
+
+### src/main.cpp
+#include <Arduino.h>
+void setup() {}
+void loop() {}
+"""
+
+    files = service.extract_files(content)
+
+    assert [item.path for item in files] == ["platformio.ini", "src/main.cpp"]
+    assert files[0].content.startswith("[env:esp32dev]")
+    assert files[1].content.endswith("void loop() {}")
 
 
 @pytest.mark.parametrize(
@@ -447,6 +718,17 @@ def test_extract_files_rejects_malformed_output(content: str) -> None:
 def test_extract_files_wraps_invalid_file_with_index() -> None:
     service = CodeGenerationService(FakeLLMService("unused"))
     content = manifest([{"path": "../main.cpp", "content": "bad"}])
+
+    with pytest.raises(GeneratedOutputError, match="index 0"):
+        service.extract_files(content)
+
+
+def test_extract_files_rejects_unsafe_markdown_file_paths() -> None:
+    service = CodeGenerationService(FakeLLMService("unused"))
+    content = """```file:../platformio.ini
+[env:esp32dev]
+board = esp32dev
+```"""
 
     with pytest.raises(GeneratedOutputError, match="index 0"):
         service.extract_files(content)
@@ -644,4 +926,21 @@ def test_generate_project_validates_llm_output_before_returning() -> None:
     request = CodeGenerationRequest(plan=plan(), context=context())
 
     with pytest.raises(ProjectValidationError, match="platformio.ini"):
+        run(CodeGenerationService(llm).generate_project(request))
+
+
+def test_generate_project_reports_missing_src_main() -> None:
+    llm = FakeLLMService(
+        manifest(
+            [
+                {
+                    "path": "platformio.ini",
+                    "content": "[env:esp32dev]\nboard = esp32dev\n",
+                }
+            ]
+        )
+    )
+    request = CodeGenerationRequest(plan=plan(), context=context())
+
+    with pytest.raises(ProjectValidationError, match="src/main.cpp"):
         run(CodeGenerationService(llm).generate_project(request))

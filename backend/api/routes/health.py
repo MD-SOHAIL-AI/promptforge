@@ -27,6 +27,7 @@ async def health(request: Request) -> HealthResponse:
     )
     return HealthResponse(
         status="healthy" if all(services.model_dump().values()) else "degraded",
+        service="forgex-backend",
         version=request.app.version,
         timestamp=datetime.now(timezone.utc),
         services=services,

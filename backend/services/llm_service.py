@@ -56,6 +56,8 @@ class LLMProvider(str, Enum):
     ANTHROPIC = "ANTHROPIC"
     GEMINI = "GEMINI"
     OPENROUTER = "OPENROUTER"
+    OLLAMA = "OLLAMA"
+    LMSTUDIO = "LMSTUDIO"
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,11 +133,14 @@ class LLMResponse:
     model: str
     token_usage: Mapping[str, int] = field(default_factory=dict, hash=False)
     latency_ms: int = 0
+    provider_id: str | None = None
 
     def __post_init__(self) -> None:
         _validate_text(self.content, field_name="content")
         if not isinstance(self.provider, LLMProvider):
             raise ValueError("provider must be an LLMProvider")
+        if self.provider_id is not None:
+            _validate_text(self.provider_id, field_name="provider_id")
         _validate_text(self.model, field_name="model")
         if (
             not isinstance(self.latency_ms, int)
@@ -339,6 +344,15 @@ class _HTTPService(LLMService, ABC):
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout_s)
         )
+        self._last_request_metadata: dict[str, Any] = {
+            "outbound_request_count": 0,
+            "request_reached_provider": False,
+            "http_status": None,
+            "provider_request_id": None,
+        }
+
+    def to_safe_metadata(self) -> dict[str, Any]:
+        return dict(self._last_request_metadata)
 
     async def __aenter__(self) -> _HTTPService:
         return self
@@ -356,6 +370,12 @@ class _HTTPService(LLMService, ABC):
         if not isinstance(request, LLMRequest):
             raise TypeError("request must be an LLMRequest")
         started = time.monotonic()
+        self._last_request_metadata = {
+            "outbound_request_count": 1,
+            "request_reached_provider": False,
+            "http_status": None,
+            "provider_request_id": None,
+        }
         try:
             async with _timeout_after(self.timeout_s):
                 response = await self._client.post(
@@ -365,6 +385,7 @@ class _HTTPService(LLMService, ABC):
                     json=self._payload(request, stream=False),
                     timeout=self.timeout_s,
                 )
+                self._capture_response_metadata(response)
                 self._raise_for_status(response)
                 data = self._decode_json(response)
                 content, usage, response_model = self._parse_response(data)
@@ -377,7 +398,10 @@ class _HTTPService(LLMService, ABC):
                 f"{self.provider.value} request failed: {exc}",
                 provider=self.provider,
                 retryable=True,
-                details={"exception_type": type(exc).__name__},
+                details={
+                    "exception_type": type(exc).__name__,
+                    **self.to_safe_metadata(),
+                },
             ) from exc
 
         return LLMResponse(
@@ -456,7 +480,7 @@ class _HTTPService(LLMService, ABC):
         common = {
             "provider": self.provider,
             "status_code": response.status_code,
-            "details": details,
+            "details": {**details, **self.to_safe_metadata()},
         }
         if response.status_code in {401, 403}:
             raise LLMAuthenticationError(message, code=code, **common)
@@ -472,6 +496,18 @@ class _HTTPService(LLMService, ABC):
             code=code,
             retryable=response.status_code >= 500,
             **common,
+        )
+
+    def _capture_response_metadata(self, response: httpx.Response) -> None:
+        request_id = response.headers.get("x-request-id") or response.headers.get("cf-ray")
+        if request_id and (len(request_id) > 128 or not all(
+            character.isalnum() or character in "._:-" for character in request_id
+        )):
+            request_id = None
+        self._last_request_metadata.update(
+            request_reached_provider=True,
+            http_status=response.status_code,
+            provider_request_id=request_id,
         )
 
     def _decode_json(self, response: httpx.Response) -> Mapping[str, Any]:
@@ -944,7 +980,6 @@ def _provider_error_body(
         return message, code, details
 
     if isinstance(body, Mapping):
-        details = dict(body)
         error = body.get("error", body)
         if isinstance(error, Mapping):
             raw_message = error.get("message")
@@ -953,6 +988,10 @@ def _provider_error_body(
                 message = raw_message
             if isinstance(raw_code, str) and raw_code:
                 code = raw_code
+                details["provider_error_code"] = raw_code[:128]
+            raw_type = error.get("type")
+            if isinstance(raw_type, str) and raw_type:
+                details["provider_error_type"] = raw_type[:128]
         elif isinstance(error, str) and error:
             message = error
     return message, code, details

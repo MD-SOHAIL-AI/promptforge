@@ -52,11 +52,11 @@ export function WorkspaceSidebar({
       <div className="border-b border-white/10 px-4 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded bg-[#f0b45b] text-sm font-bold text-[#16130d]">
-            PF
+            FX
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold text-white">PromptForge</h1>
-            <p className="truncate text-xs text-[#8a95a3]">Embedded IDE</p>
+            <h1 className="truncate text-sm font-semibold text-white">ForgeX</h1>
+            <p className="truncate text-xs text-[#8a95a3]">Embedded EDE</p>
           </div>
         </div>
         <div className="mt-4 flex items-center justify-between rounded border border-white/10 bg-white/[0.03] px-3 py-2">

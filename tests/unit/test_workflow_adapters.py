@@ -29,6 +29,8 @@ from backend.workflow.adapters.generation_adapter import (
     GenerationAdapter,
     GenerationAdapterError,
     generated_project_to_build_config,
+    project_root_to_build_config,
+    resolve_build_config,
     update_context_after_generation,
 )
 from backend.workflow.adapters.monitor_adapter import (
@@ -167,6 +169,54 @@ def test_generation_mapping_uses_single_default_environment() -> None:
 
     assert config.environment == "release"
     assert config.board == "esp32-s3-devkitc-1"
+
+
+def test_external_platformio_root_maps_to_build_config(tmp_path: Path) -> None:
+    root = tmp_path / "external-platformio"
+    root.mkdir()
+    (root / "platformio.ini").write_text(
+        "[platformio]\ndefault_envs = esp32dev\n"
+        "[env:esp32dev]\nplatform = espressif32\nboard = esp32dev\n",
+        encoding="utf-8",
+    )
+
+    config = project_root_to_build_config(root)
+
+    assert isinstance(config, BuildConfig)
+    assert config.project_dir == str(root.resolve())
+    assert config.environment == "esp32dev"
+    assert config.board == "esp32dev"
+
+
+def test_build_config_resolver_uses_active_workspace_root(tmp_path: Path) -> None:
+    root = tmp_path / "open-folder"
+    root.mkdir()
+    (root / "platformio.ini").write_text(
+        "[env:esp32dev]\nplatform = espressif32\nboard = esp32dev\n",
+        encoding="utf-8",
+    )
+    active_context = context(
+        project_path=None,
+        metadata={
+            "active_workspace": {
+                "rootPath": str(root),
+                "generation_mode": "generate_into_open_folder",
+            }
+        },
+    )
+
+    config = resolve_build_config(None, context=active_context)
+
+    assert Path(config.project_dir) == root.resolve()
+    assert config.environment == "esp32dev"
+
+
+def test_build_config_resolver_missing_platformio_ini_is_user_facing(tmp_path: Path) -> None:
+    root = tmp_path / "generic-folder"
+    root.mkdir()
+
+    with pytest.raises(GenerationAdapterError, match="Build requires platformio.ini"):
+        project_root_to_build_config(root)
 
 
 def test_generation_context_update_preserves_existing_metadata() -> None:

@@ -22,6 +22,8 @@ class ProjectResponse(APIModel):
     target_board: str
     framework: str
     project_path: str
+    external: bool = False
+    project_type: str = "generated"
     created_at: datetime
     updated_at: datetime
     file_count: int = Field(ge=0)

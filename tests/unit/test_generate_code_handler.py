@@ -238,6 +238,133 @@ def test_successful_handler_persists_with_real_project_service(
     assert result.project_path == str(expected)
     assert (expected / "platformio.ini").is_file()
     assert (expected / "src" / "main.cpp").is_file()
+    summary = result.metadata["artifact_summary"]
+    assert summary["workspace_root"] == str(expected)
+    assert summary["required_files_present"] is True
+    assert summary["generation_satisfied_prompt"] is True
+    assert set(summary["created_files"]) >= {"platformio.ini", "src/main.cpp"}
+
+
+def test_generation_into_empty_folder_reports_artifact_summary(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "empty-workspace"
+    workspace.mkdir()
+    active_workspace = {
+        "id": "empty-workspace",
+        "rootPath": str(workspace),
+        "generation_mode": "generate_into_open_folder",
+    }
+    handler = GenerateCodeHandler(
+        FakeGenerationService(project()),
+        FakeProjectService(),
+        context(metadata={"active_workspace": active_workspace, "prompt": "Blink LED on ESP32"}),
+    )
+
+    result = run(handler.execute(plan()))
+
+    assert result.status is GenerateCodeStatus.SUCCESS
+    summary = result.metadata["artifact_summary"]
+    assert summary["workspace_root"] == str(workspace.resolve())
+    assert summary["platformio_ini_present"] is True
+    assert summary["main_cpp_present"] is True
+    assert tuple(summary["created_files"]) == (
+        ".promptforge-project.json",
+        "platformio.ini",
+        "src/main.cpp",
+    )
+    assert tuple(summary["updated_files"]) == ()
+
+
+def test_generation_into_open_folder_accepts_verified_unchanged_files(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "stale-workspace"
+    (workspace / "src").mkdir(parents=True)
+    generated = project()
+    for file in generated.files:
+        target = workspace / Path(*file.path.split("/"))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(file.content, encoding="utf-8")
+    active_workspace = {
+        "id": "stale-workspace",
+        "rootPath": str(workspace),
+        "generation_mode": "generate_into_open_folder",
+    }
+    handler = GenerateCodeHandler(
+        FakeGenerationService(generated),
+        FakeProjectService(),
+        context(metadata={"active_workspace": active_workspace, "prompt": "Blink LED on ESP32"}),
+    )
+
+    result = run(handler.execute(plan()))
+
+    assert result.status is GenerateCodeStatus.SUCCESS
+    assert result.success is True
+    summary = result.metadata["artifact_summary"]
+    assert summary["content_verified"] is True
+    assert summary["no_op"] is True
+    assert summary["generation_satisfied_prompt"] is True
+    assert set(summary["unchanged_files"]) >= {"platformio.ini", "src/main.cpp"}
+
+
+def test_generation_into_open_folder_overwrites_mismatched_workspace_content(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "stale-workspace"
+    (workspace / "src").mkdir(parents=True)
+    (workspace / "platformio.ini").write_text("[env:stale]\n", encoding="utf-8")
+    (workspace / "src" / "main.cpp").write_text("// stale\n", encoding="utf-8")
+    active_workspace = {
+        "id": "stale-workspace",
+        "rootPath": str(workspace),
+        "generation_mode": "generate_into_open_folder",
+    }
+    handler = GenerateCodeHandler(
+        FakeGenerationService(project()),
+        FakeProjectService(),
+        context(metadata={"active_workspace": active_workspace, "prompt": "Blink LED on ESP32"}),
+    )
+
+    result = run(handler.execute(plan()))
+
+    assert result.status is GenerateCodeStatus.SUCCESS
+    assert result.success is True
+    assert (workspace / "platformio.ini").read_text(encoding="utf-8") == next(
+        item.content for item in project().files if item.path == "platformio.ini"
+    )
+    assert (workspace / "src" / "main.cpp").read_text(encoding="utf-8") == next(
+        item.content for item in project().files if item.path == "src/main.cpp"
+    )
+    summary = result.metadata["artifact_summary"]
+    assert summary["content_verified"] is True
+    assert set(summary["updated_files"]) >= {"platformio.ini", "src/main.cpp"}
+
+
+def test_modifying_existing_project_preserves_platformio_and_rejects_mismatch(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "existing-project"
+    (workspace / "src").mkdir(parents=True)
+    (workspace / "platformio.ini").write_text("[env:custom]\n", encoding="utf-8")
+    (workspace / "src" / "main.cpp").write_text("// existing\n", encoding="utf-8")
+    active_workspace = {
+        "id": "existing-project",
+        "rootPath": str(workspace),
+        "generation_mode": "modify_existing_project",
+    }
+    handler = GenerateCodeHandler(
+        FakeGenerationService(project()),
+        FakeProjectService(),
+        context(metadata={"active_workspace": active_workspace, "prompt": "Blink LED on ESP32"}),
+    )
+
+    result = run(handler.execute(plan()))
+
+    assert result.status is GenerateCodeStatus.PERSISTENCE_FAILED
+    assert result.success is False
+    assert "do not match the generated project content" in result.message
+    assert (workspace / "platformio.ini").read_text(encoding="utf-8") == "[env:custom]\n"
 
 
 @pytest.mark.parametrize(

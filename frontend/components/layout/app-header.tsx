@@ -31,8 +31,8 @@ export function AppHeader({ health, activeProject, isExecuting, buildStatus }: A
           <Cpu className="h-4 w-4" strokeWidth={2.25} />
         </div>
         <div className="mr-2 leading-none">
-          <div className="text-[13px] font-semibold tracking-tight text-[#f0f2f5]">PromptForge</div>
-          <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">Embedded IDE</div>
+          <div className="text-[13px] font-semibold tracking-tight text-[#f0f2f5]">ForgeX</div>
+          <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">Embedded EDE</div>
         </div>
         <Separator orientation="vertical" className="mx-1 h-6" />
         <Button variant="ghost" size="sm" className="min-w-0 gap-2 text-foreground">

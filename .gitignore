@@ -7,7 +7,7 @@ __pycache__/
 .coverage
 .env
 .venv/
-.promptforge/projects/
-.promptforge/builds/
-.promptforge/artifacts/
-.promptforge/logs/
+.promptforge/
+out/
+coverage/
+*.log

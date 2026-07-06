@@ -82,6 +82,7 @@ class ExecutionProgressHub:
             if event_type in {
                 ExecutionEventType.WORKFLOW_COMPLETED,
                 ExecutionEventType.WORKFLOW_FAILED,
+                ExecutionEventType.WORKFLOW_CANCELLED,
             }:
                 stream.active = False
                 stream.completed_at = time.monotonic()

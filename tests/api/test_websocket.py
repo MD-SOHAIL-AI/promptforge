@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+
+from backend.api.progress import ExecutionProgressHub
 
 from .test_api_routes import make_client
 
@@ -70,3 +73,35 @@ def test_duplicate_task_id_returns_conflict(tmp_path: Path) -> None:
     assert first.status_code == 200
     assert second.status_code == 409
     assert second.json()["code"] == "TASK_ID_CONFLICT"
+
+
+def test_progress_hub_accepts_failed_step_events() -> None:
+    async def run() -> str:
+        hub = ExecutionProgressHub()
+        assert await hub.begin("task-failed-event")
+        event = await hub.emit(
+            event="CODE_GENERATION_FAILED",
+            task_id="task-failed-event",
+            execution_id="execution-test",
+            workflow_correlation_id="workflow-test",
+            payload={"success": False},
+        )
+        return event.event.value
+
+    assert asyncio.run(run()) == "CODE_GENERATION_FAILED"
+
+
+def test_progress_hub_accepts_cancelled_terminal_event() -> None:
+    async def run() -> str:
+        hub = ExecutionProgressHub()
+        assert await hub.begin("task-cancelled-event")
+        event = await hub.emit(
+            event="WORKFLOW_CANCELLED",
+            task_id="task-cancelled-event",
+            execution_id="execution-test",
+            workflow_correlation_id="workflow-test",
+            payload={"status": "CANCELLED"},
+        )
+        return event.event.value
+
+    assert asyncio.run(run()) == "WORKFLOW_CANCELLED"

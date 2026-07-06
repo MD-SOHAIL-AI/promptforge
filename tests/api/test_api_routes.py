@@ -42,6 +42,8 @@ class FakePlatformIO(PlatformIOService):
     ) -> BuildResult:
         del kwargs
         self.calls.append((str(project), environment))
+        if not (Path(str(project)) / "platformio.ini").is_file():
+            raise ValueError("missing platformio.ini")
         return self.result
 
 
@@ -197,6 +199,7 @@ def test_health_and_openapi(tmp_path: Path) -> None:
             "/health",
             "/execute",
             "/projects",
+            "/projects/import",
             "/projects/{project_id}",
             "/projects/{project_id}/files",
             "/files/content",
@@ -208,6 +211,13 @@ def test_health_and_openapi(tmp_path: Path) -> None:
             "/monitor/start",
             "/monitor/stop",
             "/monitor/status",
+            "/execute/{task_id}/cancel",
+            "/terminal/sessions",
+            "/terminal/sessions/{session_id}/output",
+            "/terminal/sessions/{session_id}/input",
+            "/terminal/sessions/{session_id}/clear",
+            "/terminal/sessions/{session_id}/resize",
+            "/terminal/sessions/{session_id}",
         ):
             assert path in document["paths"]
         assert document["paths"]["/execute"]["post"]["requestBody"]
@@ -275,6 +285,139 @@ def test_project_routes(tmp_path: Path) -> None:
         deleted = client.delete(f"/projects/{project_id}")
         assert deleted.json() == {"project_id": project_id, "deleted": True}
         assert client.get(f"/projects/{project_id}").status_code == 404
+
+
+def test_external_project_import_files_and_build(tmp_path: Path) -> None:
+    external = tmp_path / "external" / "smart-irrigation-system"
+    (external / "src").mkdir(parents=True)
+    (external / ".pio" / "build").mkdir(parents=True)
+    (external / "platformio.ini").write_text(
+        "\n".join(
+            [
+                "[env:esp32dev]",
+                "platform = espressif32",
+                "board = esp32dev",
+                "framework = arduino",
+                "monitor_speed = 115200",
+                "upload_speed = 921600",
+                "lib_deps =",
+                "    adafruit/DHT sensor library",
+                "    adafruit/Adafruit Unified Sensor",
+                "",
+                "[env:uno]",
+                "platform = atmelavr",
+                "board = uno",
+                "framework = arduino",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (external / "src" / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+    (external / ".pio" / "build" / "ignored.txt").write_text("ignored", encoding="utf-8")
+
+    client, _, platformio = make_client(tmp_path)
+    with client:
+        imported = client.post("/projects/import", json={"path": str(external)})
+        assert imported.status_code == 200
+        payload = imported.json()
+        assert payload["name"] == "smart-irrigation-system"
+        assert payload["external"] is True
+        assert payload["project_type"] == "platformio"
+        assert payload["board"] == "esp32dev"
+        assert payload["framework"] == "arduino"
+        assert payload["environment"] == "esp32dev"
+        assert payload["monitor_speed"] == 115200
+        assert payload["upload_speed"] == 921600
+        assert len(payload["platformio"]["environments"]) == 2
+        project_id = payload["project_id"]
+
+        projects = client.get("/projects").json()["projects"]
+        external_project = next(item for item in projects if item["project_id"] == project_id)
+        assert external_project["external"] is True
+        assert external_project["metadata"]["active_environment"] == "esp32dev"
+
+        entries = client.get(f"/projects/{project_id}/files")
+        assert entries.status_code == 200
+        paths = {item["path"] for item in entries.json()["entries"]}
+        assert "platformio.ini" in paths
+        assert "src/main.cpp" in paths
+        assert ".pio/build/ignored.txt" not in paths
+
+        content = client.get("/files/content", params={"project_id": project_id, "path": "src/main.cpp"})
+        assert content.status_code == 200
+        assert "void setup" in content.json()["content"]
+
+        saved = client.put(
+            "/files",
+            json={"project_id": project_id, "path": "src/main.cpp", "content": "void setup() {}\n"},
+        )
+        assert saved.status_code == 200
+        assert (external / "src" / "main.cpp").read_text(encoding="utf-8") == "void setup() {}\n"
+
+        traversal = client.get("/files/content", params={"project_id": project_id, "path": "../outside.txt"})
+        assert traversal.status_code == 422
+
+        build = client.post("/build", json={"project_id": project_id, "environment": "esp32dev"})
+        assert build.status_code == 200
+        assert platformio.calls[-1] == (str(external.resolve()), "esp32dev")
+
+
+def test_external_project_import_opens_generic_folder(tmp_path: Path) -> None:
+    unsupported = tmp_path / "notes"
+    unsupported.mkdir()
+    (unsupported / "readme.txt").write_text("notes", encoding="utf-8")
+    client, _, _ = make_client(tmp_path)
+    with client:
+        response = client.post("/projects/import", json={"path": str(unsupported)})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["project_type"] == "generic"
+        assert payload["has_platformio_ini"] is False
+        entries = client.get(f"/projects/{payload['project_id']}/files")
+        assert entries.status_code == 200
+        assert {item["path"] for item in entries.json()["entries"]} == {"readme.txt"}
+
+        build = client.post("/build", json={"project_id": payload["project_id"]})
+        assert build.status_code == 422
+        assert build.json()["message"].startswith("Build requires platformio.ini")
+
+
+def test_execute_passes_selected_board_for_generic_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "generic"
+    workspace.mkdir()
+    captured: dict[str, object] = {}
+
+    async def execute_with_capture(prompt: str, **kwargs: object) -> ExecutionOutcome:
+        del prompt
+        captured.update(kwargs)
+        callback = kwargs["progress_callback"]
+        task_id = str(kwargs["task_id"])
+        await callback("TASK_CREATED", {"task_id": task_id})
+        await callback("WORKFLOW_COMPLETED", {"task_id": task_id, "status": "COMPLETED"})
+        return completed_outcome(task_id)
+
+    client, _, _ = make_client(tmp_path, execute_prompt_fn=execute_with_capture)
+    with client:
+        imported = client.post("/projects/import", json={"path": str(workspace)})
+        project_id = imported.json()["project_id"]
+        response = client.post(
+            "/execute",
+            json={
+                "prompt": "Create firmware",
+                "task_id": "task-selected-board",
+                "project_id": project_id,
+                "selected_board": "esp32dev",
+                "selected_framework": "PlatformIO",
+                "generation_mode": "generate_into_open_folder",
+            },
+        )
+    assert response.status_code == 200
+    active_workspace = captured["active_workspace"]
+    assert isinstance(active_workspace, dict)
+    assert active_workspace["rootPath"] == str(workspace.resolve())
+    assert active_workspace["selected_board"] == "esp32dev"
+    assert active_workspace["board"] == "ESP32"
+    assert active_workspace["generation_mode"] == "generate_into_open_folder"
 
 
 def test_workspace_file_routes(tmp_path: Path) -> None:
@@ -390,6 +533,14 @@ def test_flash_success_build_failure_and_board_mismatch(tmp_path: Path) -> None:
         )
         assert mismatch.status_code == 409
         assert mismatch.json()["code"] == "BOARD_TYPE_MISMATCH"
+
+        missing = client.post(
+            "/flash",
+            json={"project_id": project_id, "board_type": "ESP32", "port": "COM9"},
+        )
+        assert missing.status_code == 404
+        assert missing.json()["code"] == "BOARD_NOT_FOUND"
+        assert missing.json()["message"] == "No matching ESP32 device detected. Connect a board and try again."
 
     failed_build = BuildResult(
         success=False,

@@ -16,6 +16,8 @@ __all__ = [
     "GenerationAdapter",
     "GenerationAdapterError",
     "generated_project_to_build_config",
+    "project_root_to_build_config",
+    "resolve_build_config",
     "update_context_after_generation",
 ]
 
@@ -45,6 +47,62 @@ class GenerationAdapter:
         version_timeout_s: float = 10.0,
     ) -> BuildConfig:
         return generated_project_to_build_config(
+            project,
+            project_path=project_path,
+            context=context,
+            environment=environment,
+            board=board,
+            timeout_s=timeout_s,
+            executable=executable,
+            extra_args=extra_args,
+            env=env,
+            session_id=session_id,
+            version_timeout_s=version_timeout_s,
+        )
+
+    @staticmethod
+    def from_project_root(
+        project_path: str | Path | None = None,
+        *,
+        context: ExecutionContext | None = None,
+        environment: str | None = None,
+        board: str | None = None,
+        timeout_s: float = 180.0,
+        executable: str = "pio",
+        extra_args: tuple[str, ...] = (),
+        env: Mapping[str, str] | None = None,
+        session_id: str | None = None,
+        version_timeout_s: float = 10.0,
+    ) -> BuildConfig:
+        return project_root_to_build_config(
+            project_path,
+            context=context,
+            environment=environment,
+            board=board,
+            timeout_s=timeout_s,
+            executable=executable,
+            extra_args=extra_args,
+            env=env,
+            session_id=session_id,
+            version_timeout_s=version_timeout_s,
+        )
+
+    @staticmethod
+    def resolve_build_config(
+        project: GeneratedProject | None = None,
+        *,
+        project_path: str | Path | None = None,
+        context: ExecutionContext | None = None,
+        environment: str | None = None,
+        board: str | None = None,
+        timeout_s: float = 180.0,
+        executable: str = "pio",
+        extra_args: tuple[str, ...] = (),
+        env: Mapping[str, str] | None = None,
+        session_id: str | None = None,
+        version_timeout_s: float = 10.0,
+    ) -> BuildConfig:
+        return resolve_build_config(
             project,
             project_path=project_path,
             context=context,
@@ -141,6 +199,98 @@ def generated_project_to_build_config(
     )
 
 
+def resolve_build_config(
+    project: GeneratedProject | None = None,
+    *,
+    project_path: str | Path | None = None,
+    context: ExecutionContext | None = None,
+    environment: str | None = None,
+    board: str | None = None,
+    timeout_s: float = 180.0,
+    executable: str = "pio",
+    extra_args: tuple[str, ...] = (),
+    env: Mapping[str, str] | None = None,
+    session_id: str | None = None,
+    version_timeout_s: float = 10.0,
+) -> BuildConfig:
+    """Resolve build input from a generated project or active workspace root."""
+
+    if project is not None:
+        return generated_project_to_build_config(
+            project,
+            project_path=project_path,
+            context=context,
+            environment=environment,
+            board=board,
+            timeout_s=timeout_s,
+            executable=executable,
+            extra_args=extra_args,
+            env=env,
+            session_id=session_id,
+            version_timeout_s=version_timeout_s,
+        )
+    return project_root_to_build_config(
+        project_path,
+        context=context,
+        environment=environment,
+        board=board,
+        timeout_s=timeout_s,
+        executable=executable,
+        extra_args=extra_args,
+        env=env,
+        session_id=session_id,
+        version_timeout_s=version_timeout_s,
+    )
+
+
+def project_root_to_build_config(
+    project_path: str | Path | None = None,
+    *,
+    context: ExecutionContext | None = None,
+    environment: str | None = None,
+    board: str | None = None,
+    timeout_s: float = 180.0,
+    executable: str = "pio",
+    extra_args: tuple[str, ...] = (),
+    env: Mapping[str, str] | None = None,
+    session_id: str | None = None,
+    version_timeout_s: float = 10.0,
+) -> BuildConfig:
+    """Create ``BuildConfig`` from an active PlatformIO workspace root."""
+
+    if context is not None and not isinstance(context, ExecutionContext):
+        raise TypeError("context must be an ExecutionContext")
+    root = _workspace_project_path(project_path, context)
+    ini = root / "platformio.ini"
+    if not ini.is_file() or ini.is_symlink():
+        raise GenerationAdapterError(
+            "Build requires platformio.ini. Generate or initialize a "
+            f"PlatformIO project first. Workspace root: {root}"
+        )
+    inferred_environment, inferred_board = _platformio_selection_from_text(
+        ini.read_text(encoding="utf-8-sig")
+    )
+    return BuildConfig(
+        project_dir=str(root),
+        environment=(
+            _optional_text(environment, "environment")
+            if environment is not None
+            else inferred_environment
+        ),
+        board=(
+            _optional_text(board, "board")
+            if board is not None
+            else inferred_board
+        ),
+        timeout_s=timeout_s,
+        executable=executable,
+        extra_args=tuple(extra_args),
+        env={} if env is None else env,
+        session_id=session_id,
+        version_timeout_s=version_timeout_s,
+    )
+
+
 def update_context_after_generation(
     context: ExecutionContext,
     project: GeneratedProject,
@@ -160,6 +310,18 @@ def update_context_after_generation(
             "file_count": len(project.files),
         },
     )
+    active_workspace = metadata.get("active_workspace")
+    if isinstance(active_workspace, dict):
+        root = Path(path).expanduser().resolve()
+        ini = root / "platformio.ini"
+        active_workspace["rootPath"] = str(root)
+        active_workspace["root_path"] = str(root)
+        active_workspace["platformioIniPath"] = str(ini)
+        active_workspace["platformio_ini_path"] = str(ini)
+        active_workspace["has_platformio_ini"] = ini.is_file() and not ini.is_symlink()
+        if active_workspace.get("project_type") == "generic" and active_workspace["has_platformio_ini"]:
+            active_workspace["project_type"] = "platformio"
+        metadata["active_workspace"] = active_workspace
     return replace(
         context,
         project_path=path,
@@ -231,12 +393,16 @@ def _platformio_selection(
         raise GenerationAdapterError(
             "GeneratedProject must contain platformio.ini"
         )
+    return _platformio_selection_from_text(ini.content)
+
+
+def _platformio_selection_from_text(content: str) -> tuple[str | None, str | None]:
     parser = configparser.RawConfigParser(
         strict=True,
         inline_comment_prefixes=(";", "#"),
     )
     try:
-        parser.read_string(ini.content)
+        parser.read_string(content)
     except configparser.Error as exc:
         raise GenerationAdapterError(
             f"platformio.ini is invalid: {exc}"
@@ -276,6 +442,29 @@ def _platformio_selection(
             fallback="",
         ).strip() or None
     return selected, selected_board
+
+
+def _workspace_project_path(
+    explicit: str | Path | None,
+    context: ExecutionContext | None,
+) -> Path:
+    candidate: object = explicit
+    if candidate is None and context is not None and context.project_path is not None:
+        candidate = context.project_path
+    if candidate is None and context is not None:
+        workspace = context.metadata.get("active_workspace")
+        if isinstance(workspace, Mapping):
+            candidate = workspace.get("rootPath") or workspace.get("root_path")
+    if candidate is None:
+        raise GenerationAdapterError(
+            "Build requires platformio.ini. Generate or initialize a "
+            "PlatformIO project first."
+        )
+    text = _path_text(candidate, "project_path")
+    try:
+        return Path(text).expanduser().resolve()
+    except OSError as exc:
+        raise GenerationAdapterError(f"project_path is invalid: {exc}") from exc
 
 
 def _stage_metadata(

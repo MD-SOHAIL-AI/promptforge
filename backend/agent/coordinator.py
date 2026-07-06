@@ -58,6 +58,7 @@ class ExecutionStatus(str, Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
+    COMPLETED_WITH_PENDING_HARDWARE = "COMPLETED_WITH_PENDING_HARDWARE"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
 
@@ -161,7 +162,10 @@ class ExecutionOutcome:
         )
         if recorded_failures != self.failures:
             raise ValueError("failures must match failed step_results")
-        if self.status is ExecutionStatus.COMPLETED and self.failures:
+        if self.status in {
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.COMPLETED_WITH_PENDING_HARDWARE,
+        } and self.failures:
             raise ValueError("completed outcome cannot contain failures")
 
 

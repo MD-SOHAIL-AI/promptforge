@@ -44,6 +44,8 @@ def test_provider_values_are_stable_strings() -> None:
         "ANTHROPIC",
         "GEMINI",
         "OPENROUTER",
+        "OLLAMA",
+        "LMSTUDIO",
     ]
     assert isinstance(LLMProvider.OPENAI, str)
 

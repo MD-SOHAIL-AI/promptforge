@@ -4,7 +4,7 @@ import "highlight.js/styles/github-dark-dimmed.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PromptForge Embedded Engineering Environment",
+  title: "ForgeX Embedded Engineering Environment",
   description: "AI-powered workspace for embedded firmware planning, generation, builds, flashing, and monitoring.",
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { MouseEvent, useMemo, useState } from "react";
+import { MouseEvent, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -29,6 +29,9 @@ interface TreeNode {
 interface FileExplorerProps {
   entries: WorkspaceEntry[];
   selectedPath?: string | null;
+  revealedPaths?: string[];
+  projectName?: string;
+  boardName?: string;
   onOpenFile: (entry: WorkspaceEntry) => void;
   onCreateFile: (basePath?: string) => void;
   onCreateFolder: (basePath?: string) => void;
@@ -100,21 +103,22 @@ function buildTree(entries: WorkspaceEntry[]) {
 
 function iconFor(node: TreeNode, open: boolean) {
   if (node.kind === "folder") {
-    return open ? <FolderOpen className="h-4 w-4 text-[#d8b46a]" /> : <Folder className="h-4 w-4 text-[#b9975b]" />;
+    return open ? <FolderOpen className="h-4 w-4 text-[var(--fx-warning)]" /> : <Folder className="h-4 w-4 text-[var(--fx-warning)]" />;
   }
   if (node.path.endsWith("platformio.ini") || node.path.endsWith(".ini")) {
-    return <FileCog className="h-4 w-4 text-[#8fd2c8]" />;
+    return <FileCog className="h-4 w-4 text-[var(--fx-success)]" />;
   }
   if (/\.(c|cpp|h|hpp|ino)$/i.test(node.path)) {
-    return <FileCode2 className="h-4 w-4 text-[#9cc7ff]" />;
+    return <FileCode2 className="h-4 w-4 text-[var(--fx-info)]" />;
   }
-  return <File className="h-4 w-4 text-[#9da8b7]" />;
+  return <File className="h-4 w-4 text-[var(--fx-text-muted)]" />;
 }
 
 function TreeItem({
   node,
   depth,
   selectedPath,
+  revealedPaths,
   onOpenFile,
   onCreateFile,
   onCreateFolder,
@@ -124,6 +128,7 @@ function TreeItem({
   node: TreeNode;
   depth: number;
   selectedPath?: string | null;
+  revealedPaths: string[];
   onOpenFile: (entry: WorkspaceEntry) => void;
   onCreateFile: (basePath?: string) => void;
   onCreateFolder: (basePath?: string) => void;
@@ -132,6 +137,13 @@ function TreeItem({
 }) {
   const [open, setOpen] = useState(depth < 1);
   const selected = selectedPath === node.path;
+  const revealed = revealedPaths.includes(node.path);
+
+  useEffect(() => {
+    if (node.kind === "folder" && revealedPaths.some((path) => path.startsWith(`${node.path}/`))) {
+      setOpen(true);
+    }
+  }, [node.kind, node.path, revealedPaths]);
 
   const handleMain = () => {
     if (node.kind === "folder") {
@@ -149,8 +161,8 @@ function TreeItem({
   return (
     <li>
       <div
-        className={`group flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-sm transition ${
-          selected ? "bg-white/10 text-white" : "text-[#c0c7d2] hover:bg-white/5 hover:text-white"
+        className={`group flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-sm transition-colors duration-150 ${revealed ? "fx-tree-reveal" : ""} ${
+          selected ? "bg-[var(--fx-accent-soft)] text-[var(--fx-text)]" : "text-[var(--fx-code-text)] hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]"
         }`}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         onClick={handleMain}
@@ -166,7 +178,7 @@ function TreeItem({
           {node.kind === "folder" ? (
             <>
               <button
-                className="rounded p-1 hover:bg-white/10"
+                className="rounded p-1 hover:bg-[var(--fx-hover)]"
                 title="New file"
                 aria-label="New file"
                 onClick={(event) => action(event, () => onCreateFile(node.path))}
@@ -174,7 +186,7 @@ function TreeItem({
                 <FilePlus2 className="h-3.5 w-3.5" />
               </button>
               <button
-                className="rounded p-1 hover:bg-white/10"
+                className="rounded p-1 hover:bg-[var(--fx-hover)]"
                 title="New folder"
                 aria-label="New folder"
                 onClick={(event) => action(event, () => onCreateFolder(node.path))}
@@ -184,7 +196,7 @@ function TreeItem({
             </>
           ) : null}
           <button
-            className="rounded p-1 hover:bg-white/10"
+            className="rounded p-1 hover:bg-[var(--fx-hover)]"
             title="Rename"
             aria-label="Rename"
             onClick={(event) => action(event, () => onRename(node.entry))}
@@ -192,7 +204,7 @@ function TreeItem({
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            className="rounded p-1 hover:bg-white/10"
+            className="rounded p-1 hover:bg-[var(--fx-hover)]"
             title="Delete"
             aria-label="Delete"
             onClick={(event) => action(event, () => onDelete(node.entry))}
@@ -209,6 +221,7 @@ function TreeItem({
               node={child}
               depth={depth + 1}
               selectedPath={selectedPath}
+              revealedPaths={revealedPaths}
               onOpenFile={onOpenFile}
               onCreateFile={onCreateFile}
               onCreateFolder={onCreateFolder}
@@ -225,6 +238,9 @@ function TreeItem({
 export function FileExplorer({
   entries,
   selectedPath,
+  revealedPaths = [],
+  projectName = "Workspace",
+  boardName,
   onOpenFile,
   onCreateFile,
   onCreateFolder,
@@ -235,25 +251,27 @@ export function FileExplorer({
   const tree = useMemo(() => buildTree(entries), [entries]);
 
   return (
-    <section className="flex h-full min-h-[360px] flex-col border-r border-white/10 bg-[#0c1117]">
-      <div className="flex h-11 items-center justify-between border-b border-white/10 px-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7f8b99]">Explorer</p>
-          <p className="text-sm text-[#d9e0ea]">Workspace</p>
-        </div>
-        <div className="flex items-center gap-1 text-[#aab5c4]">
-          <button className="rounded p-1.5 hover:bg-white/10" title="Refresh" aria-label="Refresh" onClick={onRefresh}>
+    <section className="flex h-full min-h-0 flex-col border-r border-[var(--fx-border)] bg-[var(--fx-panel)]">
+      <div className="flex h-9 shrink-0 items-center justify-between px-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--fx-text-muted)]">Explorer</p>
+        <div className="flex items-center gap-1 text-[var(--fx-text-muted)]">
+          <button className="rounded p-1.5 hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]" title="Refresh" aria-label="Refresh" onClick={onRefresh}>
             <RefreshCw className="h-4 w-4" />
           </button>
-          <button className="rounded p-1.5 hover:bg-white/10" title="New file" aria-label="New file" onClick={() => onCreateFile()}>
+          <button className="rounded p-1.5 hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]" title="New file" aria-label="New file" onClick={() => onCreateFile()}>
             <FilePlus2 className="h-4 w-4" />
           </button>
-          <button className="rounded p-1.5 hover:bg-white/10" title="New folder" aria-label="New folder" onClick={() => onCreateFolder()}>
+          <button className="rounded p-1.5 hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]" title="New folder" aria-label="New folder" onClick={() => onCreateFolder()}>
             <FolderPlus className="h-4 w-4" />
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-y border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] px-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--fx-text)]">
+        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate" title={projectName}>{projectName}</span>
+        {boardName ? <span className="max-w-24 truncate rounded bg-[var(--fx-accent-soft)] px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-[var(--fx-text-muted)]" title={boardName}>{boardName}</span> : null}
+      </div>
+      <div className="flex-1 overflow-auto px-1 py-1.5">
         {tree.length > 0 ? (
           <ul className="space-y-0.5">
             {tree.map((node: TreeNode) => (
@@ -262,6 +280,7 @@ export function FileExplorer({
                 node={node}
                 depth={0}
                 selectedPath={selectedPath}
+                revealedPaths={revealedPaths}
                 onOpenFile={onOpenFile}
                 onCreateFile={onCreateFile}
                 onCreateFolder={onCreateFolder}
@@ -271,7 +290,7 @@ export function FileExplorer({
             ))}
           </ul>
         ) : (
-          <div className="rounded border border-dashed border-white/10 px-3 py-6 text-sm text-[#7f8b99]">
+          <div className="rounded border border-dashed border-[var(--fx-border-soft)] px-3 py-6 text-sm text-[var(--fx-text-muted)]">
             No project files loaded.
           </div>
         )}

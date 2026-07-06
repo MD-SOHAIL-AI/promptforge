@@ -36,6 +36,7 @@ async def execution_progress(websocket: WebSocket, task_id: str) -> None:
             if event.event in {
                 ExecutionEventType.WORKFLOW_COMPLETED,
                 ExecutionEventType.WORKFLOW_FAILED,
+                ExecutionEventType.WORKFLOW_CANCELLED,
             }:
                 await websocket.close(code=1000)
                 return
@@ -45,6 +46,7 @@ async def execution_progress(websocket: WebSocket, task_id: str) -> None:
             if event.event in {
                 ExecutionEventType.WORKFLOW_COMPLETED,
                 ExecutionEventType.WORKFLOW_FAILED,
+                ExecutionEventType.WORKFLOW_CANCELLED,
             }:
                 await websocket.close(code=1000)
                 return

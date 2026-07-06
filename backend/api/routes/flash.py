@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -14,12 +15,13 @@ from ...tools.board_detector import BoardDetectionError, BoardDetector
 from ...tools.flash_firmware import FlashConfig
 from ...validation.board_validator import BoardValidator
 from ...workflow.adapters.build_adapter import BuildAdapter, BuildAdapterError
-from ..dependencies import required_state, resolve_project
+from ..dependencies import required_state, resolve_project_from_request
 from ..errors import APIError, error_responses
 from ..schemas.build import BuildResultResponse
 from ..schemas.flash import FlashRequest, FlashResponse, FlashResultResponse
 
 router = APIRouter(tags=["flash"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -37,11 +39,21 @@ async def flash_project(body: FlashRequest, request: Request) -> FlashResponse:
     assert isinstance(platformio, PlatformIOService)
     assert isinstance(detector, BoardDetector)
 
-    metadata = await resolve_project(projects, body.project_id)
+    metadata = await resolve_project_from_request(request, body.project_id)
+    root = Path(metadata.project_path)
+    ini = root / "platformio.ini"
+    logger.info(
+        "Running flash in workspace root: %s project_id=%s platformio_ini=%s platformio_exists=%s",
+        root,
+        body.project_id,
+        ini,
+        ini.is_file(),
+    )
     try:
         build = await platformio.build(metadata.project_path, environment=body.environment)
     except (OSError, ValueError) as exc:
-        raise APIError(422, "BUILD_REQUEST_INVALID", "Project could not be built") from exc
+        message = _flash_build_error_message(root, exc)
+        raise APIError(422, "BUILD_REQUEST_INVALID", message, {"project_id": body.project_id, "rootPath": str(root)}) from exc
     build_response = BuildResultResponse.model_validate(build.api_dict())
     workspace = getattr(request.app.state, "workspace_manager", None)
     if workspace is not None:
@@ -59,7 +71,12 @@ async def flash_project(body: FlashRequest, request: Request) -> FlashResponse:
         raise APIError(503, "BOARD_DETECTION_FAILED", "Connected boards could not be detected") from exc
     board = next((item for item in boards if item.port.casefold() == body.port.casefold()), None)
     if board is None:
-        raise APIError(404, "BOARD_NOT_FOUND", "Requested board port was not found", {"port": body.port})
+        raise APIError(
+            404,
+            "BOARD_NOT_FOUND",
+            f"No matching {body.board_type.value} device detected. Connect a board and try again.",
+            {"port": body.port, "board_type": body.board_type.value},
+        )
     if board.board_type is not body.board_type:
         raise APIError(
             409,
@@ -147,3 +164,9 @@ def _save_flash_workspace(workspace: object, project_id: str, result: FlashResul
         )
     except Exception:
         pass
+
+
+def _flash_build_error_message(root: Path, exc: Exception) -> str:
+    if not (root / "platformio.ini").is_file():
+        return f"Flash requires platformio.ini. Generate/build a PlatformIO project first. Workspace root: {root}"
+    return str(exc).strip() or "Project could not be built before flashing"

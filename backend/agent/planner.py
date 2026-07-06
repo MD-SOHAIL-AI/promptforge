@@ -184,6 +184,8 @@ _GENERATION_RE = re.compile(
 _REQUIREMENT_RULES: tuple[tuple[str, Pattern[str]], ...] = (
     ("LED output", re.compile(r"\bLEDs?\b|\bblink(?:ing)?\b", re.I)),
     ("WiFi connectivity", re.compile(r"\bWi[\s_-]*Fi\b|\bwireless\b", re.I)),
+    ("HTTP web server", re.compile(r"\bweb[\s_-]*server\b|\bHTTP[\s_-]*server\b|\bREST[\s_-]*API\b", re.I)),
+    ("browser control", re.compile(r"\bbrowser\b|\bweb[\s_-]*(?:page|dashboard|interface)\b", re.I)),
     ("weather data acquisition", re.compile(r"\bweather\b", re.I)),
     ("motor control", re.compile(r"\bmotor(?:s|[\s_-]*controller)?\b", re.I)),
     ("DS18B20 sensor", re.compile(r"\bDS18B20\b", re.I)),
@@ -208,16 +210,10 @@ _WORKFLOWS: Mapping[TaskType, tuple[ExecutionStep, ...]] = MappingProxyType(
         TaskType.FIRMWARE_GENERATION: (
             ExecutionStep.GENERATE_CODE,
             ExecutionStep.BUILD_FIRMWARE,
-            ExecutionStep.DETECT_BOARD,
-            ExecutionStep.FLASH_FIRMWARE,
-            ExecutionStep.START_MONITOR,
         ),
         TaskType.FIRMWARE_MODIFICATION: (
             # fix: modification workflows reuse existing source before build.
             ExecutionStep.BUILD_FIRMWARE,
-            ExecutionStep.DETECT_BOARD,
-            ExecutionStep.FLASH_FIRMWARE,
-            ExecutionStep.START_MONITOR,
         ),
         TaskType.DEBUGGING: (ExecutionStep.DEBUG_FAILURE,),
         TaskType.SIMULATION: (

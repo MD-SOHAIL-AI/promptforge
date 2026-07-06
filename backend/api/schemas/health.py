@@ -13,6 +13,7 @@ class ServiceHealth(APIModel):
 
 class HealthResponse(APIModel):
     status: str
+    service: str = "forgex-backend"
     version: str
     timestamp: datetime
     services: ServiceHealth

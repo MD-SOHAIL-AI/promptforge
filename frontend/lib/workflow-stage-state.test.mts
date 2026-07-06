@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { applyStageEvent, settleActiveStages } from "./workflow-stage-state.ts";
+
+const stages = [
+  { key: "planning", label: "Planning", description: "", status: "success" },
+  { key: "generation", label: "Generation", description: "", status: "active" },
+  { key: "build", label: "Build", description: "", status: "pending" },
+  { key: "flash", label: "Flash", description: "", status: "pending" },
+  { key: "monitor", label: "Monitor", description: "", status: "pending" },
+] as const;
+
+test("generation completed marks generation successful", () => {
+  const next = applyStageEvent([...stages], {
+    event: "GENERATION_COMPLETED",
+    payload: { success: true },
+  });
+
+  assert.equal(next.find((stage) => stage.key === "generation")?.status, "success");
+});
+
+test("later workflow failure does not rewrite completed generation as failed", () => {
+  const generated = applyStageEvent([...stages], {
+    event: "GENERATION_COMPLETED",
+    payload: { success: true },
+  });
+  const building = applyStageEvent(generated, {
+    event: "BUILD_STARTED",
+    payload: {},
+  });
+  const settled = settleActiveStages(building, true);
+
+  assert.equal(settled.find((stage) => stage.key === "generation")?.status, "success");
+  assert.equal(settled.find((stage) => stage.key === "build")?.status, "failed");
+});
+
+test("build repair reactivates a failed build and can complete it", () => {
+  const failed = applyStageEvent([...stages], { event: "BUILD_FAILED", payload: { success: false } });
+  const repairing = applyStageEvent(failed, { event: "BUILD_REPAIR_STARTED", payload: { attempt_number: 1 } });
+  const completed = applyStageEvent(repairing, { event: "BUILD_REPAIR_COMPLETED", payload: { success: true } });
+
+  assert.equal(failed.find((stage) => stage.key === "build")?.status, "failed");
+  assert.equal(repairing.find((stage) => stage.key === "build")?.status, "active");
+  assert.equal(completed.find((stage) => stage.key === "build")?.status, "success");
+});

@@ -10,18 +10,19 @@ from .common import APIModel
 
 
 class MonitorStartRequest(APIModel):
+    project_id: str | None = Field(default=None, min_length=1, max_length=128)
     port: str | None = Field(default=None, min_length=1, max_length=256)
     baudrate: int = Field(default=115_200, gt=0)
     timeout_s: float = Field(default=1.0, gt=0, le=60)
 
-    @field_validator("port")
+    @field_validator("project_id", "port")
     @classmethod
-    def validate_port(cls, value: str | None) -> str | None:
+    def validate_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         value = value.strip()
         if not value or "\x00" in value:
-            raise ValueError("port must be non-empty and NUL-free")
+            raise ValueError("value must be non-empty and NUL-free")
         return value
 
     model_config = ConfigDict(

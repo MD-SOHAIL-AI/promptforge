@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
 
 from ...services.serial_service import SerialConfiguration, SerialService
+from ..dependencies import resolve_project_from_request
 from ..errors import APIError, error_responses
 from ..schemas.monitor import MonitorStartRequest, MonitorStatusResponse
 
 router = APIRouter(prefix="/monitor", tags=["monitor"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -21,6 +25,17 @@ router = APIRouter(prefix="/monitor", tags=["monitor"])
     summary="Start the serial monitor connection",
 )
 async def start_monitor(body: MonitorStartRequest, request: Request) -> MonitorStatusResponse:
+    if body.project_id:
+        metadata = await resolve_project_from_request(request, body.project_id)
+        root = Path(metadata.project_path)
+        ini = root / "platformio.ini"
+        logger.info(
+            "Running monitor in workspace root: %s project_id=%s platformio_ini=%s platformio_exists=%s",
+            root,
+            body.project_id,
+            ini,
+            ini.is_file(),
+        )
     lock: asyncio.Lock = request.app.state.monitor_lock
     async with lock:
         current = getattr(request.app.state, "serial_service", None)

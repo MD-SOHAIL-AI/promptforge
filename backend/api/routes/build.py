@@ -2,14 +2,16 @@
 
 from fastapi import APIRouter, Request
 from pathlib import Path
+import logging
 
 from ...services.platformio_service import PlatformIOService
 from ...services.project_service import ProjectService
-from ..dependencies import required_state, resolve_project
+from ..dependencies import required_state, resolve_project_from_request
 from ..errors import APIError, error_responses
 from ..schemas.build import BuildRequest, BuildResponse, BuildResultResponse
 
 router = APIRouter(tags=["build"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -23,14 +25,24 @@ async def build_project(body: BuildRequest, request: Request) -> BuildResponse:
     platformio = required_state(request, "platformio_service", "PlatformIO")
     assert isinstance(projects, ProjectService)
     assert isinstance(platformio, PlatformIOService)
-    metadata = await resolve_project(projects, body.project_id)
+    metadata = await resolve_project_from_request(request, body.project_id)
+    root = Path(metadata.project_path)
+    ini = root / "platformio.ini"
+    logger.info(
+        "Running build in workspace root: %s project_id=%s platformio_ini=%s platformio_exists=%s",
+        root,
+        body.project_id,
+        ini,
+        ini.is_file(),
+    )
     try:
         result = await platformio.build(
             metadata.project_path,
             environment=body.environment,
         )
     except (OSError, ValueError) as exc:
-        raise APIError(422, "BUILD_REQUEST_INVALID", "Project could not be built") from exc
+        message = _build_error_message(root, exc)
+        raise APIError(422, "BUILD_REQUEST_INVALID", message, {"project_id": body.project_id, "rootPath": str(root)}) from exc
     workspace = getattr(request.app.state, "workspace_manager", None)
     if workspace is not None:
         _save_build_workspace(workspace, body.project_id, result)
@@ -64,3 +76,9 @@ def _save_build_workspace(workspace: object, project_id: str, result: object) ->
                 )
     except Exception:
         pass
+
+
+def _build_error_message(root: Path, exc: Exception) -> str:
+    if not (root / "platformio.ini").is_file():
+        return f"Build requires platformio.ini. Generate or initialize a PlatformIO project first. Workspace root: {root}"
+    return str(exc).strip() or "Project could not be built"

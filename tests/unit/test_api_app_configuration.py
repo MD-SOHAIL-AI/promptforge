@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.app import _llm_from_environment, create_app
 from backend.core.config import load_environment
+from backend.model_router import ModelRouterService
 from backend.services.llm_service import OpenRouterService
 
 
@@ -45,16 +46,12 @@ def test_llm_timeout_configuration_flows_through_application_services(
     service = application.state.llm_service
     generation = application.state.code_generation_service
 
-    assert isinstance(service, OpenRouterService)
+    assert isinstance(service, ModelRouterService)
     assert service.timeout_s == timeout_s
-    assert service._client.timeout.connect == timeout_s
-    assert service._client.timeout.read == timeout_s
-    assert service._client.timeout.write == timeout_s
-    assert service._client.timeout.pool == timeout_s
+    assert service.model == "vendor/firmware-model"
     assert generation.timeout_s == timeout_s
     assert generation.max_attempts == 2
     assert generation.retry_backoff_s == 1
-    asyncio.run(service.aclose())
 
 
 def test_llm_retry_configuration_flows_to_generation_service(
@@ -73,7 +70,6 @@ def test_llm_retry_configuration_flows_to_generation_service(
 
     assert generation.max_attempts == 4
     assert generation.retry_backoff_s == 2.5
-    asyncio.run(application.state.llm_service.aclose())
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "invalid"])
@@ -125,7 +121,7 @@ def test_create_app_resolves_openrouter_configuration_at_startup(
     application = create_app()
 
     with TestClient(application):
-        assert isinstance(application.state.llm_service, OpenRouterService)
+        assert isinstance(application.state.llm_service, ModelRouterService)
         assert application.state.code_generation_service is not None
         assert application.state.configuration_error is None
 

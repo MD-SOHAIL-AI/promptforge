@@ -554,6 +554,20 @@ def test_outcome_rejects_mismatched_failure_aggregation() -> None:
         )
 
 
+def test_completed_with_pending_hardware_allows_successful_steps() -> None:
+    outcome = ExecutionOutcome(
+        plan=plan_with(ExecutionStep.BUILD_FIRMWARE),
+        status=ExecutionStatus.COMPLETED_WITH_PENDING_HARDWARE,
+        step_results=(
+            StepResult(step=ExecutionStep.BUILD_FIRMWARE, success=True),
+        ),
+        failures=(),
+        execution_time=0.1,
+    )
+
+    assert outcome.status is ExecutionStatus.COMPLETED_WITH_PENDING_HARDWARE
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
