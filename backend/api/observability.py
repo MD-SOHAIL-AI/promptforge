@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from backend.operations.resilience import sanitize
 
 request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_id",
@@ -33,7 +34,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": sanitize(record.getMessage(), "message"),
         }
         for key in (
             "request_id",
@@ -51,7 +52,7 @@ class JsonFormatter(logging.Formatter):
             if value not in (None, ""):
                 payload[key] = value
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception_type"] = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
         return json.dumps(payload, ensure_ascii=True, default=str)
 
 
@@ -70,6 +71,10 @@ async def request_context_middleware(request: Request, call_next: Any) -> Any:
     logger = logging.getLogger("promptforge.api")
     request_id = _request_id(request.headers.get("X-Request-ID"))
     token = request_id_context.set(request_id)
+    execution_id = _correlation(request.headers.get("X-Execution-ID"), "execution")
+    workflow_id = _correlation(request.headers.get("X-Workflow-Correlation-ID"), "workflow")
+    execution_token = execution_id_context.set(execution_id)
+    workflow_token = workflow_id_context.set(workflow_id)
     started = time.monotonic()
     try:
         response = await call_next(request)
@@ -93,6 +98,8 @@ async def request_context_middleware(request: Request, call_next: Any) -> Any:
         )
     finally:
         duration_ms = round((time.monotonic() - started) * 1000)
+        workflow_id_context.reset(workflow_token)
+        execution_id_context.reset(execution_token)
         request_id_context.reset(token)
     response.headers["X-Request-ID"] = request_id
     logger.info(
@@ -101,11 +108,11 @@ async def request_context_middleware(request: Request, call_next: Any) -> Any:
             "request_id": request_id,
             "execution_id": response.headers.get(
                 "X-Execution-ID",
-                execution_id_context.get(),
+                execution_id,
             ),
             "workflow_correlation_id": response.headers.get(
                 "X-Workflow-Correlation-ID",
-                workflow_id_context.get(),
+                workflow_id,
             ),
             "method": request.method,
             "path": request.url.path,
@@ -126,3 +133,9 @@ def _request_id(candidate: str | None) -> str:
     ):
         return candidate
     return new_correlation_id("request")
+
+
+def _correlation(candidate: str | None, prefix: str) -> str:
+    if candidate and len(candidate) <= 128 and all(character.isalnum() or character in "._-" for character in candidate):
+        return candidate
+    return new_correlation_id(prefix)

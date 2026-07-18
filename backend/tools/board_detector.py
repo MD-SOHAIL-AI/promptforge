@@ -13,9 +13,14 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Iterable, Optional
 
-from serial.tools import list_ports
+from ..runtime.pyserial_compat import (
+    PySerialUnavailableError,
+    list_ports,
+    require_pyserial,
+)
 
 __all__ = [
+    "BoardDependencyError",
     "BoardDetectionError",
     "BoardDetector",
     "BoardInfo",
@@ -52,6 +57,10 @@ class BoardInfo:
 
 class BoardDetectionError(RuntimeError):
     """Serial-port enumeration failed before devices could be classified."""
+
+
+class BoardDependencyError(BoardDetectionError):
+    """Board detection cannot run because its serial dependency is absent."""
 
 
 # USB identities that deterministically identify a supported board family or
@@ -111,7 +120,10 @@ class BoardDetector:
         can distinguish host permission/configuration problems from no boards.
         """
         try:
+            require_pyserial(list_ports)
             ports = list(list_ports.comports())
+        except PySerialUnavailableError as exc:
+            raise BoardDependencyError(str(exc)) from exc
         except PermissionError as exc:
             raise BoardDetectionError(
                 f"Permission denied while enumerating serial ports: {exc}"

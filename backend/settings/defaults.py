@@ -47,6 +47,10 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "hardware.confirm_before_erase": True,
     "hardware.confirm_before_reset": True,
     "hardware.confirm_before_debug_attach": True,
+    "security.privacy_mode": "sensitive",
+    "security.context_consent_required": True,
+    "security.context_max_bytes": 131072,
+    "security.workspace_scope": "managed_sandbox_only",
     "security.mask_api_keys": True,
     "security.hardware_approval_strict_mode": True,
 }
@@ -186,6 +190,10 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Confirm before debug attach",
         "category": "hardware",
     },
+    "security.privacy_mode": {"type": "select", "label": "Privacy mode", "category": "security", "options": ["standard", "sensitive", "local_only"]},
+    "security.context_consent_required": {"type": "boolean", "label": "Require context disclosure consent", "category": "security"},
+    "security.context_max_bytes": {"type": "number", "label": "Maximum approved context bytes", "category": "security", "min": 1024, "max": 1048576},
+    "security.workspace_scope": {"type": "select", "label": "Agent workspace scope", "category": "security", "options": ["managed_sandbox_only", "read_only"]},
     "security.mask_api_keys": {"type": "boolean", "label": "Mask API keys", "category": "security"},
     "security.hardware_approval_strict_mode": {
         "type": "boolean",

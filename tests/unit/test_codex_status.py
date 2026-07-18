@@ -12,6 +12,7 @@ from backend.bridges.codex_status import (
     CodexAlignedStatus,
     CodexStatusService,
     buildCodexSafeUserEnv,
+    codex_state_semantics,
 )
 
 
@@ -135,6 +136,41 @@ def test_provider_registry_uses_injected_shared_status(tmp_path: Path) -> None:
     assert entry.product_routing_enabled is False
 
 
+def test_codex_state_separates_model_router_sandbox_and_product_authority() -> None:
+    payload = codex_state_semantics(
+        CodexAlignedStatus(
+            codex_installed=True,
+            auth_status="signed_in",
+            oauth_bridge_ready=True,
+        ),
+        model_router_enabled=True,
+        sandbox_execution_enabled=True,
+    )
+
+    assert payload["codex_cli_installed"] is True
+    assert payload["codex_auth_status"] == "signed_in"
+    assert payload["codex_model_router_available"] is True
+    assert payload["codex_model_router_enabled"] is True
+    assert payload["codex_sandbox_execution_enabled"] is True
+    assert payload["codex_sandbox_execution_status"] == "enabled"
+    assert payload["codex_product_route_allowed"] is False
+    assert payload["codex_active_workspace_mutation_allowed"] is False
+    assert payload["codex_oauth_bridge_status"] == "qa_only"
+
+
+def test_codex_compatibility_fields_are_derived_from_explicit_semantics() -> None:
+    payload = codex_state_semantics(
+        CodexAlignedStatus(codex_installed=True, auth_status="signed_in", oauth_bridge_ready=True),
+        model_router_enabled=True,
+        sandbox_execution_enabled=False,
+    )
+
+    assert payload["codex_provider_state"] == "product_disabled"
+    assert payload["codex_routing_allowed"] == payload["codex_product_route_allowed"]
+    assert payload["codex_execution_enabled"] == payload["codex_sandbox_execution_enabled"]
+    assert "paused" not in payload.values()
+
+
 def test_sources_keep_ui_qa_smoke_and_registry_on_shared_service() -> None:
     root = Path(__file__).resolve().parents[2]
     login = (root / "backend/bridges/codex_login.py").read_text(encoding="utf-8")
@@ -144,9 +180,11 @@ def test_sources_keep_ui_qa_smoke_and_registry_on_shared_service() -> None:
     ui_route = (root / "backend/api/routes/agent_runtime.py").read_text(encoding="utf-8")
     assert "CodexStatusService" in login
     assert "login_service.status()" in smoke
-    assert "_codex_status_service.status()" in registry
+    assert "_codex_status_service.status()" not in registry
+    assert "_connections.refresh_status" in registry
     assert "getSharedAlignedStatus" in qa
-    assert "_codex_login_service(request).status()" in ui_route
+    assert "_connection_registry(request).refresh_status" in ui_route
+    assert "_codex_login_service(request).status()" not in ui_route
 
 
 def test_diagnostics_and_parity_do_not_launch_login_or_smoke() -> None:

@@ -15,7 +15,7 @@ from backend.services.code_generation_service import (
     ProjectValidationError,
 )
 from backend.services.generation_diagnostics_store import GenerationDiagnosticsStore
-from backend.services.llm_service import LLMProvider, LLMProviderError, LLMRequest, LLMResponse, LLMService
+from backend.services.llm_service import LLMAuthenticationError, LLMProvider, LLMProviderError, LLMRequest, LLMResponse, LLMService
 
 
 class SequentialLLM(LLMService):
@@ -38,6 +38,24 @@ class SequentialLLM(LLMService):
 
     async def health_check(self) -> bool:
         return True
+
+
+class AuthenticationFailureLLM(LLMService):
+    provider = LLMProvider.OPENROUTER
+    model = "openai/gpt-oss-120b:free"
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        raise LLMAuthenticationError(
+            "Authentication failed",
+            provider=self.provider,
+            retryable=False,
+        )
+
+    async def generate_stream(self, request: LLMRequest) -> AsyncIterator[str]:
+        raise NotImplementedError
+
+    async def health_check(self) -> bool:
+        return False
 
 
 class UnavailableLLM(LLMService):
@@ -87,13 +105,19 @@ def simple_plan() -> ExecutionPlan:
     )
 
 
-def context() -> ExecutionContext:
+def context(*, fallback_authorized: bool = False) -> ExecutionContext:
     return ExecutionContext(
         task_id="task-chunked",
         project_path="workspace/projects/advanced",
         target_board="ESP32",
         framework="PlatformIO",
         metadata={
+            **({
+                "fallback_enabled": True,
+                "fallback_policy": "ask_before_cross_provider",
+                "consent_granted": True,
+                "approved_recipients": ["openai", "openrouter"],
+            } if fallback_authorized else {}),
             "prompt": (
                 "Create an advanced ESP32-only PlatformIO project with WiFi AP, "
                 "WebServer dashboard, Preferences, FreeRTOS tasks, serial commands, "
@@ -117,13 +141,19 @@ def simple_context(workspace_root: Path) -> ExecutionContext:
     )
 
 
-def context_at(workspace_root: Path) -> ExecutionContext:
+def context_at(workspace_root: Path, *, fallback_authorized: bool = False) -> ExecutionContext:
     return ExecutionContext(
         task_id="task-chunked",
         project_path=str(workspace_root),
         target_board="ESP32",
         framework="PlatformIO",
         metadata={
+            **({
+                "fallback_enabled": True,
+                "fallback_policy": "ask_before_cross_provider",
+                "consent_granted": True,
+                "approved_recipients": ["openai", "openrouter"],
+            } if fallback_authorized else {}),
             "prompt": (
                 "Create an advanced ESP32-only PlatformIO project with WiFi AP, "
                 "WebServer dashboard, Preferences, FreeRTOS tasks, serial commands, "
@@ -315,9 +345,9 @@ def test_missing_file_content_triggers_file_repair() -> None:
 def test_file_fallback_is_used_without_restarting_whole_project() -> None:
     primary = SequentialLLM([summary_json(), manifest_json(), platformio_ini(), config_h(), "void setup(){}\nvoid loop(){}\n", "void setup(){}\nvoid loop(){}\n", readme_md()])
     fallback = SequentialLLM([main_cpp()], provider=LLMProvider.OPENROUTER, model="strong-model")
-    service = CodeGenerationService(primary, fallback_llm_service=fallback)
+    service = CodeGenerationService(primary, fallback_llm_service=fallback, fallback_enabled=True)
 
-    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context(fallback_authorized=True))))
 
     assert project.get_file("src/main.cpp") is not None
     assert len(fallback.requests) == 1
@@ -448,11 +478,11 @@ def test_provider_failure_uses_complete_wifi_monitor_fallback(tmp_path: Path) ->
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     events: list[dict[str, Any]] = []
-    service = CodeGenerationService(UnavailableLLM(), retry_backoff_s=0)
+    service = CodeGenerationService(UnavailableLLM(), retry_backoff_s=0, fallback_enabled=True)
 
     project = run(service.generate_project(CodeGenerationRequest(
         plan=plan(),
-        context=context_at(workspace),
+        context=context_at(workspace, fallback_authorized=True),
         generation_event_callback=lambda event: events.append(dict(event)),
     )))
 
@@ -464,6 +494,22 @@ def test_provider_failure_uses_complete_wifi_monitor_fallback(tmp_path: Path) ->
         "workspace_rolled_back", "fallback_started", "fallback_completed",
     ]
     
+
+def test_authentication_failure_never_uses_builtin_fallback(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    events: list[dict[str, Any]] = []
+    service = CodeGenerationService(AuthenticationFailureLLM(), retry_backoff_s=0, fallback_enabled=True)
+
+    with pytest.raises(LLMAuthenticationError):
+        run(service.generate_project(CodeGenerationRequest(
+            plan=plan(),
+            context=context_at(workspace, fallback_authorized=True),
+            generation_event_callback=lambda event: events.append(dict(event)),
+        )))
+
+    assert not any(event.get("event_type") == "fallback_started" for event in events)
+
 
 def test_incomplete_generation_emits_live_incomplete_event(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"

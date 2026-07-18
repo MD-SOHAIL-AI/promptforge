@@ -8,7 +8,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..bridges.codex_status import CodexAlignedStatus, CodexStatusService
+from ..bridges.codex_status import CodexStatusService
+from ..connection_registry import AuthState, ConnectionRecord, ConnectionRegistry, CredentialStatus
+from ..connection_registry import LegacyProviderRegistryFacade
 from ..model_router.registry import ProviderRegistry as ModelProviderRegistry
 from .api_planner_provider import API_PLANNER_CONFIGS, ApiPlannerProvider, ApiTransport, safe_provider_status
 from .product_providers import FakeProductPlanner, ProductPlanner, VerifiedTemplatePlanner
@@ -48,6 +50,10 @@ class ProductProviderEntry:
     authenticated: bool = False
     oauth_bridge_ready: bool = False
     sandbox_smoke_passed: bool = False
+    credential_status: str = "not_applicable"
+    authentication_status: str = "not_applicable"
+    connection_health: str = "unknown"
+    connection_ready: bool = False
 
     def to_safe_dict(self) -> dict[str, object]:
         return {
@@ -69,6 +75,10 @@ class ProductProviderEntry:
             "detected": self.detected, "authenticated": self.authenticated,
             "oauth_bridge_ready": self.oauth_bridge_ready,
             "sandbox_smoke_passed": self.sandbox_smoke_passed,
+            "credential_status": self.credential_status,
+            "authentication_status": self.authentication_status,
+            "connection_health": self.connection_health,
+            "connection_ready": self.connection_ready,
         }
 
 
@@ -82,20 +92,32 @@ class ProductProviderRegistry:
         transport: ApiTransport | None = None,
         codex_status_service: CodexStatusService | None = None,
         model_provider_registry: ModelProviderRegistry | None = None,
+        connection_registry: ConnectionRegistry | None = None,
     ) -> None:
         self._env = env if env is not None else os.environ
         self._confirmed = bool(confirm_real_api)
         self._transport = transport
         self._fake_enabled = bool(fake_enabled)
         self._codex_status_service = codex_status_service or CodexStatusService(env=self._env)
-        self._model_provider_registry = model_provider_registry
+        registry = model_provider_registry or ModelProviderRegistry()
+        if connection_registry is not None:
+            self._model_provider_registry = registry
+            self._connections = connection_registry
+        elif hasattr(registry, "connections"):
+            self._model_provider_registry = registry
+            self._connections = registry.connections
+        else:
+            facade = LegacyProviderRegistryFacade(registry, codex_status_service=self._codex_status_service)
+            self._model_provider_registry = facade
+            self._connections = facade.connections
         self.last_planner: ProductPlanner | None = None
 
     def list(self) -> tuple[ProductProviderEntry, ...]:
         effective_env = self._effective_env()
         codex_classification = _codex_subscription_classification(effective_env)
         codex_review_eligible = codex_classification == "CODEX_SUBSCRIPTION_BRIDGE_PASS"
-        oauth_state = _codex_oauth_smoke_state(effective_env, self._codex_status_service.status())
+        codex_connection = self._connections.refresh_status(self._connections.CODEX_ID)
+        oauth_state = _codex_oauth_smoke_connection_state(effective_env, codex_connection)
         agy_import_classification = _agy_scratch_import_classification(effective_env)
         agy_import_enabled = effective_env.get("FORGEX_ENABLE_AGY_SCRATCH_IMPORT", "").strip() == "1"
         assisted_classification = _agy_assisted_classification(effective_env)
@@ -106,6 +128,22 @@ class ProductProviderRegistry:
         ]
         for config in API_PLANNER_CONFIGS.values():
             status = safe_provider_status(config, effective_env, confirmed=self._confirmed)
+            connection = self._connections.get_for_provider(config.provider_id) if self._connections is not None else None
+            if connection is not None:
+                status["key_present"] = connection.credential_status is CredentialStatus.PRESENT
+                status["routeable"] = bool(status["routeable"] and connection.enabled and connection.connection_ready)
+                if str(status["status"]) == "API_PROVIDER_DISABLED":
+                    pass
+                elif connection.credential_status is CredentialStatus.MISSING:
+                    status["status"] = "API_PROVIDER_KEY_MISSING"
+                elif connection.auth_state is AuthState.AUTH_UNKNOWN:
+                    status["status"] = "API_PROVIDER_AUTH_UNKNOWN"
+                elif connection.auth_state is AuthState.AUTHENTICATION_FAILED:
+                    status["status"] = "API_AUTH_INVALID"
+                elif not connection.enabled:
+                    status["status"] = "API_PROVIDER_DISABLED"
+                elif connection.transport_status.value not in {"ready", "connected"}:
+                    status["status"] = "API_PROVIDER_UNHEALTHY"
             entries.append(ProductProviderEntry(
                 config.provider_id, config.display_name, "api_planner", str(status["status"]),
                 bool(status["routeable"]), bool(status["enabled_by_default"]),
@@ -115,6 +153,10 @@ class ProductProviderRegistry:
                 bool(status["base_url_configured"]), bool(status["supports_toolplan"]),
                 bool(status["supports_streaming"]), bool(status["key_present"]),
                 bool(status["model_configured"]), status["model_id"] if isinstance(status["model_id"], str) else None,
+                credential_status=connection.credential_status.value if connection is not None else "credential_unknown",
+                authentication_status=connection.auth_state.value if connection is not None else "auth_unknown",
+                connection_health=connection.transport_status.value if connection is not None else "unknown",
+                connection_ready=connection.connection_ready if connection is not None else False,
             ))
         entries.extend((
             ProductProviderEntry(
@@ -187,19 +229,27 @@ class ProductProviderRegistry:
 
     def configured_fallback(self, provider_id: str) -> str | None:
         registry = self._model_provider_registry
-        if registry is None:
+        if registry is None or provider_id not in registry.provider_ids():
             return None
         route = registry.route_for_task("code_generation")
         fallback_id = route.fallback_provider_id
-        if not route.fallback_enabled or route.provider_id != provider_id or not fallback_id:
-            return None
+        candidates: list[str] = []
+        if route.fallback_enabled and route.provider_id == provider_id and fallback_id:
+            candidates.append(fallback_id)
+        candidates.extend(item for item in registry.fallback_provider_ids() if item not in {provider_id, *candidates})
         primary = registry.provider(provider_id)
-        fallback = registry.provider(fallback_id)
-        if primary.local != fallback.local or not fallback.configured or not fallback.enabled:
-            return None
-        if fallback.health_status.casefold() not in {"connected", "ready"}:
-            return None
-        return fallback_id
+        for candidate in candidates:
+            fallback = registry.provider(candidate)
+            if primary.local != fallback.local:
+                continue
+            if self._connections is not None:
+                connection = self._connections.refresh_status(f"{candidate}.default")
+                if not connection.connection_ready:
+                    continue
+            elif not fallback.configured or not fallback.enabled or fallback.health_status.casefold() not in {"connected", "ready"}:
+                continue
+            return candidate
+        return None
 
     def fallback_for_instruction(self, provider_id: str, instruction: str) -> str | None:
         configured = self.configured_fallback(provider_id)
@@ -211,27 +261,30 @@ class ProductProviderRegistry:
 
     def _effective_env(self) -> dict[str, str]:
         values = dict(self._env)
+        # Process environment secrets are never authentication evidence and may
+        # not bypass the canonical credential store/status authority.
+        for config in API_PLANNER_CONFIGS.values():
+            values.pop(config.api_key_env, None)
+            if config.fallback_api_key_env:
+                values.pop(config.fallback_api_key_env, None)
         registry = self._model_provider_registry
-        if registry is None:
+        connections = self._connections
+        if registry is None or connections is None:
             return values
         for provider_id, config in API_PLANNER_CONFIGS.items():
             if provider_id not in registry.provider_ids():
                 continue
-            provider = registry.provider(provider_id)
-            if not provider.configured or not provider.enabled:
+            record = connections.refresh_status(f"{provider_id}.default")
+            if not record.enabled or not record.connection_ready:
                 continue
-            key = registry.api_key(provider_id)
+            key = connections.transport_credential(record.connection_id)
             if not key:
                 continue
             values[config.api_key_env] = key
             values[config.model_env] = registry.default_model(provider_id)
             values[config.provider_flag] = "1"
-            # Saving and enabling a provider in the backend-owned settings is
-            # the explicit operator action that enables API generation. The
-            # agent runtime itself remains independently feature-gated.
             values["FORGEX_ENABLE_API_PROVIDERS"] = "1"
         return values
-
 
 def _codex_subscription_classification(env: Mapping[str, str]) -> str | None:
     root = Path(env.get("PROMPTFORGE_ROOT") or Path(__file__).resolve().parents[2])
@@ -246,7 +299,7 @@ def _codex_subscription_classification(env: Mapping[str, str]) -> str | None:
     return classification
 
 
-def _codex_oauth_smoke_state(env: Mapping[str, str], status: CodexAlignedStatus) -> dict[str, object]:
+def _codex_oauth_smoke_connection_state(env: Mapping[str, str], record: ConnectionRecord) -> dict[str, object]:
     root = Path(env.get("PROMPTFORGE_ROOT") or Path(__file__).resolve().parents[2])
     status_path = root / ".promptforge" / "state" / "codex-oauth-smoke-status.json"
     try:
@@ -257,11 +310,11 @@ def _codex_oauth_smoke_state(env: Mapping[str, str], status: CodexAlignedStatus)
     safe = classification if isinstance(classification, str) and classification.startswith("CODEX_OAUTH_SMOKE_") and len(classification) <= 80 else None
     passed = safe == "CODEX_OAUTH_SMOKE_PASS"
     return {
-        "classification": safe if passed else status.bridge_classification,
+        "classification": safe if passed else record.diagnostic_code,
         "passed": passed,
-        "detected": status.codex_installed,
-        "authenticated": status.auth_status == "signed_in",
-        "ready": status.oauth_bridge_ready,
+        "detected": record.detected,
+        "authenticated": record.auth_state is AuthState.AUTHENTICATED,
+        "ready": record.connection_ready,
     }
 
 

@@ -9,11 +9,16 @@ __all__ = ["PathManager"]
 
 
 class PathManager:
-    """Resolve and create PromptForge's managed filesystem directories."""
+    """Resolve and create PromptForge's code and runtime data directories."""
 
-    __slots__ = ("_root",)
+    __slots__ = ("_root", "_data_root")
 
-    def __init__(self, root: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path | None = None,
+        *,
+        data_root: str | Path | None = None,
+    ) -> None:
         candidate: str | Path
         if root is None:
             candidate = os.getenv("PROMPTFORGE_ROOT") or Path(__file__).parents[2]
@@ -25,6 +30,21 @@ class PathManager:
             raise TypeError("root must be a string, Path, or None")
         self._root = Path(candidate).expanduser().resolve()
         self._ensure_directory(self._root)
+        data_candidate: str | Path
+        if data_root is None:
+            data_candidate = (
+                os.getenv("PROMPTFORGE_DATA_ROOT")
+                or os.getenv("PROMPTFORGE_RUNTIME_ROOT")
+                or self._root
+            )
+        else:
+            data_candidate = data_root
+        if isinstance(data_candidate, str) and not data_candidate.strip():
+            raise ValueError("data_root must be a non-empty path")
+        if not isinstance(data_candidate, (str, Path)):
+            raise TypeError("data_root must be a string, Path, or None")
+        self._data_root = Path(data_candidate).expanduser().resolve()
+        self._ensure_directory(self._data_root)
 
     def project_root(self) -> Path:
         """Return the absolute PromptForge project root."""
@@ -52,9 +72,9 @@ class PathManager:
         return self._managed_directory("state")
 
     def workspace_directory(self) -> Path:
-        """Return the repository workspace root."""
+        """Return the runtime workspace root."""
 
-        return self._ensure_directory(self._root / "workspace")
+        return self._ensure_directory(self._data_root / "workspace")
 
     def workspace_projects_directory(self) -> Path:
         """Return the workspace project directory."""
@@ -77,7 +97,7 @@ class PathManager:
         return self._workspace_directory("logs")
 
     def _managed_directory(self, name: str) -> Path:
-        return self._ensure_directory(self._root / ".promptforge" / name)
+        return self._ensure_directory(self._data_root / ".promptforge" / name)
 
     def _workspace_directory(self, name: str) -> Path:
         return self._ensure_directory(self.workspace_directory() / name)

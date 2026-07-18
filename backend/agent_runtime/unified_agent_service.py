@@ -20,7 +20,7 @@ from ..provider_runtime import ProviderRunSummaryStore, ProviderType, ProviderSt
 
 
 LOCAL_PROVIDER_IDS = frozenset({"agy", "codex"})
-PUBLIC_API_PROVIDER_IDS = frozenset({"openai", "openrouter", "groq"})
+PUBLIC_API_PROVIDER_IDS = frozenset({"openai", "openrouter", "anthropic", "cerebras", "gemini", "groq", "nvidia_nim"})
 class UnifiedAgentService:
     def __init__(
         self,
@@ -115,24 +115,7 @@ class UnifiedAgentService:
             "supports_toolplan": False,
             "supports_streaming": False,
         }
-        prepared = [
-            {
-                "provider_id": provider_id,
-                "display_name": display_name,
-                "kind": ProviderType.API.value,
-                "provider_kind": ProviderType.API.value,
-                "provider_type": ProviderType.API.value,
-                "auth_type": "api_key",
-                "generation_source": display_name,
-                "state": ProviderState.DISABLED.value,
-                "routeable": False,
-                "production_eligible": False,
-                "product_routing_enabled": False,
-                "paused_reason": "Adapter prepared for a later release.",
-            }
-            for provider_id, display_name in (("anthropic", "Anthropic API"), ("cerebras", "Cerebras API"))
-        ]
-        return tuple(sorted([template, *product, *prepared, *local], key=lambda item: str(item["provider_id"])))
+        return tuple(sorted([template, *product, *local], key=lambda item: str(item["provider_id"])))
 
     async def start_run(
         self,

@@ -13,24 +13,6 @@ const terminal = (status?: string) => ["completed", "failed", "cancelled", "bloc
 
 export type ProductAgentConnectionState = "idle" | "connecting" | "live" | "polling";
 
-function activeRunKey(projectId: string) {
-  return `forgex-agent-active-run:${projectId}`;
-}
-
-function recoverConversationRunId(projectId: string) {
-  try {
-    const raw = JSON.parse(window.localStorage.getItem(`forgex-agent-conversation:${projectId}`) ?? "[]");
-    if (!Array.isArray(raw)) return null;
-    for (let index = raw.length - 1; index >= 0; index -= 1) {
-      const runId = raw[index]?.runId;
-      if (typeof runId === "string" && runId.startsWith("agent-run-")) return runId;
-    }
-  } catch {
-    // Older or manually edited conversation state is ignored safely.
-  }
-  return null;
-}
-
 export function useProductAgentRun(projectId: string | null) {
   const [enabled, setEnabled] = useState(false);
   const [providers, setProviders] = useState<ProductAgentProvider[]>([]);
@@ -136,7 +118,6 @@ export function useProductAgentRun(projectId: string | null) {
         provider_id: providerId,
         timeout_seconds: 300,
       });
-      window.localStorage.setItem(activeRunKey(projectId), result.run.run_id);
       runRef.current = result.run;
       setRun(result.run);
       setLastSyncedAt(new Date().toISOString());
@@ -188,25 +169,8 @@ export function useProductAgentRun(projectId: string | null) {
     setEvents([]);
     setLastSyncedAt(null);
     if (!projectId) return;
-    const savedRunId = window.localStorage.getItem(activeRunKey(projectId)) || recoverConversationRunId(projectId);
-    if (!savedRunId) return;
-    window.localStorage.setItem(activeRunKey(projectId), savedRunId);
-    let disposed = false;
-    setRestoring(true);
-    void refresh(savedRunId)
-      .then((restored) => {
-        if (!disposed && !terminal(restored.status)) connect(restored.run_id);
-      })
-      .catch(() => {
-        window.localStorage.removeItem(activeRunKey(projectId));
-      })
-      .finally(() => {
-        if (!disposed) setRestoring(false);
-      });
-    return () => {
-      disposed = true;
-      stop();
-    };
+    setRestoring(false);
+    return () => { stop(); };
   }, [connect, projectId, refresh, stop]);
 
   useEffect(() => stop, [stop]);

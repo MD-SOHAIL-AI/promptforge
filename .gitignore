@@ -1,13 +1,38 @@
+# Node dependencies and generated frontend output
 node_modules/
 .next/
 dist/
 build/
+frontend/tsconfig.tsbuildinfo
+
+# Python caches and local environments
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .coverage
-.env
 .venv/
+
+# Local environment and secrets (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# ForgeX runtime state
 .promptforge/
+
+# Generated workspace outputs; retain empty-directory placeholders
+workspace/projects/*
+workspace/builds/*
+workspace/artifacts/*
+workspace/logs/*
+!workspace/projects/.gitkeep
+!workspace/builds/.gitkeep
+!workspace/artifacts/.gitkeep
+!workspace/logs/.gitkeep
+workspace/external-projects.json
+
+# Logs, coverage, and packaged output
+logs/
 out/
 coverage/
 *.log

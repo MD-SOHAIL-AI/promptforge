@@ -14,6 +14,15 @@ export function resolveBackendCwd(): string {
   return resolveRepoRoot();
 }
 
+export function resolveBackendDataRoot(): string {
+  const configured = process.env.PROMPTFORGE_DATA_ROOT ?? process.env.PROMPTFORGE_RUNTIME_ROOT;
+  if (configured) return configured;
+  if (process.env.PROMPTFORGE_ROOT) return process.env.PROMPTFORGE_ROOT;
+  const directory = path.join(resolveDesktopDataDir(), "backend-data");
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
+}
+
 export function resolveBackendPort(): number {
   const raw = process.env.FORGEX_BACKEND_PORT ?? process.env.PROMPTFORGE_BACKEND_PORT ?? "8000";
   const port = Number.parseInt(raw, 10);
@@ -71,7 +80,10 @@ export function resolveFrontendStaticIndex(): string | null {
 }
 
 export function resolveDesktopDataDir(): string {
-  const directory = path.join(app.getPath("userData"), "desktop");
+  const userData = typeof app?.getPath === "function"
+    ? app.getPath("userData")
+    : path.join(process.cwd(), ".promptforge", "electron-user-data");
+  const directory = path.join(userData, "desktop");
   fs.mkdirSync(directory, { recursive: true });
   return directory;
 }

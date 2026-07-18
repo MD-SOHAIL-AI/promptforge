@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,11 @@ from .credentials import CredentialStore, CredentialStoreError, default_credenti
 
 
 SETTINGS_PATH_ENV = "FORGEX_MODEL_ROUTER_SETTINGS_PATH"
+logger = logging.getLogger(__name__)
+
+
+def _safe_defaults() -> dict[str, Any]:
+    return {"providers": {}, "routes": {}, "health": {}, "models": {}}
 
 
 class ProviderSettingsStorage:
@@ -22,16 +30,29 @@ class ProviderSettingsStorage:
     ) -> None:
         self.path = Path(path) if path is not None else _default_settings_path()
         self.credential_store = credential_store or default_credential_store()
+        self.last_read_warning: str | None = None
+        self.last_corrupt_backup: Path | None = None
+        self._corrupt_backup_attempted = False
 
     def read(self) -> dict[str, Any]:
         if not self.path.exists():
-            return {"providers": {}, "routes": {}, "health": {}, "models": {}}
+            self.last_read_warning = None
+            return _safe_defaults()
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"providers": {}, "routes": {}, "health": {}, "models": {}}
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            return self._corrupt_defaults(type(exc).__name__)
+        except OSError as exc:
+            self.last_read_warning = f"model_router_settings_read_failed:{type(exc).__name__}"
+            logger.warning(
+                "Unable to read model-router settings from %s; using safe defaults (%s)",
+                self.path,
+                type(exc).__name__,
+            )
+            return _safe_defaults()
         if not isinstance(data, dict):
-            return {"providers": {}, "routes": {}, "health": {}, "models": {}}
+            return self._corrupt_defaults("invalid_root")
+        self.last_read_warning = None
         providers = data.get("providers")
         routes = data.get("routes")
         health = data.get("health")
@@ -51,10 +72,56 @@ class ProviderSettingsStorage:
             "health": data.get("health", {}),
             "models": data.get("models", {}),
         }
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        serialized = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        try:
+            temporary.write_text(serialized, encoding="utf-8")
+            os.replace(temporary, self.path)
+        except BaseException:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Unable to clean up temporary model-router settings file %s", temporary)
+            raise
+
+    def _corrupt_defaults(self, reason: str) -> dict[str, Any]:
+        backup = self._backup_corrupt_file()
+        backup_status = str(backup) if backup is not None else "backup_unavailable"
+        self.last_read_warning = f"model_router_settings_corrupt:{reason}:{backup_status}"
+        logger.warning(
+            "Corrupt model-router settings detected at %s; using safe defaults (reason=%s, backup=%s)",
+            self.path,
+            reason,
+            backup_status,
         )
+        return _safe_defaults()
+
+    def _backup_corrupt_file(self) -> Path | None:
+        if self._corrupt_backup_attempted:
+            return self.last_corrupt_backup
+        self._corrupt_backup_attempted = True
+        base = self.path.with_name(self.path.name + ".corrupt")
+        backup = base
+        if backup.exists():
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+            backup = self.path.with_name(f"{self.path.name}.corrupt-{stamp}")
+            counter = 1
+            while backup.exists():
+                backup = self.path.with_name(
+                    f"{self.path.name}.corrupt-{stamp}-{counter}"
+                )
+                counter += 1
+        try:
+            shutil.copy2(self.path, backup)
+        except OSError as exc:
+            logger.warning(
+                "Unable to back up corrupt model-router settings at %s (%s)",
+                self.path,
+                type(exc).__name__,
+            )
+            return None
+        self.last_corrupt_backup = backup
+        return backup
 
     def provider_settings(self, provider_id: str) -> dict[str, Any]:
         providers = self.read()["providers"]

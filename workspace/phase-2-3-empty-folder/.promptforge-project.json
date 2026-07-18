@@ -1,0 +1,21 @@
+{
+  "created_at": "2026-06-20T12:24:01.717432Z",
+  "files": [
+    {
+      "file_type": "ini",
+      "path": "platformio.ini"
+    },
+    {
+      "file_type": "cpp",
+      "path": "src/main.cpp"
+    }
+  ],
+  "framework": "PlatformIO",
+  "metadata": {
+    "task_id": "task-phase-2-3-ae4211bec17843da8861fb8c4eea1e1b"
+  },
+  "project_id": "project-94cd4c82361e400fb3496e41c0b5ced0",
+  "project_name": "phase-2-3-empty-folder",
+  "schema_version": 1,
+  "target_board": "ESP32"
+}

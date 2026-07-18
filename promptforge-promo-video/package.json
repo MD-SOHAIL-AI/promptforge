@@ -1,0 +1,30 @@
+{
+  "name": "promptforge-promo-video",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "remotion render PromptForgePromo out/promptforge-promo.mp4",
+    "preview": "remotion preview src/Root.tsx",
+    "still": "remotion still PromptForgePromo out/promptforge-promo.png"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@remotion/cli": "^4.0.484",
+    "@remotion/player": "^4.0.484",
+    "@remotion/renderer": "^4.0.484",
+    "@remotion/tailwind": "^4.0.484",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "remotion": "^4.0.484"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}

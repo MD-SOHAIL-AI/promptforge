@@ -1,23 +1,17 @@
 "use client";
 
 import {
-  CheckCircle2,
   CircleAlert,
   Clipboard,
   ExternalLink,
   FileDiff,
-  KeyRound,
   Loader2,
   RefreshCw,
-  Save,
   Server,
   ShieldCheck,
-  ShieldOff,
   PlayCircle,
   Square,
   Trash2,
-  Wifi,
-  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -27,8 +21,28 @@ import { PatchApplyDetail } from "@/components/ide/patch-apply-detail";
 import { PatchPreflightReport } from "@/components/ide/patch-preflight-report";
 import { promptForgeApi } from "@/lib/api";
 import { toErrorMessage } from "@/lib/errors";
-import { conflictReadableMessage, patchPreflightStatus, preflightLogLines, preflightToneClass } from "@/lib/patch-preflight-status";
+import { conflictReadableMessage, patchPreflightStatus, preflightLogLines } from "@/lib/patch-preflight-status";
 import { applyToneClass, patchApplyDisplayState } from "@/lib/patch-apply-status";
+import { CompactPreflightStatus, QaStatus } from "@/components/ide/model-settings/status-components";
+import { ProviderCardList } from "@/components/ide/model-settings/ProviderCardList";
+import { ProviderDiagnosticsPanel } from "@/components/ide/model-settings/ProviderDiagnosticsPanel";
+import { TaskRouteEditor } from "@/components/ide/model-settings/TaskRouteEditor";
+import type { BusyKey, DiagnosticsFilter } from "@/components/ide/model-settings/types";
+import {
+  applyLabel,
+  bridgeAuthClass,
+  bridgeCommandLabel,
+  bridgeConfidenceClass,
+  bridgeSetupLabel,
+  bridgeStatusClass,
+  delay,
+  formatBytes,
+  formatRelativeTime,
+  integrityClass,
+  patchLabel,
+  safeProviders,
+  safeRoutes,
+} from "@/components/ide/model-settings/utils";
 import type {
   BridgeDetectionResponse,
   CodexOAuthStatusResponse,
@@ -63,9 +77,6 @@ interface ModelSettingsPanelProps {
   onLog?: (entry: Omit<ConsoleEntry, "id" | "timestamp">) => void;
 }
 
-type BusyKey = string | null;
-type DiagnosticsFilter = "all" | "success" | "failed" | "incomplete" | "repair" | "fallback";
-
 const TASK_TYPES = [
   "code_generation",
   "planning",
@@ -74,151 +85,6 @@ const TASK_TYPES = [
   "serial_analysis",
   "general_chat",
 ];
-
-function safeProviders(value: ModelProviderResponse[]) {
-  return Array.isArray(value) ? value : [];
-}
-
-function safeRoutes(value: ModelRouteResponse[]) {
-  return Array.isArray(value) ? value : [];
-}
-
-function providerStatus(provider: ModelProviderResponse) {
-  if (!provider.enabled) return "Disabled";
-  if (provider.local) return "Local";
-  return provider.configured ? "Configured" : "Not configured";
-}
-
-function healthLabel(status?: string | null) {
-  if (status === "connected") return "Healthy";
-  if (status === "ready") return "Ready";
-  if (status === "missing_api_key" || status === "not_configured") return "Missing API key";
-  if (status === "not_logged_in" || status === "authentication_required") return "Not logged in";
-  if (status === "cli_not_found") return "CLI not found";
-  if (status === "rate_limited") return "Rate limited";
-  if (status === "usage_limit_reached") return "Usage limit reached";
-  if (status === "unavailable") return "Unavailable";
-  if (status === "disabled") return "Disabled";
-  if (status === "offline") return "Not running";
-  if (status === "error") return "Unhealthy";
-  return "Unknown";
-}
-
-function healthClass(status?: string | null) {
-  if (status === "connected") return "border-[var(--fx-success)] bg-[var(--fx-success-soft)] text-[var(--fx-success)]";
-  if (status === "offline" || status === "error") return "border-[var(--fx-error)] bg-[var(--fx-error-soft)] text-[var(--fx-error)]";
-  return "border-[var(--fx-border)] bg-[var(--fx-input)] text-[var(--fx-text-muted)]";
-}
-
-function shortModel(modelId: string) {
-  return modelId.split("/").pop() || modelId;
-}
-
-function localHint(provider: ModelProviderResponse) {
-  if (provider.provider_id === "ollama") return "Start Ollama, then click Refresh Models.";
-  if (provider.provider_id === "lmstudio") return "Start LM Studio local server, then click Refresh Models.";
-  return "Could not fetch model list. Enter model ID manually.";
-}
-
-function bridgeStatusClass(bridge: BridgeDetectionResponse) {
-  if (bridge.installed) return "border-[var(--fx-success)] bg-[var(--fx-success-soft)] text-[var(--fx-success)]";
-  return "border-[var(--fx-border)] bg-[var(--fx-input)] text-[var(--fx-text-muted)]";
-}
-
-function bridgeAuthClass(status: BridgeDetectionResponse["auth_status"]) {
-  if (status === "authenticated") return "border-[var(--fx-success)] bg-[var(--fx-success-soft)] text-[var(--fx-success)]";
-  if (status === "unauthenticated" || status === "error") return "border-[var(--fx-error)] bg-[var(--fx-error-soft)] text-[var(--fx-error)]";
-  return "border-[var(--fx-border)] bg-[var(--fx-input)] text-[var(--fx-text-muted)]";
-}
-
-function bridgeConfidenceClass(confidence: BridgeDetectionResponse["status_confidence"]) {
-  if (confidence === "high") return "border-[var(--fx-success)] bg-[var(--fx-success-soft)] text-[var(--fx-success)]";
-  if (confidence === "medium") return "border-[var(--fx-warning)] bg-[var(--fx-warning-soft)] text-[var(--fx-warning)]";
-  return "border-[var(--fx-border)] bg-[var(--fx-input)] text-[var(--fx-text-muted)]";
-}
-
-function bridgeSetupLabel(action: BridgeDetectionResponse["setup_action"]) {
-  if (action === "open_docs") return "Open docs";
-  if (action === "run_official_login_manually") return "Run official login manually";
-  return "None";
-}
-
-function bridgeCommandLabel(bridge: BridgeDetectionResponse) {
-  if (bridge.provider_id === "antigravity_cli_bridge") return "agy";
-  if (bridge.provider_id === "codex_cli_oauth_bridge") return "codex";
-  if (bridge.provider_id === "claude_code_bridge") return "claude";
-  return bridge.provider_id;
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function integrityClass(status: BridgePatchExportResponse["integrity_status"]) {
-  if (status === "valid") return "text-[var(--fx-success)]";
-  if (status === "modified" || status === "missing") return "text-[var(--fx-warning)]";
-  return "text-[var(--fx-text-muted)]";
-}
-
-function patchLabel(patch: BridgePatchExportResponse) {
-  const provider = patch.provider_id === "antigravity_cli_bridge" ? "AGY patch" : patch.provider_id;
-  return `${provider} - ${patch.changed_file_count} file${patch.changed_file_count === 1 ? "" : "s"}`;
-}
-
-function applyLabel(apply: PatchApplyResult) {
-  const provider = apply.provider_id === "antigravity_cli_bridge" ? "AGY patch apply" : `${apply.provider_id} apply`;
-  const changed = apply.files_created + apply.files_modified + apply.files_deleted;
-  const parts = [];
-  if (apply.files_created) parts.push(`${apply.files_created} created`);
-  if (apply.files_modified) parts.push(`${apply.files_modified} modified`);
-  if (apply.files_deleted) parts.push(`${apply.files_deleted} deleted`);
-  return `${provider} - ${parts.join(", ") || `${changed} changed`}`;
-}
-
-function formatRelativeTime(value: string) {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
-
-function CompactPreflightStatus({ result }: { result: PatchPreflightResult }) {
-  const status = patchPreflightStatus(result);
-  return (
-    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-      <span className={`rounded border px-1.5 py-0.5 ${preflightToneClass(status.tone)}`}>
-        Preflight: {status.label}
-      </span>
-      <span className="min-w-0 truncate text-[var(--fx-text-muted)]">
-        {status.summary}
-      </span>
-    </div>
-  );
-}
-
-function QaStatus({ label, enabled, inverted = false }: { label: string; enabled: boolean; inverted?: boolean }) {
-  const safe = inverted ? !enabled : enabled;
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-2 rounded border border-[var(--fx-border)] bg-[var(--fx-panel)] px-2 py-1">
-      <span className="truncate text-[var(--fx-text-muted)]">{label}</span>
-      <span className={safe ? "text-[var(--fx-success)]" : "text-[var(--fx-warning)]"}>
-        {enabled ? "Enabled" : "Disabled"}
-      </span>
-    </div>
-  );
-}
 
 export function ModelSettingsPanel({ providers, routes, activeProject, onRefresh, onLog }: ModelSettingsPanelProps) {
   const dialogs = useForgeXDialogs();
@@ -1082,16 +948,6 @@ export function ModelSettingsPanel({ providers, routes, activeProject, onRefresh
     }
   };
 
-  const filteredGenerationRuns = generationRuns.filter((run) => {
-    if (diagnosticsFilter === "all") return true;
-    if (diagnosticsFilter === "success") return run.status === "success";
-    if (diagnosticsFilter === "failed") return run.status === "failed";
-    if (diagnosticsFilter === "incomplete") return run.status === "incomplete";
-    if (diagnosticsFilter === "repair") return (run.repair_count ?? 0) > 0;
-    if (diagnosticsFilter === "fallback") return (run.fallback_count ?? 0) > 0;
-    return true;
-  });
-
   const updateProviderForm = (providerId: string, patch: Partial<{ enabled: boolean; baseUrl: string; defaultModel: string }>) => {
     setProviderForms((current) => ({
       ...current,
@@ -1261,135 +1117,19 @@ export function ModelSettingsPanel({ providers, routes, activeProject, onRefresh
           </div>
         </section>
 
-        <section className="space-y-2">
-          <div className="text-xs font-semibold uppercase text-[var(--fx-text-muted)]">API Providers and Local Model Servers</div>
-          {configurableProviders.length === 0 ? (
-            <div className="rounded border border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3 text-sm text-[var(--fx-text-muted)]">Model router not configured</div>
-          ) : (
-            configurableProviders.map((provider) => {
-              const form = providerForms[provider.provider_id] ?? {
-                enabled: provider.enabled,
-                baseUrl: provider.base_url ?? "",
-                defaultModel: provider.default_model ?? "",
-              };
-              const discoveredModels = modelsByProvider[provider.provider_id] ?? [];
-              const datalistId = `models-${provider.provider_id}`;
-              const apiKeyRequired = provider.auth_type === "api_key"
-                && form.enabled
-                && !provider.configured;
-              return (
-                <div key={provider.provider_id} className="min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3">
-                  <div className="flex min-w-0 items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-[var(--fx-text)]">{provider.display_name}</div>
-                      <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
-                        <span className="rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-1.5 py-0.5 text-[var(--fx-text-muted)]">{providerStatus(provider)}</span>
-                        <span className={`rounded border px-1.5 py-0.5 ${healthClass(provider.health_status)}`}>{healthLabel(provider.health_status)}</span>
-                      </div>
-                    </div>
-                    <label className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--fx-code-text)]">
-                      <input
-                        type="checkbox"
-                        checked={form.enabled}
-                        onChange={(event) => updateProviderForm(provider.provider_id, { enabled: event.target.checked })}
-                      />
-                      Enabled
-                    </label>
-                  </div>
-
-                  <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 text-xs xl:grid-cols-2">
-                    {provider.auth_type === "api_key" ? (
-                      <label className="min-w-0 text-[var(--fx-text-muted)]">
-                        API Key
-                        <div className="mt-1 flex h-8 min-w-0 items-center gap-2 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2">
-                          <KeyRound className="h-3.5 w-3.5 shrink-0 text-[var(--fx-text-muted)]" />
-                          <input
-                            ref={(element) => { apiKeyInputs.current[provider.provider_id] = element; }}
-                            className="min-w-0 flex-1 bg-transparent text-[var(--fx-text)] outline-none placeholder:text-[var(--fx-text-muted)]"
-                            type="password"
-                            autoComplete="off"
-                            placeholder={provider.credential_configured ? "Saved securely" : "Paste API key"}
-                          />
-                          {provider.credential_configured ? (
-                            <button
-                              className="shrink-0 text-[var(--fx-text-muted)] hover:text-[var(--fx-error)]"
-                              onClick={() => void clearProviderKey(provider)}
-                              title="Clear saved API key"
-                            >
-                              <ShieldOff className="h-3.5 w-3.5" />
-                            </button>
-                          ) : null}
-                        </div>
-                        {apiKeyRequired ? <span className="mt-1 block text-[var(--fx-warning)]">API key required. Paste the key, then Save and Test.</span> : null}
-                      </label>
-                    ) : null}
-
-                    <label className="min-w-0 text-[var(--fx-text-muted)]">
-                      Default Model
-                      <input
-                        className="mt-1 h-8 w-full min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2 text-[var(--fx-text)] outline-none"
-                        value={form.defaultModel}
-                        list={datalistId}
-                        onChange={(event) => updateProviderForm(provider.provider_id, { defaultModel: event.target.value })}
-                      />
-                      <datalist id={datalistId}>
-                        {discoveredModels.map((model) => (
-                          <option key={model.model_id} value={model.model_id} />
-                        ))}
-                      </datalist>
-                    </label>
-
-                    <label className="min-w-0 text-[var(--fx-text-muted)]">
-                      Base URL
-                      <input
-                        className="mt-1 h-8 w-full min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2 text-[var(--fx-text)] outline-none"
-                        value={form.baseUrl}
-                        onChange={(event) => updateProviderForm(provider.provider_id, { baseUrl: event.target.value })}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="mt-2 space-y-1 break-words text-[11px] text-[var(--fx-text-muted)]">
-                    <div>Default: <span className="text-[var(--fx-code-text)]">{provider.default_model || "None"}</span></div>
-                    {provider.base_url ? <div>Base URL: <span className="text-[var(--fx-code-text)]">{provider.base_url}</span></div> : null}
-                    <div>Last checked: <span className="text-[var(--fx-code-text)]">{provider.last_checked_at ?? "Never"}</span></div>
-                    {provider.last_error ? <div className="text-[var(--fx-error)]">Error: {provider.last_error}</div> : null}
-                    {modelErrors[provider.provider_id] ? <div className="text-[var(--fx-error)]">{modelErrors[provider.provider_id]}</div> : null}
-                    {provider.local && provider.health_status !== "connected" ? <div>{localHint(provider)}</div> : null}
-                  </div>
-
-                  <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3">
-                    <button
-                      className="flex h-8 items-center justify-center gap-1 rounded bg-[var(--fx-accent)] px-2 text-xs font-medium text-white disabled:opacity-50"
-                      onClick={() => void saveProvider(provider)}
-                      disabled={Boolean(busy)}
-                    >
-                      {busy === `save:${provider.provider_id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                      Save
-                    </button>
-                    <button
-                      className="flex h-8 items-center justify-center gap-1 rounded border border-[var(--fx-border)] bg-[var(--fx-panel)] px-2 text-xs text-[var(--fx-code-text)] hover:bg-[var(--fx-hover)] disabled:opacity-50"
-                      onClick={() => void testProvider(provider)}
-                      disabled={Boolean(busy)}
-                    >
-                      {busy === `test:${provider.provider_id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
-                      Test
-                    </button>
-                    <button
-                      className="flex h-8 items-center justify-center gap-1 rounded border border-[var(--fx-border)] bg-[var(--fx-panel)] px-2 text-xs text-[var(--fx-code-text)] hover:bg-[var(--fx-hover)] disabled:opacity-50"
-                      onClick={() => void refreshModels(provider)}
-                      disabled={Boolean(busy)}
-                    >
-                      {busy === `models:${provider.provider_id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                      Models
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </section>
-
+        <ProviderCardList
+          providers={configurableProviders}
+          providerForms={providerForms}
+          modelsByProvider={modelsByProvider}
+          modelErrors={modelErrors}
+          apiKeyInputs={apiKeyInputs}
+          busy={busy}
+          updateProviderForm={updateProviderForm}
+          clearProviderKey={clearProviderKey}
+          saveProvider={saveProvider}
+          testProvider={testProvider}
+          refreshModels={refreshModels}
+        />
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase text-[var(--fx-text-muted)]">Local Agent Providers</div>
@@ -2034,181 +1774,40 @@ export function ModelSettingsPanel({ providers, routes, activeProject, onRefresh
           </div>
         </section>
 
-        <section className="space-y-2">
-          <div className="text-xs font-semibold uppercase text-[var(--fx-text-muted)]">Task Routes</div>
-          {TASK_TYPES.map((taskType) => {
-            const form = routeForms[taskType] ?? {
-              providerId: "openrouter",
-              modelId: providerById.openrouter?.default_model ?? "",
-              fallbackEnabled: true,
-              fallbackProviderId: "",
-              localOnly: false,
-            };
-            const providerModels = modelsByProvider[form.providerId] ?? [];
-            return (
-              <div key={taskType} className="min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3">
-                <div className="mb-2 break-words text-xs font-medium text-[var(--fx-text)]">{taskType}</div>
-                <div className="grid gap-2 text-xs">
-                  <select
-                    className="h-8 min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2 text-[var(--fx-text)] outline-none"
-                    value={form.providerId}
-                    onChange={(event) => updateRouteForm(taskType, { providerId: event.target.value })}
-                  >
-                    {configurableProviders.map((provider) => (
-                      <option key={provider.provider_id} value={provider.provider_id}>
-                        {provider.display_name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="h-8 min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2 text-[var(--fx-text)] outline-none"
-                    value={form.modelId}
-                    list={`route-models-${taskType}`}
-                    onChange={(event) => updateRouteForm(taskType, { modelId: event.target.value })}
-                    placeholder="Model ID"
-                  />
-                  <datalist id={`route-models-${taskType}`}>
-                    {providerModels.map((model) => (
-                      <option key={model.model_id} value={model.model_id} />
-                    ))}
-                  </datalist>
-                  {form.fallbackEnabled ? (
-                    <select
-                      className="h-8 min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2 text-[var(--fx-text)] outline-none"
-                      value={form.fallbackProviderId}
-                      onChange={(event) => updateRouteForm(taskType, { fallbackProviderId: event.target.value })}
-                      aria-label={`${taskType} fallback provider`}
-                    >
-                      <option value="">No fallback provider</option>
-                      {configurableProviders.filter((candidate) => candidate.provider_id !== form.providerId && candidate.local === Boolean(providerById[form.providerId]?.local) && candidate.configured && candidate.enabled).map((candidate) => (
-                        <option key={candidate.provider_id} value={candidate.provider_id}>{candidate.display_name}</option>
-                      ))}
-                    </select>
-                  ) : null}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <label className="flex items-center gap-1 text-[11px] text-[var(--fx-code-text)]">
-                    <input
-                      type="checkbox"
-                      checked={form.fallbackEnabled}
-                      onChange={(event) => updateRouteForm(taskType, { fallbackEnabled: event.target.checked })}
-                    />
-                    Fallback
-                  </label>
-                  <label className="flex items-center gap-1 text-[11px] text-[var(--fx-code-text)]">
-                    <input
-                      type="checkbox"
-                      checked={form.localOnly}
-                      onChange={(event) => updateRouteForm(taskType, { localOnly: event.target.checked })}
-                    />
-                    Local only
-                  </label>
-                  <button
-                    className="flex h-8 items-center gap-1 rounded border border-[var(--fx-border)] bg-[var(--fx-panel)] px-2 text-xs text-[var(--fx-code-text)] hover:bg-[var(--fx-hover)] disabled:opacity-50"
-                    onClick={() => void saveRoute(taskType)}
-                    disabled={Boolean(busy)}
-                  >
-                    {busy === `route:${taskType}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    Save route
-                  </button>
-                </div>
+        <TaskRouteEditor
+          routeForms={routeForms}
+          providers={configurableProviders}
+          providerById={providerById}
+          modelsByProvider={modelsByProvider}
+          busy={busy}
+          updateRouteForm={updateRouteForm}
+          saveRoute={saveRoute}
+        />
+
+        <section className="rounded border border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold uppercase text-[var(--fx-text-muted)]">Unified Coding Workflow</div>
+              <div className="mt-1 text-xs text-[var(--fx-text-muted)]">
+                Experimental fake-provider workflow controls are available from the main IDE Forge panel under Coding Agent.
               </div>
-            );
-          })}
+            </div>
+            <span className="rounded border border-[var(--fx-warning)] bg-[var(--fx-warning-soft)] px-2 py-1 text-[11px] text-[var(--fx-warning)]">
+              Experimental
+            </span>
+          </div>
         </section>
 
-        <section className="min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase text-[var(--fx-text-muted)]">Usage</div>
-            <button className="text-[var(--fx-text-muted)] hover:text-[var(--fx-text)]" onClick={() => void refreshUsage()} title="Refresh usage">
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {usage.length === 0 ? (
-            <div className="text-xs text-[var(--fx-text-muted)]">No model calls recorded yet.</div>
-          ) : (
-            <div className="space-y-1 text-[11px]">
-              {usage.slice().reverse().map((record, index) => (
-                <div key={`${record.created_at}-${index}`} className="grid min-w-0 grid-cols-1 gap-2 rounded bg-[var(--fx-input)] px-2 py-1 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <div className="min-w-0">
-                    <div className="truncate text-[var(--fx-code-text)]">{record.task_type} - {record.provider_id} / {shortModel(record.model_id)}</div>
-                    <div className="truncate text-[var(--fx-text-muted)]">{record.created_at}</div>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <div className={record.success ? "text-[var(--fx-success)]" : "text-[var(--fx-error)]"}>
-                      {record.success ? <CheckCircle2 className="inline h-3.5 w-3.5" /> : <XCircle className="inline h-3.5 w-3.5" />}
-                      {" "}{record.latency_ms}ms
-                    </div>
-                    <div className="text-[var(--fx-text-muted)]">{record.total_tokens ?? "-"} tokens</div>
-                    {record.error_code ? <div className="break-words text-[var(--fx-error)]">{record.error_code}</div> : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="min-w-0 rounded border border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase text-[var(--fx-text-muted)]">Generation Diagnostics</div>
-            <div className="flex items-center gap-2">
-              <button className="text-[var(--fx-text-muted)] hover:text-[var(--fx-text)]" onClick={() => void refreshDiagnostics()} title="Refresh generation diagnostics">
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
-              <button
-                className="text-[var(--fx-text-muted)] hover:text-[var(--fx-error)] disabled:opacity-50"
-                onClick={() => void clearDiagnostics()}
-                disabled={Boolean(busy)}
-                title="Clear generation diagnostics"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-          <div className="mb-2 flex flex-wrap gap-1">
-            {(["all", "success", "failed", "incomplete", "repair", "fallback"] as DiagnosticsFilter[]).map((filter) => (
-              <button
-                key={filter}
-                className={`rounded border px-2 py-1 text-[11px] ${
-                  diagnosticsFilter === filter
-                    ? "border-[var(--fx-accent)] bg-[var(--fx-accent)] text-white"
-                    : "border-[var(--fx-border)] bg-[var(--fx-input)] text-[var(--fx-text-muted)] hover:bg-[var(--fx-hover)]"
-                }`}
-                onClick={() => setDiagnosticsFilter(filter)}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-          {filteredGenerationRuns.length === 0 ? (
-            <div className="text-xs text-[var(--fx-text-muted)]">No chunked generation runs recorded yet.</div>
-          ) : (
-            <div className="space-y-1 text-[11px]">
-              {filteredGenerationRuns.slice().reverse().map((run, index) => {
-                const required = Array.isArray(run.required_files) ? run.required_files.length : 0;
-                const written = Array.isArray(run.file_statuses) ? run.file_statuses.filter((file) => file.status === "written").length : Array.isArray(run.generated_files) ? run.generated_files.length : 0;
-                const statusClass = run.status === "success" ? "text-[var(--fx-success)]" : run.status === "incomplete" ? "text-[var(--fx-warning)]" : "text-[var(--fx-error)]";
-                return (
-                  <div key={`${run.run_id ?? run.execution_id}-${index}`} className="grid min-w-0 grid-cols-1 gap-2 rounded bg-[var(--fx-input)] px-2 py-1 lg:grid-cols-[minmax(0,1fr)_auto]">
-                    <div className="min-w-0">
-                      <div className="truncate text-[var(--fx-code-text)]">
-                        {run.strategy ?? run.generation_mode ?? "generation"} - {run.provider_id ?? "provider"} / {shortModel(run.model_id ?? "model")}
-                      </div>
-                      <div className="truncate text-[var(--fx-text-muted)]">{run.completed_at ?? run.started_at ?? "time unknown"}</div>
-                      {run.workspace_root ? <div className="truncate text-[var(--fx-text-muted)]">{run.workspace_root}</div> : null}
-                    </div>
-                    <div className="text-left lg:text-right">
-                      <div className={statusClass}>{run.status}</div>
-                      <div className="text-[var(--fx-text-muted)]">Files {written}/{required || written}</div>
-                      <div className="text-[var(--fx-text-muted)]">Repairs {run.repair_count ?? 0} Fallbacks {run.fallback_count ?? 0} Warnings {run.warning_count ?? 0}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
+        <ProviderDiagnosticsPanel
+          usage={usage}
+          generationRuns={generationRuns}
+          diagnosticsFilter={diagnosticsFilter}
+          busy={busy}
+          refreshUsage={refreshUsage}
+          refreshDiagnostics={refreshDiagnostics}
+          clearDiagnostics={clearDiagnostics}
+          setDiagnosticsFilter={setDiagnosticsFilter}
+        />
         {message?.toLowerCase().includes("failed") || message?.toLowerCase().includes("could not") ? (
           <div className="flex gap-2 rounded border border-[var(--fx-error)] bg-[var(--fx-error-soft)] p-2 text-xs text-[var(--fx-error)]">
             <CircleAlert className="h-3.5 w-3.5 shrink-0" />

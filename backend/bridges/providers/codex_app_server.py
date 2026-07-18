@@ -6,9 +6,11 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from ...agent_runtime.approval_broker import AgentApprovalBroker
+if TYPE_CHECKING:
+    from backend.connection_registry import ConnectionRegistry
 from ...provider_runtime import classify_cli_failure
 from ..codex_status import CodexStatusService, build_codex_safe_user_env
 from ..diff_service import BridgeDiffService
@@ -40,8 +42,10 @@ class CodexAppServerProvider:
         managed_root: str | Path,
         approval_broker: AgentApprovalBroker,
         execution_enabled: bool = False,
+        connections: ConnectionRegistry | None = None,
     ) -> None:
         self.status_service = status_service
+        self.connections = connections
         self.review_service = review_service
         self.managed_root = Path(managed_root).resolve()
         self.execution_enabled = bool(execution_enabled)
@@ -82,24 +86,44 @@ class CodexAppServerProvider:
             cached = self._detection_cache
             if cached is not None and now - cached[0] < self.detection_cache_seconds:
                 return cached[1]
-            status = await asyncio.to_thread(self.status_service.status)
-            self._version = status.codex_version
-            self._available = bool(status.codex_installed and status.oauth_bridge_ready)
-            authentication = (
-                "authenticated" if status.auth_status == "signed_in" else
-                "unauthenticated" if status.auth_status == "signed_out" else
-                "not_installed" if not status.codex_installed else "unknown"
-            )
-            result = BridgeDetectionResult(
-                provider_id=self.provider_id,
-                installed=status.codex_installed,
-                available=self._available,
-                safe_message="Codex App Server is ready." if self._available else "Codex authentication is required.",
-                provider_version=status.codex_version,
-                authentication_status=authentication,
-                unavailability_code=None if self._available else BridgeErrorCode.PROVIDER_UNAVAILABLE.value,
-                capabilities=self.capabilities(),
-            )
+            if self.connections is not None:
+                record = await asyncio.to_thread(self.connections.refresh_status, self.connections.CODEX_ID)
+                self._version = record.version
+                self._available = record.connection_ready
+                authentication = (
+                    "authenticated" if record.auth_state.value == "authenticated" else
+                    "unauthenticated" if record.auth_state.value == "signed_out" else
+                    "unknown"
+                )
+                result = BridgeDetectionResult(
+                    provider_id=self.provider_id,
+                    installed=record.detected,
+                    available=record.connection_ready,
+                    safe_message="Codex CLI connection is ready." if record.connection_ready else "Codex authentication is unavailable or unverified.",
+                    provider_version=record.version,
+                    authentication_status=authentication,
+                    unavailability_code=None if record.connection_ready else BridgeErrorCode.PROVIDER_UNAVAILABLE.value,
+                    capabilities=self.capabilities(),
+                )
+            else:
+                status = await asyncio.to_thread(self.status_service.status)
+                self._version = status.codex_version
+                self._available = bool(status.codex_installed and status.oauth_bridge_ready)
+                authentication = (
+                    "authenticated" if status.auth_status == "signed_in" else
+                    "unauthenticated" if status.auth_status == "signed_out" else
+                    "not_installed" if not status.codex_installed else "unknown"
+                )
+                result = BridgeDetectionResult(
+                    provider_id=self.provider_id,
+                    installed=status.codex_installed,
+                    available=self._available,
+                    safe_message="Codex App Server is ready." if self._available else "Codex authentication is required.",
+                    provider_version=status.codex_version,
+                    authentication_status=authentication,
+                    unavailability_code=None if self._available else BridgeErrorCode.PROVIDER_UNAVAILABLE.value,
+                    capabilities=self.capabilities(),
+                )
             self._detection_cache = (time.monotonic(), result)
             return result
 

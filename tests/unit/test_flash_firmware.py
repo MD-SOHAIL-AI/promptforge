@@ -7,6 +7,8 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip("serial")
+
 from backend.runtime.result import FlashResult, ResultStatus, VerificationStatus
 from backend.runtime.subprocess_mgr import ProcessConfig, ProcessResult
 from backend.tools.board_detector import BoardInfo, BoardType

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -22,7 +20,6 @@ from backend.model_router import (
     UsageTracker,
 )
 from backend.model_router.models import ProviderHealth
-from backend.model_router.providers.codex_agent import CodexAgentProvider
 from backend.services.code_generation_service import CodeGenerationRequest, CodeGenerationService
 from backend.services.llm_service import LLMConfigurationError, LLMProviderError, LLMRequest
 
@@ -50,7 +47,7 @@ class FakeProvider:
         self.requests: list[ModelRequest] = []
 
     async def health(self) -> ProviderHealth:
-        return ProviderHealth(self.provider_id, not self.fail, "connected")
+        return ProviderHealth(self.provider_id, True, "connected")
 
     async def list_models(self) -> list[object]:
         return []
@@ -87,7 +84,7 @@ def test_provider_registry_lists_supported_providers(tmp_path: Path) -> None:
 
     provider_ids = [provider.provider_id for provider in registry.list_providers()]
 
-    assert provider_ids == ["openrouter", "openai", "groq", "gemini", "anthropic", "cerebras", "lmstudio", "ollama", "codex"]
+    assert provider_ids == ["openrouter", "openai", "groq", "gemini", "anthropic", "cerebras", "nvidia_nim", "lmstudio", "ollama"]
 
 
 def test_bridge_providers_are_not_generation_route_providers(tmp_path: Path) -> None:
@@ -122,105 +119,23 @@ def test_router_selects_openrouter_for_code_generation_by_default(tmp_path: Path
 
     assert response.provider_id == "openrouter"
     assert openrouter.requests[0].model_id == "openai/gpt-oss-120b:free"
+    assert len(router.decision_store.decisions) == 1
+    decision = next(iter(router.decision_store.decisions.values()))
+    assert decision.selected_provider_id == "openrouter" and decision.selected_model_id == response.model_id
+    assert router.decision_store.usage[decision.decision_id]["success"] is True
 
 
-def test_router_selects_codex_when_product_provider_is_enabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_codex_feature_flag_cannot_insert_cli_into_model_routing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FORGEX_ENABLE_CODEX_PROVIDER", "1")
-    codex = FakeProvider("codex")
-    router, _, _ = router_with_storage(tmp_path, {"codex": codex})
-
-    response = run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation")))
-
-    assert response.provider_id == "codex"
-    assert codex.requests[0].model_id == "codex-agent"
-
-    llm_response = run(router.generate(LLMRequest(prompt="hello", metadata={"task_type": "code_generation"})))
-    assert llm_response.provider_id == "codex"
+    router, _, _ = router_with_storage(tmp_path, {"codex": FakeProvider("codex")})
+    with pytest.raises(LLMConfigurationError):
+        run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation")))
 
 
-def test_local_only_code_generation_keeps_codex_candidate(tmp_path: Path) -> None:
-    codex = FakeProvider("codex")
-    router, _, _ = router_with_storage(tmp_path, {"codex": codex})
-
-    response = run(router.generate_model(ModelRequest(
-        prompt="hello",
-        task_type="code_generation",
-        provider_id="codex",
-        model_id="codex-agent",
-        local_only=True,
-    )))
-
-    assert response.provider_id == "codex"
-
-
-@pytest.mark.asyncio
-async def test_codex_generation_protocol_uses_disposable_working_directory(tmp_path: Path) -> None:
-    class FakeStdin:
-        def __init__(self) -> None:
-            self.payloads: list[dict[str, object]] = []
-
-        def write(self, value: bytes) -> None:
-            self.payloads.append(json.loads(value))
-
-        async def drain(self) -> None:
-            return None
-
-    class FakeProcess:
-        def __init__(self) -> None:
-            self.stdin = FakeStdin()
-            self.stdout = asyncio.StreamReader()
-            for value in (
-                {"id": 1, "result": {}},
-                {"id": 2, "result": {"thread": {"id": "thread-001"}}},
-                {"id": 3, "result": {"turn": {"id": "turn-001"}}},
-                {"method": "item/completed", "params": {"item": {"id": "message-001", "type": "agentMessage", "phase": "final_answer", "text": "done"}}},
-                {"method": "turn/completed", "params": {}},
-            ):
-                self.stdout.feed_data((json.dumps(value) + "\n").encode())
-            self.stdout.feed_eof()
-
-    isolated = tmp_path / "isolated-generation"
-    isolated.mkdir()
-    registry = ProviderRegistry(ProviderSettingsStorage(tmp_path / "settings.json"))
-    provider = CodexAgentProvider(registry)
-    process = FakeProcess()
-
-    content = await provider._run_protocol(  # type: ignore[arg-type]
-        process,
-        ModelRequest(prompt="generate", task_type="code_generation"),
-        cwd=isolated,
-    )
-
-    assert content == "done"
-    assert process.stdin.payloads[2]["params"]["cwd"] == str(isolated.resolve())  # type: ignore[index]
-
-
-def test_codex_generation_uses_bounded_one_shot_exec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    registry = ProviderRegistry(ProviderSettingsStorage(tmp_path / "settings.json"))
-    provider = CodexAgentProvider(registry)
-    captured: dict[str, object] = {}
-
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        captured["command"] = command
-        captured.update(kwargs)
-        output_index = command.index("--output-last-message") + 1
-        Path(command[output_index]).write_text("generated firmware", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    content = provider._run_exec(
-        SimpleNamespace(path="codex.exe", prefix_args=()),
-        ModelRequest(prompt="create firmware", system_prompt="return files", task_type="code_generation"),
-        tmp_path,
-    )
-
-    command = captured["command"]
-    assert isinstance(command, list)
-    assert command[:6] == ["codex.exe", "--ask-for-approval", "never", "exec", "--sandbox", "read-only"]
-    assert command[-1] == "-"
-    assert "create firmware" not in command
-    assert captured["input"] == "return files\n\ncreate firmware"
-    assert content == "generated firmware"
+def test_explicit_codex_model_route_is_rejected(tmp_path: Path) -> None:
+    router, _, _ = router_with_storage(tmp_path, {"codex": FakeProvider("codex")})
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation", provider_id="codex", model_id="codex-agent", local_only=True)))
 
 
 def test_router_falls_back_when_provider_fails(tmp_path: Path) -> None:
@@ -233,8 +148,18 @@ def test_router_falls_back_when_provider_fails(tmp_path: Path) -> None:
     registry.configure_provider("openrouter", {"api_key": "sk-openrouter", "enabled": True})
     registry.configure_provider("openai", {"api_key": "sk-openai", "enabled": True})
     registry.save_health("openai", {"status": "connected"})
+    registry.save_route(ModelRoute("code_generation", "openrouter", registry.default_model("openrouter"), True, "openai"))
 
-    response = run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation")))
+    response = run(router.generate_model(ModelRequest(
+        prompt="hello",
+        task_type="code_generation",
+        allow_fallback=True,
+        metadata={
+            "fallback_policy": "ask_before_cross_provider",
+            "consent_granted": True,
+            "approved_recipients": ["openrouter", "openai"],
+        },
+    )))
 
     assert response.provider_id == "openai"
     records = usage.list_records()
@@ -242,9 +167,9 @@ def test_router_falls_back_when_provider_fails(tmp_path: Path) -> None:
     assert records[-1]["success"] is True
 
 
-def test_router_skips_provider_with_known_unavailable_health(tmp_path: Path) -> None:
+def test_router_does_not_fallback_from_known_unavailable_health_by_default(tmp_path: Path) -> None:
     openrouter = FakeProvider("openrouter", fail=True)
-    openai = FakeProvider("openai", content="healthy fallback")
+    openai = FakeProvider("openai", content="must not run")
     router, registry, usage = router_with_storage(
         tmp_path,
         {"openrouter": openrouter, "openai": openai},
@@ -252,13 +177,14 @@ def test_router_skips_provider_with_known_unavailable_health(tmp_path: Path) -> 
     registry.configure_provider("openrouter", {"api_key": "sk-openrouter", "enabled": True})
     registry.configure_provider("openai", {"api_key": "sk-openai", "enabled": True})
     registry.save_health("openai", {"status": "connected"})
-    registry.save_health("openrouter", {"status": "offline", "message": "connection refused"})
+    registry.save_health("openrouter", {"status": "offline", "message": "unavailable"})
 
-    response = run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation")))
+    with pytest.raises(LLMConfigurationError):
+        run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation")))
 
-    assert response.provider_id == "openai"
     assert openrouter.requests == []
-    assert [record["provider_id"] for record in usage.list_records()] == ["openai"]
+    assert openai.requests == []
+    assert usage.list_records() == []
 
 
 def test_router_skips_unchecked_local_fallback(tmp_path: Path) -> None:
@@ -267,7 +193,7 @@ def test_router_skips_unchecked_local_fallback(tmp_path: Path) -> None:
     router, registry, _ = router_with_storage(tmp_path, {"openrouter": openrouter, "ollama": ollama})
     registry.configure_provider("openrouter", {"api_key": "sk-openrouter", "enabled": True})
 
-    with pytest.raises(LLMProviderError, match="provider failed"):
+    with pytest.raises(LLMProviderError, match="without an authorized fallback"):
         run(router.generate_model(ModelRequest(prompt="hello", task_type="code_generation")))
 
     assert ollama.requests == []
@@ -297,22 +223,23 @@ def test_router_llm_request_can_skip_primary_for_validation_fallback(tmp_path: P
     registry.configure_provider("openai", {"api_key": "sk-openai", "enabled": True})
     registry.save_health("openai", {"status": "connected"})
 
-    response = run(
-        router.generate(
-            LLMRequest(
-                prompt="hello",
-                metadata={
-                    "task_type": "code_generation",
-                    "skip_provider_id": "openrouter",
-                    "force_fallback": True,
-                },
+    with pytest.raises(LLMConfigurationError) as captured:
+        run(
+            router.generate(
+                LLMRequest(
+                    prompt="hello",
+                    metadata={
+                        "task_type": "code_generation",
+                        "skip_provider_id": "openrouter",
+                        "force_fallback": True,
+                    },
+                )
             )
         )
-    )
 
-    assert response.content == "fallback"
+    assert captured.value.code == "FALLBACK_NOT_AUTHORIZED"
     assert openrouter.requests == []
-    assert len(openai.requests) == 1
+    assert openai.requests == []
 
 
 def test_missing_api_key_returns_clear_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

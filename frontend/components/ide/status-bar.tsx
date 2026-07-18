@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, CheckCircle2, GitBranch, Radio, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CircleDot, FileCode2, Radio, TriangleAlert } from "lucide-react";
 
 import type { ConsoleEntry, EditorTab, ProjectResponse, WorkspaceFile } from "@/types";
 
@@ -19,30 +19,19 @@ export function IdeStatusBar({ activeProject, selectedFile, tabs, logs, socketSt
   const taskStatus = socketState === "reconnecting" ? "Restoring workflow events" : isExecuting ? "Task running" : socketState === "open" ? "Socket connected" : "Ready";
 
   return (
-    <footer className="flex h-6 min-w-0 shrink-0 items-center justify-between gap-3 border-t border-[var(--fx-border)] bg-[var(--fx-status-bg)] px-2 text-[11px] text-[var(--fx-status-text)]">
+    <footer className="flex h-7 min-w-0 shrink-0 items-center justify-between gap-3 border-t border-[var(--fx-border)] bg-[var(--fx-status-bg)] px-2.5 text-[11px] text-[var(--fx-status-text)]">
       <div className="flex min-w-0 items-center gap-4 overflow-hidden">
         <span className="flex items-center gap-1">
-          <GitBranch className="h-3.5 w-3.5" />
-          main
-        </span>
-        <span className="flex items-center gap-1">
           {errors > 0 ? <TriangleAlert className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-          {errors} errors
+          {errors > 0 ? `${errors} problem${errors === 1 ? "" : "s"}` : "No problems"}
         </span>
-        <span>{dirty} unsaved</span>
-        <span className="truncate">{taskStatus}</span>
-        <span className="truncate">{activeProject?.project_name ?? "No project"}</span>
+        {dirty > 0 ? <span>{dirty} unsaved</span> : null}
+        <span className="flex items-center gap-1 truncate"><CircleDot className="h-3 w-3" />{taskStatus}</span>
+        <span className="truncate font-medium text-[var(--fx-text)]">{activeProject?.project_name ?? "No workspace open"}</span>
       </div>
       <div className="flex shrink-0 items-center gap-4">
-        <span>Ln 1, Col 1</span>
-        <span>Spaces: 2</span>
-        <span>UTF-8</span>
-        <span>{selectedFile.language}</span>
-        <span className="flex items-center gap-1">
-          <Radio className="h-3.5 w-3.5" />
-          PlatformIO
-        </span>
-        <Bell className="h-3.5 w-3.5" />
+        {selectedFile.path ? <span className="flex items-center gap-1"><FileCode2 className="h-3.5 w-3.5" />{selectedFile.language}</span> : null}
+        <span className="flex items-center gap-1"><Radio className="h-3.5 w-3.5" />{socketState === "open" ? "Live" : "Local"}</span>
       </div>
     </footer>
   );

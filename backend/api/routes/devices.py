@@ -6,7 +6,11 @@ import asyncio
 
 from fastapi import APIRouter, Request
 
-from ...tools.board_detector import BoardDetectionError, BoardDetector
+from ...tools.board_detector import (
+    BoardDependencyError,
+    BoardDetectionError,
+    BoardDetector,
+)
 from ..dependencies import required_state
 from ..errors import APIError, error_responses
 from ..schemas.devices import DetectedBoardResponse, DetectedBoardsResponse
@@ -25,6 +29,8 @@ async def detected_boards(request: Request) -> DetectedBoardsResponse:
     assert isinstance(detector, BoardDetector)
     try:
         boards = await asyncio.to_thread(detector.detect_boards)
+    except BoardDependencyError as exc:
+        raise APIError(503, "PYSERIAL_REQUIRED", str(exc)) from exc
     except BoardDetectionError as exc:
         raise APIError(503, "BOARD_DETECTION_FAILED", "Connected boards could not be detected") from exc
     response = [

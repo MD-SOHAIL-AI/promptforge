@@ -90,8 +90,10 @@ class BridgePatchExportService:
         self.opener = opener or open_path
         self.max_patch_chars = max_patch_chars
 
-    def export_patch(self, review_id: str) -> BridgePatchExport:
+    def export_patch(self, review_id: str, *, workspace_root_hash: str | None = None) -> BridgePatchExport:
         review = self._get_review(review_id)
+        if workspace_root_hash is not None and not re.fullmatch(r"[0-9a-f]{64}", workspace_root_hash):
+            raise BridgePatchExportError("Patch workspace identity is invalid.", {"review_id": review_id})
         patch_text = self._build_patch(review)
         self.patch_directory.mkdir(parents=True, exist_ok=True)
         patch_id = f"{review.review_id}.patch"
@@ -104,6 +106,7 @@ class BridgePatchExportService:
             patch_sha256=sha256_file(path),
             created_at=datetime.now(timezone.utc),
             integrity_status="valid",
+            workspace_root_hash=workspace_root_hash,
         )
         self._metadata_path(review.review_id).write_text(
             json.dumps(export.to_dict(), ensure_ascii=True, indent=2, sort_keys=True) + "\n",
@@ -163,6 +166,7 @@ class BridgePatchExportService:
             patch_sha256=patch_sha256,
             created_at=metadata.created_at,
             integrity_status=status,
+            workspace_root_hash=metadata.workspace_root_hash,
         )
         self._write_metadata(updated)
         self._record_audit(
@@ -267,6 +271,7 @@ class BridgePatchExportService:
         patch_sha256: str,
         created_at: datetime,
         integrity_status: PatchIntegrityStatus,
+        workspace_root_hash: str | None = None,
     ) -> BridgePatchExport:
         created = tuple(item.path for item in review.changed_files if item.change_type == "created")
         modified = tuple(item.path for item in review.changed_files if item.change_type == "modified")
@@ -283,7 +288,7 @@ class BridgePatchExportService:
             created_files=created,
             modified_files=modified,
             deleted_files=deleted,
-            workspace_root_hash=review.workspace_root_hash or "",
+            workspace_root_hash=workspace_root_hash or review.workspace_root_hash or "",
             review_status_at_export=review.status,
             apply_enabled=False,
             integrity_status=integrity_status,

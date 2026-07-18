@@ -15,6 +15,7 @@ import {
   locateAgy,
   missingLiveFlags,
   orderedEvents,
+  packageJsonCandidates,
   resolveCommandOnPath,
   selectReadinessStatus,
   snapshotWorkspace,
@@ -80,6 +81,51 @@ test("version detection uses a fixed non-shell version probe when metadata is ab
   assert.equal(calls[1].command, "C:\\qa\\agy.exe");
   assert.deepEqual(calls[1].args, ["--version"]);
   assert.equal(calls[1].options.shell, false);
+});
+
+test("Windows version metadata candidates use Windows path semantics", () => {
+  const candidates = packageJsonCandidates("C:\\qa\\agy.exe", "win32");
+  assert.equal(candidates[0], "C:\\qa\\package.json");
+  assert.equal(candidates[1], "C:\\qa\\node_modules\\agy\\package.json");
+  assert.equal(candidates.includes(path.resolve("package.json")), false);
+});
+
+test("POSIX version metadata candidates and AGY package metadata remain supported", () => {
+  const candidates = packageJsonCandidates("/usr/local/bin/agy", "linux");
+  assert.equal(candidates[0], "/usr/local/bin/package.json");
+  assert.equal(candidates[1], "/usr/local/bin/node_modules/agy/package.json");
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "forgex-agy-version-"));
+  const executable = path.join(root, "bin", "agy");
+  fs.mkdirSync(path.dirname(executable), { recursive: true });
+  fs.writeFileSync(executable, "fixture");
+  fs.writeFileSync(
+    path.join(root, "bin", "package.json"),
+    JSON.stringify({ name: "@google/antigravity", version: "1.2.3" }),
+  );
+  assert.equal(detectInstalledVersion(executable, () => {
+    throw new Error("metadata should avoid command probing");
+  }, process.platform), "1.2.3");
+});
+
+test("version detection ignores unrelated package metadata", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "forgex-agy-version-"));
+  const executable = path.join(root, "bin", "agy");
+  fs.mkdirSync(path.dirname(executable), { recursive: true });
+  fs.writeFileSync(executable, "fixture");
+  fs.writeFileSync(
+    path.join(root, "bin", "package.json"),
+    JSON.stringify({ name: "forgex", version: "0.1.0" }),
+  );
+  const calls = [];
+  const version = detectInstalledVersion(executable, (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, stdout: "1.0.14\n" };
+  }, process.platform);
+  assert.equal(version, "1.0.14");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, ["--version"]);
+  assert.equal(calls[0].options.shell, false);
 });
 
 test("readiness classification safely distinguishes installation authentication and backend blockers", () => {

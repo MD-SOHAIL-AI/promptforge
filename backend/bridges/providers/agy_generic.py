@@ -9,8 +9,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from backend.connection_registry import ConnectionRegistry
 from ..models import BridgeDetectionResult as LegacyDetectionResult
 from ..run_models import BridgeSandboxRun
 from .antigravity_runner import (
@@ -136,14 +138,16 @@ class AGYBridgeProvider(BridgeProvider):
     def __init__(
         self,
         *,
-        detector: Callable[[], LegacyDetectionResult],
+        detector: Callable[[], LegacyDetectionResult] | None = None,
         runner: AGYRunner,
         artifact_root: str | Path,
         execution_enabled: bool = False,
         availability_override: bool = False,
         poll_interval_seconds: float = 0.01,
+        connections: ConnectionRegistry | None = None,
     ) -> None:
         self._detector = detector
+        self._connections = connections
         self._runner = runner
         self._artifact_root = Path(artifact_root).resolve()
         self._execution_enabled = execution_enabled
@@ -182,7 +186,28 @@ class AGYBridgeProvider(BridgeProvider):
         )
 
     async def detect(self) -> BridgeDetectionResult:
+        if self._connections is not None:
+            record = await asyncio.to_thread(self._connections.refresh_status, self._connections.AGY_ID)
+            self._detected_available = record.connection_ready
+            self._detected_version = record.version
+            authentication = (
+                "authenticated" if record.auth_state.value == "authenticated" else
+                "unauthenticated" if record.auth_state.value == "signed_out" else
+                "unknown"
+            )
+            return BridgeDetectionResult(
+                provider_id=self.provider_id,
+                installed=record.detected,
+                available=record.connection_ready,
+                safe_message="AGY CLI connection is ready." if record.connection_ready else "AGY authentication is unavailable or unverified.",
+                provider_version=record.version,
+                authentication_status=authentication,
+                unavailability_code=None if record.connection_ready else BridgeErrorCode.PROVIDER_UNAVAILABLE.value,
+                capabilities=self.capabilities(),
+            )
         try:
+            if self._detector is None:
+                raise RuntimeError("canonical connection registry required")
             legacy = await asyncio.to_thread(self._detector)
         except Exception:
             self._detected_available = False
@@ -229,6 +254,13 @@ class AGYBridgeProvider(BridgeProvider):
                 valid=False,
                 failure_code=BridgeErrorCode.PROVIDER_DISABLED.value,
                 safe_message="Generic AGY adapter execution is disabled.",
+            )
+        detected = await self.detect()
+        if not detected.available:
+            return BridgeValidationResult(
+                valid=False,
+                failure_code=BridgeErrorCode.PROVIDER_UNAVAILABLE.value,
+                safe_message=detected.safe_message,
             )
         if not self._runner.is_enabled():
             return BridgeValidationResult(

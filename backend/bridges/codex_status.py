@@ -95,6 +95,55 @@ class CodexAlignedStatus:
         }
 
 
+def codex_state_semantics(
+    status: CodexAlignedStatus,
+    *,
+    model_router_enabled: bool,
+    sandbox_execution_enabled: bool,
+) -> dict[str, object]:
+    """Describe independent Codex capabilities without granting new authority."""
+
+    cli_installed = bool(status.codex_installed)
+    auth_status = status.auth_status
+    model_router_available = bool(
+        cli_installed
+        and auth_status == "signed_in"
+        and status.oauth_bridge_ready
+    )
+    product_route_allowed = False
+    active_workspace_mutation_allowed = False
+    sandbox_status = "enabled" if sandbox_execution_enabled else "disabled"
+
+    if not cli_installed:
+        reason = "Codex CLI is not installed; model-router and product execution are unavailable."
+    elif auth_status != "signed_in":
+        reason = "Codex CLI is installed but not signed in; product execution remains disabled."
+    elif model_router_enabled or sandbox_execution_enabled:
+        reason = (
+            "Codex CLI is signed in and explicitly enabled for model-router or managed-sandbox use, "
+            "but product routing and active-workspace mutation remain disabled."
+        )
+    else:
+        reason = "Codex CLI is signed in, but model-router and product execution remain disabled."
+
+    return {
+        "codex_cli_installed": cli_installed,
+        "codex_auth_status": auth_status,
+        "codex_model_router_available": model_router_available,
+        "codex_model_router_enabled": bool(model_router_enabled),
+        "codex_sandbox_execution_enabled": bool(sandbox_execution_enabled),
+        "codex_sandbox_execution_status": sandbox_status,
+        "codex_product_route_allowed": product_route_allowed,
+        "codex_active_workspace_mutation_allowed": active_workspace_mutation_allowed,
+        "codex_oauth_bridge_status": "qa_only",
+        "codex_status_reason": reason,
+        # Compatibility aliases. These are derived from the explicit fields.
+        "codex_provider_state": "product_disabled",
+        "codex_routing_allowed": product_route_allowed,
+        "codex_execution_enabled": bool(sandbox_execution_enabled),
+    }
+
+
 class CodexStatusService:
     """Runs only official, non-mutating Codex status commands in a neutral directory."""
 

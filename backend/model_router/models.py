@@ -87,7 +87,7 @@ class ModelRequest:
     provider_id: str | None = None
     temperature: float = 0.7
     max_tokens: int = 1024
-    allow_fallback: bool = True
+    allow_fallback: bool = False
     local_only: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -120,7 +120,7 @@ class ModelRoute:
     task_type: TaskType
     provider_id: str
     model_id: str
-    fallback_enabled: bool = True
+    fallback_enabled: bool = False
     fallback_provider_id: str | None = None
     local_only: bool = False
 

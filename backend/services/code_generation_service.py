@@ -49,6 +49,22 @@ from .generation_validators import strip_file_content, validate_chunk_file
 from .chunked_generation_writer import ChunkedGenerationWriter, WorkspaceGenerationTransaction
 from .generation_diagnostics_store import GenerationDiagnosticsStore
 
+_NON_FALLBACK_ERROR_CODES = frozenset({
+    "authentication_required",
+    "authentication_error",
+    "auth_error",
+    "invalid_credentials",
+    "missing_credentials",
+    "credential_missing",
+    "configuration_error",
+    "policy_denied",
+    "recipient_not_approved",
+    "consent_required",
+    "disclosure_denied",
+    "unapproved_external_disclosure",
+    "fallback_not_authorized",
+})
+
 __all__ = [
     "CodeGenerationError",
     "CodeGenerationRequest",
@@ -356,7 +372,7 @@ class CodeGenerationService:
         retry_backoff_s: float = DEFAULT_LLM_RETRY_BACKOFF_SECONDS,
         max_repair_attempts: int = 1,
         fallback_llm_service: LLMService | None = None,
-        fallback_enabled: bool = True,
+        fallback_enabled: bool = False,
         diagnostics_store: GenerationDiagnosticsStore | None = None,
     ) -> None:
         if not isinstance(llm_service, LLMService):
@@ -587,8 +603,10 @@ class CodeGenerationService:
                     rollback_performed=rolled_back,
                     message="Restored workspace after failed generation",
                 )
-                if isinstance(exc, LLMError) and _supports_builtin_wifi_monitor(
-                    request, target_board, framework
+                if (
+                    isinstance(exc, LLMError)
+                    and self._builtin_fallback_allowed(request, exc)
+                    and _supports_builtin_wifi_monitor(request, target_board, framework)
                 ):
                     return await self._generate_builtin_wifi_monitor_fallback(
                         request,
@@ -655,7 +673,10 @@ class CodeGenerationService:
             )
             return result
         except LLMError as provider_error:
-            if _supports_builtin_wifi_monitor(request, target_board, framework):
+            if (
+                self._builtin_fallback_allowed(request, provider_error)
+                and _supports_builtin_wifi_monitor(request, target_board, framework)
+            ):
                 return await self._generate_builtin_wifi_monitor_fallback(
                     request,
                     project_name=project_name,
@@ -863,8 +884,9 @@ class CodeGenerationService:
             "task_type": "code_generation",
             "attempt_type": attempt_type,
             "attempt_number": attempt_number,
-            "allow_fallback": _metadata_bool(request.context.metadata, "fallback_enabled", True) and not fallback_used,
+            "allow_fallback": _metadata_bool(request.context.metadata, "fallback_enabled", False) and not fallback_used,
             "local_only": _metadata_bool(request.context.metadata, "local_only", False),
+            **_fallback_authorization_metadata(request.context.metadata),
         }
         skip_provider = request.context.metadata.get("skip_provider_id")
         if isinstance(skip_provider, str) and skip_provider.strip():
@@ -1318,8 +1340,9 @@ class CodeGenerationService:
                         "task_type": "code_generation",
                         "attempt_type": attempt_type,
                         "attempt_number": attempt_number,
-                        "allow_fallback": True,
+                        "allow_fallback": False,
                         "local_only": _metadata_bool(request.context.metadata, "local_only", False),
+                        **_fallback_authorization_metadata(request.context.metadata),
                     },
                 ),
                 llm_service=llm_service,
@@ -1430,8 +1453,9 @@ class CodeGenerationService:
                             "attempt_type": attempt_type,
                             "attempt_number": attempt_number,
                             "target_file": path,
-                            "allow_fallback": not fallback_used,
+                            "allow_fallback": _metadata_bool(request.context.metadata, "fallback_enabled", False) and not fallback_used,
                             "local_only": _metadata_bool(request.context.metadata, "local_only", False),
+                            **_fallback_authorization_metadata(request.context.metadata),
                             **({"skip_provider_id": attempts[0].provider_id} if fallback_used and attempts else {}),
                         },
                     ),
@@ -1744,15 +1768,37 @@ class CodeGenerationService:
             + self._build_prompt(request, project_name=project_name)
         )
 
+    def _builtin_fallback_allowed(
+        self,
+        request: CodeGenerationRequest,
+        error: LLMError,
+    ) -> bool:
+        if not self._fallback_enabled:
+            return False
+        if not _metadata_bool(request.context.metadata, "fallback_enabled", False):
+            return False
+        return error.code.casefold() not in _NON_FALLBACK_ERROR_CODES
+
     def _fallback_allowed(self, request: CodeGenerationRequest) -> bool:
         if not self._fallback_enabled:
             return False
         metadata = request.context.metadata
-        if _metadata_bool(metadata, "fallback_enabled", True) is False:
+        if _metadata_bool(metadata, "fallback_enabled", False) is False:
             return False
         if _metadata_bool(metadata, "local_only", False):
             return False
-        return self._fallback_llm_service is not None or _router_like(self._llm_service)
+        primary_provider = _provider_id(self._llm_service)
+        if self._fallback_llm_service is not None:
+            fallback_provider = _provider_id(self._fallback_llm_service)
+        elif _router_like(self._llm_service):
+            try:
+                route = self._llm_service.registry.route_for_task("code_generation")  # type: ignore[attr-defined]
+                fallback_provider = route.fallback_provider_id
+            except Exception:
+                return False
+        else:
+            return False
+        return _fallback_evidence_valid(metadata, primary_provider, fallback_provider)
 
     def _with_generation_report(
         self,
@@ -2383,6 +2429,52 @@ def _metadata_bool(metadata: Mapping[str, Any], key: str, default: bool) -> bool
     return value if isinstance(value, bool) else default
 
 
+def _fallback_authorization_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    allowed = (
+        "fallback_policy",
+        "consent_granted",
+        "approved_recipients",
+        "approved_provider_groups",
+        "provider_group_membership",
+    )
+    return {key: metadata[key] for key in allowed if key in metadata}
+
+
+def _fallback_evidence_valid(
+    metadata: Mapping[str, Any],
+    primary_provider: str,
+    fallback_provider: str | None,
+) -> bool:
+    if not fallback_provider:
+        return False
+    fallback_provider = fallback_provider.casefold()
+    primary_provider = primary_provider.casefold()
+    policy = metadata.get("fallback_policy")
+    if primary_provider == fallback_provider:
+        return policy == "same_provider"
+    if not _metadata_bool(metadata, "consent_granted", False):
+        return False
+    recipients = metadata.get("approved_recipients")
+    approved_recipients = {
+        value.casefold() for value in recipients if isinstance(value, str)
+    } if isinstance(recipients, Sequence) and not isinstance(recipients, str) else set()
+    if not {primary_provider, fallback_provider}.issubset(approved_recipients):
+        return False
+    if policy == "ask_before_cross_provider":
+        return True
+    if policy != "approved_provider_group":
+        return False
+    groups = metadata.get("approved_provider_groups")
+    approved_groups = {
+        value for value in groups if isinstance(value, str) and value
+    } if isinstance(groups, Sequence) and not isinstance(groups, str) else set()
+    membership = metadata.get("provider_group_membership")
+    if not isinstance(membership, Mapping):
+        return False
+    primary_group = membership.get(primary_provider)
+    fallback_group = membership.get(fallback_provider)
+    return isinstance(primary_group, str) and primary_group == fallback_group and primary_group in approved_groups
+
 def _router_like(service: LLMService) -> bool:
     return hasattr(service, "registry") and hasattr(service, "generate_model")
 
@@ -2444,18 +2536,16 @@ def _should_use_builtin_blink(
     if not _router_like(llm_service):
         return False
     registry = getattr(llm_service, "registry", None)
-    list_providers = getattr(registry, "list_providers", None)
-    if not callable(list_providers):
+    connections = getattr(registry, "connections", None)
+    if connections is None:
         return False
     try:
-        providers = list_providers()
+        records = connections.list()
     except Exception:
         return False
     return not any(
-        bool(getattr(provider, "configured", False))
-        and bool(getattr(provider, "enabled", False))
-        and not bool(getattr(provider, "local", False))
-        for provider in providers
+        record.provider_type.value == "remote_api" and record.connection_ready
+        for record in records
     )
 
 

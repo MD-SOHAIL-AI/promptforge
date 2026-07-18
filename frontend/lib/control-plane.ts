@@ -1,0 +1,16 @@
+export type SurfacePhase="loading"|"ready"|"unavailable"|"reconnecting";
+export interface ConnectionView{connection_id:string;provider_id:string;account_name:string;display_name:string;provider_type:string;auth_type:string;auth_state:string;transport_status:string;detected:boolean;connected:boolean;authenticated:boolean;enabled:boolean;healthy:boolean;policy_eligible:boolean;production_eligible:boolean;safe_message?:string|null;version?:string|null}
+export interface ConnectionsReadModel{schema_version:number;connections:ConnectionView[];authority:"backend"}
+export interface ModelsRoutesReadModel{schema_version:number;providers:Array<Record<string,unknown>>;routes:Array<Record<string,unknown>>;decisions:Array<Record<string,unknown>>;usage:Array<Record<string,unknown>>;fallback_requires_consent:boolean;authority:"backend"}
+export interface ProfilesReadModel{schema_version:number;drafts:Array<Record<string,unknown>>;versions:Array<Record<string,unknown>>;authority:"backend"}
+export interface PoliciesReadModel{schema_version:number;values:Record<string,boolean|number|string>;pending_approvals:Array<Record<string,unknown>>;authority:"backend"}
+export interface RunView{run_id:string;status:string;version:number;safe_summary?:string|null;failure_code?:string|null;created_at:string;updated_at:string;events:Array<Record<string,unknown>>;approvals:Array<Record<string,unknown>>;artifacts:Array<Record<string,unknown>>;cost_micros:number;recovery:{resumable:boolean;requires_approval:boolean}}
+export interface RunsReadModel{schema_version:number;runs:RunView[];authority:"backend"}
+
+const BASE="/api/promptforge/control-plane";
+function idempotencyKey(){if(typeof crypto!=="undefined"&&"randomUUID" in crypto)return crypto.randomUUID();return `ui-${Date.now()}-${Math.random().toString(36).slice(2)}`}
+async function response<T>(request:Promise<Response>){const value=await request;if(!value.ok){let message=`Control plane unavailable (${value.status})`;try{const body=await value.json() as {message?:string;detail?:string};message=body.message??body.detail??message}catch{}throw new Error(message)}return value.json() as Promise<T>}
+export function readControlPlane<T>(path:string){return response<T>(fetch(`${BASE}${path}`,{cache:"no-store"}))}
+export function commandControlPlane<T>(path:string,method:"POST"|"PATCH"="POST",body:Record<string,unknown>={}){return response<T>(fetch(`${BASE}${path}`,{method,headers:{"Content-Type":"application/json","Idempotency-Key":idempotencyKey()},body:JSON.stringify(body),cache:"no-store"}))}
+export function deriveSurfacePhase(input:{hasData:boolean;loading:boolean;error:boolean}):SurfacePhase{if(input.loading&&!input.hasData)return"loading";if(input.error&&input.hasData)return"reconnecting";if(input.error)return"unavailable";return"ready"}
+export function workflowPresentation(status:string){if(status==="completed")return{tone:"success",label:"Completed"};if(status==="failed"||status==="timed_out"||status==="cancelled")return{tone:"error",label:status.replaceAll("_"," ")};if(status.startsWith("awaiting_"))return{tone:"warning",label:status.replace("awaiting_","Waiting for ").replaceAll("_"," ")};return{tone:"info",label:status.replaceAll("_"," ")}}

@@ -43,6 +43,12 @@ const FORBIDDEN_PUBLIC_KEYS = new Set([
   "patch",
   "file_content",
 ]);
+const AGY_PACKAGE_NAMES = new Set([
+  "agy",
+  "antigravity",
+  "@google/agy",
+  "@google/antigravity",
+]);
 
 export function missingLiveFlags(env) {
   return REQUIRED_LIVE_FLAGS.filter((name) => env[name] !== "1");
@@ -150,13 +156,18 @@ export function resolveCommandOnPath(command, env = process.env, platform = proc
 
 export function detectInstalledVersion(resolvedPath, spawnSync, platform = process.platform) {
   if (!resolvedPath) return null;
-  for (const candidate of packageJsonCandidates(resolvedPath)) {
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  for (const candidate of packageJsonCandidates(resolvedPath, platform)) {
     try {
       const value = JSON.parse(fs.readFileSync(candidate, "utf8"));
-      if (typeof value.version === "string" && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/.test(value.version)) return value.version;
+      if (
+        AGY_PACKAGE_NAMES.has(value.name)
+        && typeof value.version === "string"
+        && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/.test(value.version)
+      ) return value.version;
     } catch {}
   }
-  if (platform === "win32" && path.extname(resolvedPath).toLowerCase() === ".exe") {
+  if (platform === "win32" && pathApi.extname(resolvedPath).toLowerCase() === ".exe") {
     const result = spawnSync(
       "powershell.exe",
       ["-NoProfile", "-Command", "(Get-Item -LiteralPath $args[0]).VersionInfo.ProductVersion", resolvedPath],
@@ -176,17 +187,18 @@ export function detectInstalledVersion(resolvedPath, spawnSync, platform = proce
   return null;
 }
 
-function packageJsonCandidates(resolvedPath) {
-  const start = path.dirname(resolvedPath);
+export function packageJsonCandidates(resolvedPath, platform = process.platform) {
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const start = pathApi.dirname(resolvedPath);
   const values = [];
   let current = start;
   for (let depth = 0; depth < 6; depth += 1) {
-    values.push(path.join(current, "package.json"));
-    values.push(path.join(current, "node_modules", "agy", "package.json"));
-    values.push(path.join(current, "node_modules", "antigravity", "package.json"));
-    values.push(path.join(current, "node_modules", "@google", "agy", "package.json"));
-    values.push(path.join(current, "node_modules", "@google", "antigravity", "package.json"));
-    const parent = path.dirname(current);
+    values.push(pathApi.join(current, "package.json"));
+    values.push(pathApi.join(current, "node_modules", "agy", "package.json"));
+    values.push(pathApi.join(current, "node_modules", "antigravity", "package.json"));
+    values.push(pathApi.join(current, "node_modules", "@google", "agy", "package.json"));
+    values.push(pathApi.join(current, "node_modules", "@google", "antigravity", "package.json"));
+    const parent = pathApi.dirname(current);
     if (parent === current) break;
     current = parent;
   }

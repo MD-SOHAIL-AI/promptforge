@@ -1,3 +1,2 @@
-# Optional dependency for the feature-gated AGY SDK sidecar.
 -r requirements.txt
 google-antigravity

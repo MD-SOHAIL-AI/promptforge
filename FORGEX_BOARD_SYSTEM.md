@@ -169,6 +169,7 @@ Template variables:
 
 Templates must generate valid PlatformIO projects first, then later support vendor-native SDK projects.
 
+
 ## Board SDK Registry
 
 SDK/toolchain record:

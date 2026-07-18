@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .models import ModelInfo, ModelProvider, ModelRoute, TaskType
 from .storage import ProviderSettingsStorage, mask_secret
@@ -85,24 +85,33 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         "Anthropic API",
         "api_key",
         False,
-        "claude-3-5-haiku-latest",
+        "claude-sonnet-4-5",
         env_key="ANTHROPIC_API_KEY",
         base_url="https://api.anthropic.com/v1",
         env_model="ANTHROPIC_MODEL",
-        models=("claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"),
-        available=False,
+        models=("claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-6"),
     ),
     "cerebras": ProviderDefinition(
         "cerebras",
         "Cerebras API",
         "api_key",
         False,
-        "llama-3.3-70b",
+        "gpt-oss-120b",
         env_key="CEREBRAS_API_KEY",
         base_url="https://api.cerebras.ai/v1",
         env_model="CEREBRAS_MODEL",
-        models=("llama-3.3-70b",),
-        available=False,
+        models=("gpt-oss-120b", "llama3.1-8b"),
+    ),
+    "nvidia_nim": ProviderDefinition(
+        "nvidia_nim",
+        "NVIDIA NIM",
+        "api_key",
+        False,
+        "meta/llama-3.1-70b-instruct",
+        env_key="NVIDIA_API_KEY",
+        base_url="https://integrate.api.nvidia.com/v1",
+        env_model="NVIDIA_NIM_MODEL",
+        models=("meta/llama-3.1-70b-instruct",),
     ),
     "lmstudio": ProviderDefinition(
         "lmstudio",
@@ -124,23 +133,24 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         env_model="OLLAMA_MODEL",
         models=("llama3.1", "codellama", "mistral"),
     ),
-    "codex": ProviderDefinition(
-        "codex",
-        "Codex CLI",
-        "cli_session",
-        True,
-        "codex-agent",
-        models=("codex-agent",),
-    ),
 }
 
-FALLBACK_ORDER = ("openrouter", "openai", "groq", "anthropic")
-LOCAL_FALLBACK_ORDER = ("codex",)
+FALLBACK_ORDER = ("openrouter", "openai", "anthropic", "gemini", "groq", "cerebras", "nvidia_nim")
+LOCAL_FALLBACK_ORDER: tuple[str, ...] = ()
 
 
 class ProviderRegistry:
     def __init__(self, storage: ProviderSettingsStorage | None = None) -> None:
         self.storage = storage or ProviderSettingsStorage()
+        self._canonical_credential_reader: Callable[[str], str | None] | None = None
+        self._canonical_health_writer: Callable[[str, dict[str, Any]], None] | None = None
+
+    def bind_canonical_credential_reader(self, reader: Callable[[str], str | None]) -> None:
+        """Bind the deprecated registry surface to ConnectionRegistry authority."""
+        self._canonical_credential_reader = reader
+
+    def bind_canonical_health_writer(self, writer: Callable[[str, dict[str, Any]], None]) -> None:
+        self._canonical_health_writer = writer
 
     def provider_ids(self) -> tuple[str, ...]:
         return tuple(PROVIDERS)
@@ -240,6 +250,9 @@ class ProviderRegistry:
 
     def save_health(self, provider_id: str, health: dict[str, Any]) -> None:
         self.definition(provider_id)
+        if self._canonical_health_writer is not None:
+            self._canonical_health_writer(provider_id, health)
+            return
         self.storage.save_provider_health(provider_id, health)
 
     def save_models(self, provider_id: str, models: list[ModelInfo]) -> None:
@@ -250,17 +263,17 @@ class ProviderRegistry:
         )
 
     def api_key(self, provider_id: str) -> str | None:
+        """Deprecated storage accessor; production uses ConnectionRegistry.
+
+        Environment variables are deliberately excluded: their presence is not
+        canonical credential or authentication evidence.
+        """
         definition = self.definition(provider_id)
         if definition.local:
             return None
-        stored = self.storage.api_key(provider_id)
-        if stored:
-            return stored
-        if definition.env_key:
-            value = os.getenv(definition.env_key, "").strip()
-            if value:
-                return value
-        return None
+        if self._canonical_credential_reader is not None:
+            return self._canonical_credential_reader(provider_id)
+        return self.storage.api_key(provider_id)
 
     def base_url(self, provider_id: str) -> str | None:
         definition = self.definition(provider_id)
@@ -295,25 +308,16 @@ class ProviderRegistry:
                 task_type=task_type,  # type: ignore[arg-type]
                 provider_id=provider_id,
                 model_id=str(saved.get("model_id") or self.default_model(provider_id)),
-                fallback_enabled=bool(saved.get("fallback_enabled", True)),
+                fallback_enabled=bool(saved.get("fallback_enabled", False)),
                 fallback_provider_id=(str(saved["fallback_provider_id"]) if saved.get("fallback_provider_id") else None),
                 local_only=bool(saved.get("local_only", False)),
-            )
-        if task_type == "code_generation" and os.getenv("FORGEX_ENABLE_CODEX_PROVIDER", "").strip() == "1":
-            return ModelRoute(
-                task_type=task_type,  # type: ignore[arg-type]
-                provider_id="codex",
-                model_id=self.default_model("codex"),
-                fallback_enabled=False,
-                fallback_provider_id=None,
-                local_only=False,
             )
         return ModelRoute(
             task_type=task_type,  # type: ignore[arg-type]
             provider_id="openrouter",
             model_id=self.default_model("openrouter"),
-            fallback_enabled=True,
-            fallback_provider_id="openai",
+            fallback_enabled=False,
+            fallback_provider_id=None,
         )
 
     def list_routes(self) -> list[ModelRoute]:

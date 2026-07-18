@@ -911,15 +911,18 @@ export function usePromptForgeWorkspace() {
           err,
           "This folder is not a supported ForgeX project yet. No platformio.ini was found.",
         );
-        setError(
-          message.includes("platformio.ini")
-            ? message
-            : "This folder is not a supported ForgeX project yet. No platformio.ini was found.",
-        );
+        const visibleMessage = message.includes("platformio.ini")
+          ? message
+          : "This folder could not be opened as a ForgeX workspace. Check that it exists and is accessible.";
+        setError(visibleMessage);
+        await dialogs.message({
+          title: "Workspace could not be opened",
+          description: visibleMessage,
+        });
         return null;
       }
     },
-    [addLog, loadProjectFiles, refreshProjects, rememberDesktopWorkspacePath, reportError, selectProject],
+    [addLog, dialogs, loadProjectFiles, refreshProjects, rememberDesktopWorkspacePath, reportError, selectProject],
   );
 
   const buildActiveProject = useCallback(async () => {

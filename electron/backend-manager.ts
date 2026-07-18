@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import http from "node:http";
 
-import { resolveBackendCwd, resolveBackendPort, resolveBackendUrl } from "./paths";
+import { resolveBackendCwd, resolveBackendDataRoot, resolveBackendPort, resolveBackendUrl } from "./paths";
 
 export type BackendState = "stopped" | "starting" | "ready" | "crashed";
 
@@ -124,6 +124,7 @@ export class BackendManager {
           PROMPTFORGE_BACKEND_PORT: String(this.port),
           PROMPTFORGE_DESKTOP: "1",
           PROMPTFORGE_BACKEND_URL: this.url,
+          PROMPTFORGE_DATA_ROOT: resolveBackendDataRoot(),
         },
         windowsHide: true,
       },

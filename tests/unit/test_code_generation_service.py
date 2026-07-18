@@ -104,6 +104,7 @@ def context(
     board: str = "ESP32",
     framework: str = "PlatformIO",
     project_path: str | None = "workspace/projects/Blink Demo",
+    metadata: dict[str, Any] | None = None,
 ) -> ExecutionContext:
     return ExecutionContext(
         task_id=task_id,
@@ -111,7 +112,7 @@ def context(
         target_board=board,
         framework=framework,
         simulation_enabled=True,
-        metadata={"pin": 2},
+        metadata={"pin": 2, **(metadata or {})},
     )
 
 
@@ -515,9 +516,10 @@ def test_fallback_model_is_used_when_repair_fails() -> None:
         primary,
         fallback_llm_service=fallback,
         retry_backoff_s=0,
+        fallback_enabled=True,
     )
 
-    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context(metadata={"fallback_enabled": True, "fallback_policy": "ask_before_cross_provider", "consent_granted": True, "approved_recipients": ["openai", "openrouter"]}))))
 
     assert len(primary.requests) == 2
     assert len(fallback.requests) == 1
@@ -526,14 +528,14 @@ def test_fallback_model_is_used_when_repair_fails() -> None:
     assert report["model_id"] == "strong"
 
 
-def test_fallback_is_not_used_when_disabled() -> None:
+def test_fallback_is_not_used_without_policy_and_consent() -> None:
     primary = SequentialLLMService(["Explanation only.", "Still invalid."])
     fallback = SequentialLLMService([manifest(platformio_files())], provider=LLMProvider.OPENROUTER, model="strong")
     service = CodeGenerationService(
         primary,
         fallback_llm_service=fallback,
-        fallback_enabled=False,
         retry_backoff_s=0,
+        fallback_enabled=True,
     )
 
     with pytest.raises(GeneratedOutputError):

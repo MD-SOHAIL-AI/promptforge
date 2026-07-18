@@ -1,11 +1,11 @@
 "use client";
 
-import { Activity, Bot, CheckCircle2, ChevronDown, FolderInput, Loader2, Play, RefreshCw, Send, Square, Trash2, User, Wifi, WifiOff } from "lucide-react";
+import { Activity, Bot, CheckCircle2, ChevronDown, Loader2, RefreshCw, Send, Settings2, Square, Trash2, User, Wifi, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useProductAgentRun } from "@/hooks/use-product-agent-run";
 import { promptForgeApi } from "@/lib/api";
-import type { AGYAssistedRunResult, AGYScratchImportResult, ProductAgentEvent, ProductAgentRun } from "@/types";
+import type { ProductAgentEvent, ProductAgentRun } from "@/types";
 
 const selectableProviderKinds = new Set(["fake", "api_planner", "sandbox_agent", "api_provider", "agent_provider", "template_provider"]);
 const terminalStatuses = new Set(["completed", "failed", "cancelled", "blocked", "timed_out", "interrupted"]);
@@ -53,22 +53,6 @@ interface ConversationMessage {
   activities?: string[];
 }
 
-function conversationKey(projectId: string) {
-  return `forgex-agent-conversation:${projectId}`;
-}
-
-function readConversation(projectId: string): ConversationMessage[] {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(conversationKey(projectId)) ?? "[]");
-    if (!Array.isArray(value)) return [];
-    return value.filter((item): item is ConversationMessage =>
-      item && typeof item.id === "string" && (item.role === "user" || item.role === "assistant") && typeof item.content === "string",
-    ).slice(-100);
-  } catch {
-    return [];
-  }
-}
-
 function activityLabels(events: ProductAgentEvent[]) {
   return events.slice(-12).map((event) => {
     const label = event.event_type.replaceAll(".", " ");
@@ -87,49 +71,38 @@ function formatDuration(totalSeconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function providerStateLabel(state?: string) {
-  const labels: Record<string, string> = {
-    ready: "Ready",
-    missing_api_key: "Missing API key",
-    not_logged_in: "Not logged in",
-    cli_not_found: "CLI not found",
-    rate_limited: "Rate limited",
-    usage_limit_reached: "Usage limit reached",
-    unavailable: "Unavailable",
-    disabled: "Disabled",
-    not_configured: "Not configured",
-  };
-  return labels[state ?? ""] ?? state?.replaceAll("_", " ") ?? "Unavailable";
-}
-
 export function ProductAgentPanel({
   projectId,
   projectName,
   onOpenReview,
   onWorkspaceChanged,
+  onOpenModels,
   embedded = false,
 }: {
   projectId: string | null;
   projectName?: string | null;
   onOpenReview: (reviewId: string) => void;
   onWorkspaceChanged?: () => void;
+  onOpenModels?: () => void;
   embedded?: boolean;
 }) {
   const agent = useProductAgentRun(projectId);
   const [instruction, setInstruction] = useState("");
   const [providerId, setProviderId] = useState("codex");
   const [conversation, setConversation] = useState<{ projectId: string | null; messages: ConversationMessage[] }>({ projectId: null, messages: [] });
-  const [scratchPath, setScratchPath] = useState("");
-  const [scratchImport, setScratchImport] = useState<AGYScratchImportResult | null>(null);
-  const [assistedRun, setAssistedRun] = useState<AGYAssistedRunResult | null>(null);
-  const [compatibilityBusy, setCompatibilityBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [agyBusy, setAgyBusy] = useState(false);
+  const [agyImportPath, setAgyImportPath] = useState("");
+  const [agyMessage, setAgyMessage] = useState<string | null>(null);
   const transcript = useRef<HTMLDivElement | null>(null);
   const transcriptEnd = useRef<HTMLDivElement | null>(null);
   const followLatest = useRef(true);
   const notifiedRun = useRef<string | null>(null);
-  const providers = useMemo(() => agent.providers.filter((item) => selectableProviderKinds.has(item.kind)), [agent.providers]);
+  const providers = useMemo(
+    () => agent.providers.filter((item) => selectableProviderKinds.has(item.kind) && item.routeable && !item.provider_id.startsWith("agy")),
+    [agent.providers],
+  );
   const provider = providers.find((item) => item.provider_id === providerId) ?? providers[0];
   const active = Boolean(agent.run?.cancellable);
   const canRun = Boolean(projectId && agent.enabled && provider?.routeable && instruction.trim() && !active && !agent.submitting);
@@ -170,12 +143,11 @@ export function ProductAgentPanel({
   useEffect(() => {
     followLatest.current = true;
     setShowJumpToLatest(false);
-    setConversation({ projectId, messages: projectId ? readConversation(projectId) : [] });
+    setConversation({ projectId, messages: [] });
   }, [projectId]);
 
   useEffect(() => {
     if (!projectId || conversation.projectId !== projectId) return;
-    window.localStorage.setItem(conversationKey(projectId), JSON.stringify(conversation.messages.slice(-100)));
     if (followLatest.current) {
       window.requestAnimationFrame(() => scrollToLatest("smooth"));
     }
@@ -250,23 +222,30 @@ export function ProductAgentPanel({
     }));
   }
 
+  async function generateWithAGY() {
+    setAgyBusy(true); setAgyMessage(null);
+    try {
+      const result = await promptForgeApi.runAGYAssisted();
+      if (result.review_id) onOpenReview(result.review_id);
+      else if (result.manual_import_fallback_available) setAgyMessage("AGY generated output, but not at the expected folder");
+      else setAgyMessage(result.classification);
+    } catch (error) { setAgyMessage(error instanceof Error ? error.message : "AGY run failed safely."); }
+    finally { setAgyBusy(false); }
+  }
+
+  async function importAGYScratchProject() {
+    if (!agyImportPath.trim()) return;
+    setAgyBusy(true); setAgyMessage(null);
+    try {
+      const result = await promptForgeApi.importAGYScratchProject(agyImportPath.trim());
+      if (result.review_id) onOpenReview(result.review_id);
+      else setAgyMessage(result.classification);
+    } catch (error) { setAgyMessage(error instanceof Error ? error.message : "AGY import failed safely."); }
+    finally { setAgyBusy(false); }
+  }
   function clearConversation() {
     if (!projectId || active) return;
-    window.localStorage.removeItem(conversationKey(projectId));
     setConversation({ projectId, messages: [] });
-  }
-
-  async function runLegacyAGY() {
-    setCompatibilityBusy(true);
-    try { setAssistedRun(await promptForgeApi.runAGYAssisted()); }
-    finally { setCompatibilityBusy(false); }
-  }
-
-  async function importLegacyAGY() {
-    if (!scratchPath.trim()) return;
-    setCompatibilityBusy(true);
-    try { setScratchImport(await promptForgeApi.importAGYScratchProject(scratchPath.trim())); }
-    finally { setCompatibilityBusy(false); }
   }
 
   return (
@@ -282,14 +261,20 @@ export function ProductAgentPanel({
             <button className="rounded p-1.5 text-[var(--fx-text-muted)] hover:bg-[var(--fx-hover)] disabled:opacity-30" onClick={clearConversation} disabled={!messages.length || active} title="Clear conversation"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-2">
-          <select className="h-8 min-w-0 flex-1 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2 text-[11px]" value={provider?.provider_id ?? providerId} onChange={(event) => setProviderId(event.target.value)} disabled={active}>
-            {providers.map((item) => <option key={item.provider_id} value={item.provider_id} disabled={!item.routeable}>{item.display_name ?? item.provider_id}{item.routeable ? "" : " (unavailable)"}</option>)}
-          </select>
-          <span className={`h-2 w-2 rounded-full ${provider?.routeable ? "bg-[var(--fx-success)]" : "bg-[var(--fx-warning)]"}`} />
-          <span className="text-[10px] text-[var(--fx-text-muted)]">{provider?.routeable ? "Ready" : providerStateLabel(provider?.state)}</span>
-        </div>
-        {provider?.paused_reason && !provider.routeable ? <div className="mt-2 text-[10px] text-[var(--fx-warning)]">{provider.paused_reason}</div> : null}
+        {providers.length > 0 ? (
+          <div className="mt-2 flex items-center gap-2">
+            <select className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--fx-border)] bg-[var(--fx-input)] px-2.5 text-[11px] outline-none focus:border-[var(--fx-accent)]" value={provider?.provider_id ?? providerId} onChange={(event) => setProviderId(event.target.value)} disabled={active}>
+              {providers.map((item) => <option key={item.provider_id} value={item.provider_id}>{item.display_name ?? item.provider_id}{item.model_id ? ` / ${item.model_id}` : ""}</option>)}
+            </select>
+            <span className="h-2 w-2 rounded-full bg-[var(--fx-success)]" />
+            <span className="text-[10px] text-[var(--fx-text-muted)]">Ready</span>
+          </div>
+        ) : (
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--fx-warning)]/50 bg-[var(--fx-warning-soft)] px-2.5 py-2 text-[10px] text-[var(--fx-warning)]">
+            <span>No configured provider is ready.</span>
+            <button type="button" className="flex items-center gap-1 rounded-md border border-[var(--fx-warning)]/50 px-2 py-1 font-medium" onClick={onOpenModels}><Settings2 className="h-3 w-3" /> Configure</button>
+          </div>
+        )}
       </header>
 
       <div className="relative min-h-0 flex-1">
@@ -365,7 +350,7 @@ export function ProductAgentPanel({
               <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] text-[var(--fx-text-muted)]">
                 <div><div className="text-[var(--fx-code-text)]">{formatDuration(elapsedSeconds)}</div>elapsed</div>
                 <div><div className="text-[var(--fx-code-text)]">{runProgress}%</div>phase</div>
-                <div><div className="text-[var(--fx-code-text)]">{active ? formatDuration(remainingSeconds) : "—"}</div>{active ? "until timeout" : "finished"}</div>
+                <div><div className="text-[var(--fx-code-text)]">{active ? formatDuration(remainingSeconds) : "Ã¢â‚¬â€"}</div>{active ? "until timeout" : "finished"}</div>
               </div>
               {agent.run.summary ? (
                 <div className="mt-2 min-w-0 rounded border border-[var(--fx-border-soft)] bg-[var(--fx-input)] px-2 py-1.5 text-[9px] text-[var(--fx-text-muted)]">
@@ -380,8 +365,8 @@ export function ProductAgentPanel({
                   {agent.run.provider_diagnostics ? (
                     <div className="mt-0.5 break-words text-[var(--fx-text-muted)]">
                       Provider request: {agent.run.provider_diagnostics.request_reached_provider ? "received" : agent.run.provider_diagnostics.outbound_request_count ? "attempted, not confirmed" : "not sent"}
-                      {agent.run.provider_diagnostics.http_status ? ` · HTTP ${agent.run.provider_diagnostics.http_status}` : ""}
-                      {agent.run.provider_diagnostics.provider_request_id ? ` · ${agent.run.provider_diagnostics.provider_request_id}` : ""}
+                      {agent.run.provider_diagnostics.http_status ? ` Ã‚Â· HTTP ${agent.run.provider_diagnostics.http_status}` : ""}
+                      {agent.run.provider_diagnostics.provider_request_id ? ` Ã‚Â· ${agent.run.provider_diagnostics.provider_request_id}` : ""}
                     </div>
                   ) : null}
                 </div>
@@ -447,6 +432,12 @@ export function ProductAgentPanel({
       </div>
 
       <div className="shrink-0 border-t border-[var(--fx-border)] bg-[var(--fx-panel-elevated)] p-3">
+        <details className="mb-2 rounded-lg border border-[var(--fx-border-soft)] p-2 text-[10px]">
+          <summary className="cursor-pointer font-medium">Generate with AGY</summary>
+          <button className="mt-2 rounded border border-[var(--fx-border)] px-2 py-1" disabled={agyBusy} onClick={() => void generateWithAGY()}>Run AGY and Create Review</button>
+          <div className="mt-2 flex gap-1"><input className="fx-control min-w-0 flex-1 px-2 py-1" value={agyImportPath} onChange={(event) => setAgyImportPath(event.target.value)} placeholder="Explicit managed scratch path"/><button className="rounded border border-[var(--fx-border)] px-2 py-1" disabled={agyBusy || !agyImportPath.trim()} onClick={() => void importAGYScratchProject()}>Import scratch</button></div>
+          {agyMessage ? <p className="mt-2 text-[var(--fx-warning)]">{agyMessage}</p> : null}
+        </details>
         {agent.error ? <div className="mb-2 text-[10px] text-[var(--fx-error)]">{agent.error}</div> : null}
         <div className="rounded-xl border border-[var(--fx-border)] bg-[var(--fx-input)] p-2 focus-within:border-[var(--fx-accent)]">
           <textarea className="max-h-36 min-h-16 w-full resize-none bg-transparent px-1 text-xs leading-5 outline-none placeholder:text-[var(--fx-text-muted)]" value={instruction} onChange={(event) => setInstruction(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} maxLength={16_384} placeholder="Ask the agent to change this project..." />
@@ -456,17 +447,6 @@ export function ProductAgentPanel({
           </div>
         </div>
 
-        <details className="mt-2 rounded border border-[var(--fx-border-soft)] px-2 py-1.5 text-[10px] text-[var(--fx-text-muted)]">
-          <summary className="cursor-pointer">Legacy AGY compatibility tools</summary>
-          <div className="mt-2 space-y-2">
-            <div className="font-medium text-[var(--fx-text)]">Generate with AGY</div>
-            <button className="flex h-7 items-center gap-2 rounded border border-[var(--fx-border)] px-2" disabled={compatibilityBusy} onClick={() => void runLegacyAGY()}><Play className="h-3 w-3" /> Run AGY and Create Review</button>
-            {assistedRun?.classification === "AGY_ASSISTED_EXPECTED_FOLDER_MISSING" ? <div className="text-[var(--fx-warning)]">AGY generated output, but not at the expected folder. Paste/select the generated AGY scratch folder below.</div> : null}
-            <div className="font-medium text-[var(--fx-text)]">AGY Scratch Import</div>
-            <div className="flex gap-2"><input className="h-7 min-w-0 flex-1 rounded border border-[var(--fx-border)] bg-[var(--fx-input)] px-2" value={scratchPath} onChange={(event) => setScratchPath(event.target.value)} placeholder="Exact AGY output path" /><button className="flex h-7 items-center gap-1 rounded border border-[var(--fx-border)] px-2" disabled={compatibilityBusy || !scratchPath.trim()} onClick={() => void importLegacyAGY()}><FolderInput className="h-3 w-3" /> Import</button></div>
-            {(scratchImport?.review_id || assistedRun?.review_id) ? <button className="text-[var(--fx-success)]" onClick={() => onOpenReview((scratchImport?.review_id || assistedRun?.review_id)!)}>Open created review</button> : null}
-          </div>
-        </details>
       </div>
     </section>
   );

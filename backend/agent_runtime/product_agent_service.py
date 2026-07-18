@@ -30,19 +30,20 @@ def _now() -> str:
 def _provider_failure_message(
     classification: str | None,
     *,
+    provider_id: str,
     request_reached_provider: bool,
     http_status: int | None,
 ) -> str | None:
     if classification == "API_RATE_LIMITED" and http_status == 429:
-        return "OpenRouter returned HTTP 429 for this request. Wait briefly or choose another model/provider."
+        return f"{provider_id} is rate limited. ForgeX honored the provider cooldown; retry later or choose another ready provider."
     if classification == "API_QUOTA_EXCEEDED":
-        return "OpenRouter rejected the request because quota or credit is unavailable. Check account credits and model access."
+        return f"{provider_id} rejected the request because quota or credit is unavailable. Check account credits and model access."
     if classification == "API_AUTH_INVALID":
-        return "OpenRouter rejected the saved API key. Replace the key in Models & Agents and test it again."
+        return f"{provider_id} rejected the saved API key. Replace the key in Models & Agents and test it again."
     if classification == "API_NETWORK_ERROR" and not request_reached_provider:
-        return "ForgeX could not reach OpenRouter, so no provider request was recorded. Check DNS, proxy, firewall, and connectivity."
+        return f"ForgeX could not reach {provider_id}, so no provider request was recorded. Check DNS, proxy, firewall, and connectivity."
     if classification == "API_MODEL_UNAVAILABLE":
-        return "OpenRouter could not route the selected model. Choose an available model and retry."
+        return f"{provider_id} could not route the selected model. Choose an available model and retry."
     return None
 
 
@@ -147,6 +148,7 @@ class ProductAgentRun:
         if self.status in TERMINAL_AGENT_STATUSES:
             detail = _provider_failure_message(
                 self.classification,
+                provider_id=self.actual_provider_id or self.provider_id,
                 request_reached_provider=self.request_reached_provider,
                 http_status=self.http_status,
             )
@@ -225,7 +227,7 @@ class ProductAgentService:
                     classification="API_RATE_LIMITED_COOLDOWN",
                     active_workspace_unchanged=True,
                     workspace_mode=detect_workspace_mode(workspace).value,
-                    assistant_message_override="OpenRouter is temporarily paused after a recent HTTP 429. Choose another provider or retry after five minutes.",
+                    assistant_message_override=f"{provider_id} is temporarily paused after a recent rate limit. Choose another ready provider or retry later.",
                 )
                 self._append_event(run, {"event_type": "runtime.failed", "status": "failed", "classification": run.classification})
                 with self._lock:

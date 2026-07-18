@@ -143,7 +143,7 @@ def test_model_health_caches_friendly_error(tmp_path: Path) -> None:
 
         listed = api.get("/models/providers").json()["providers"][0]
         assert listed["health_status"] == "error"
-        assert listed["last_error"] == "Invalid API key or insufficient credits"
+        assert listed["last_error"] == "Provider authentication failed."
         assert listed["last_checked_at"]
 
 

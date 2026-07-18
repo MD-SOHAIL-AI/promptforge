@@ -36,8 +36,12 @@ import time
 import threading
 from typing import AsyncIterator, Callable, Deque, Optional, Sequence
 
-import serial
-import serial.tools.list_ports
+from .pyserial_compat import (
+    PySerialUnavailableError,
+    list_ports,
+    require_pyserial,
+    serial,
+)
 
 # ---------------------------------------------------------------------------
 # Module logger — structured, lightweight, no external deps
@@ -67,6 +71,17 @@ class SerialTimeoutError(SerialRuntimeError):
 
 class SerialRuntimeAlreadyRunningError(SerialRuntimeError):
     """Raised if monitor() is called while already monitoring."""
+
+
+class SerialDependencyError(SerialRuntimeError):
+    """Raised when pyserial is unavailable for a hardware operation."""
+
+
+def _require_pyserial() -> None:
+    try:
+        require_pyserial(serial, list_ports)
+    except PySerialUnavailableError as exc:
+        raise SerialDependencyError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +266,8 @@ def _detect_port(known_vid_pid_pairs: Sequence[str]) -> Optional[str]:
 
     This is a pure function with no side effects — safe to call repeatedly.
     """
-    for port_info in serial.tools.list_ports.comports():
+    _require_pyserial()
+    for port_info in list_ports.comports():
         if port_info.vid is None or port_info.pid is None:
             continue
         vid_pid = f"{port_info.vid:04x}:{port_info.pid:04x}"
@@ -368,6 +384,7 @@ class SerialRuntime:
         SerialTimeoutError        : connect_timeout expired without success.
         SerialRuntimeAlreadyRunningError: Already in CONNECTED state.
         """
+        _require_pyserial()
         async with self._lifecycle_lock:
             if self._state == SerialConnectionState.CONNECTED:
                 raise SerialRuntimeAlreadyRunningError(
@@ -571,8 +588,9 @@ class SerialRuntime:
         Each dict contains: port, description, vid, pid, serial_number.
         Pure utility — no state side effects.
         """
+        _require_pyserial()
         ports = []
-        for p in serial.tools.list_ports.comports():
+        for p in list_ports.comports():
             ports.append({
                 "port":          p.device,
                 "description":   p.description,

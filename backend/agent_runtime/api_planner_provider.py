@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
@@ -51,10 +52,17 @@ class ApiPlannerError(ValueError):
 
 
 class ApiTransportHTTPError(Exception):
-    def __init__(self, status: int, safe_body: str = "", request_id: str | None = None) -> None:
+    def __init__(
+        self,
+        status: int,
+        safe_body: str = "",
+        request_id: str | None = None,
+        retry_after_seconds: int | None = None,
+    ) -> None:
         self.status = status
         self.safe_body = safe_body[:4096]
         self.request_id = _safe_request_id(request_id)
+        self.retry_after_seconds = retry_after_seconds if retry_after_seconds and 0 < retry_after_seconds <= 3600 else None
         super().__init__(f"http_status_{status}")
 
 
@@ -68,13 +76,17 @@ class ApiPlannerConfig:
     provider_flag: str
     default_model: str | None
     fallback_api_key_env: str | None = None
+    protocol: str = "openai"
 
     @property
     def endpoint(self) -> str:
-        return f"{self.base_url.rstrip('/')}/chat/completions"
+        suffix = "/messages" if self.protocol == "anthropic" else "/chat/completions"
+        return f"{self.base_url.rstrip('/')}{suffix}"
 
 
 API_PLANNER_CONFIGS: dict[str, ApiPlannerConfig] = {
+    "anthropic": ApiPlannerConfig("anthropic", "Anthropic API", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY", "FORGEX_ANTHROPIC_MODEL", "FORGEX_ENABLE_ANTHROPIC_PROVIDER", "claude-sonnet-4-5", protocol="anthropic"),
+    "cerebras": ApiPlannerConfig("cerebras", "Cerebras API", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", "FORGEX_CEREBRAS_MODEL", "FORGEX_ENABLE_CEREBRAS_PROVIDER", "gpt-oss-120b"),
     "gemini": ApiPlannerConfig("gemini", "Gemini API", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY", "FORGEX_GEMINI_MODEL", "FORGEX_ENABLE_GEMINI_PROVIDER", "gemini-2.5-flash"),
     "groq": ApiPlannerConfig("groq", "Groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY", "FORGEX_GROQ_MODEL", "FORGEX_ENABLE_GROQ_PROVIDER", "llama-3.1-8b-instant"),
     "openrouter": ApiPlannerConfig("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "FORGEX_OPENROUTER_MODEL", "FORGEX_ENABLE_OPENROUTER_PROVIDER", "openrouter/auto"),
@@ -118,6 +130,8 @@ class ApiPlannerProvider:
             "http_status": None,
             "provider_request_id": None,
             "safe_error_code": None,
+            "retry_count": 0,
+            "retry_after_seconds": None,
         }
 
     @property
@@ -148,18 +162,13 @@ class ApiPlannerProvider:
             })
         self._preflight(allowed_tools)
         key = self._api_key()
-        payload = {
-            "model": self.model_id,
-            "messages": [
-                {"role": "system", "content": _planner_instruction(smoke=_is_smoke_task(task))},
-                {"role": "user", "content": task},
-            ],
-            "temperature": 0,
-            "max_tokens": 8192,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-        }
+        instruction = _planner_instruction(smoke=_is_smoke_task(task))
+        payload = _request_payload(self.config, model_id=self.model_id, instruction=instruction, task=task)
         headers: dict[str, str] = {}
+        transport_key = key
+        if self.config.protocol == "anthropic":
+            headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
+            transport_key = ""
         if self.provider_id == "openrouter":
             referer = self._env.get("FORGEX_OPENROUTER_HTTP_REFERER", "").strip()
             title = self._env.get("FORGEX_OPENROUTER_TITLE", "").strip()
@@ -169,17 +178,26 @@ class ApiPlannerProvider:
                 headers["X-Title"] = title
         self._metadata["outbound_request_count"] = 1
         try:
-            response = self._transport(self.config.endpoint, payload, key, headers, self._timeout_seconds)
-            self._metadata["request_reached_provider"] = True
-        except ApiTransportHTTPError as exc:
-            self._map_http_error(exc)
+            for attempt in range(2):
+                try:
+                    response = self._transport(self.config.endpoint, payload, transport_key, headers, self._timeout_seconds)
+                    self._metadata["request_reached_provider"] = True
+                    break
+                except ApiTransportHTTPError as exc:
+                    self._metadata["retry_after_seconds"] = exc.retry_after_seconds
+                    if attempt == 0 and exc.status in {429, 503} and exc.retry_after_seconds and exc.retry_after_seconds <= 10:
+                        self._metadata["retry_count"] = 1
+                        self._metadata["outbound_request_count"] = 2
+                        time.sleep(exc.retry_after_seconds)
+                        continue
+                    self._map_http_error(exc)
         except (TimeoutError, socket.timeout, urllib.error.URLError, OSError):
             self._fail(ApiPlannerClassification.NETWORK_ERROR, "provider_network_error")
         except ApiPlannerError:
             raise
         except Exception:
             self._fail(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE, "provider_unknown_failure")
-        content = _extract_content(response)
+        content = _extract_content(response, protocol=self.config.protocol)
         try:
             plan = ProductToolPlan.parse_json(content, max_calls=5)
         except ValueError as exc:
@@ -310,13 +328,46 @@ def _validate_generated_plan(plan: ProductToolPlan, *, smoke: bool) -> None:
             raise ApiPlannerError(ApiPlannerClassification.TOOLPLAN_UNSAFE, "provider_path_unsafe") from exc
 
 
-def _extract_content(response: Mapping[str, object]) -> str:
+def _request_payload(config: ApiPlannerConfig, *, model_id: str, instruction: str, task: str) -> dict[str, object]:
+    if config.protocol == "anthropic":
+        return {
+            "model": model_id,
+            "system": instruction,
+            "messages": [{"role": "user", "content": task}],
+            "temperature": 0,
+            "max_tokens": 8192,
+            "stream": False,
+        }
+    return {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": task},
+        ],
+        "temperature": 0,
+        "max_tokens": 8192,
+        "stream": False,
+        "response_format": {"type": "json_object"},
+    }
+
+
+def _extract_content(response: Mapping[str, object], *, protocol: str = "openai") -> str:
     try:
-        choices = response["choices"]
-        if not isinstance(choices, list) or len(choices) != 1:
-            raise ValueError
-        message = choices[0]["message"]
-        content = message["content"]
+        if protocol == "anthropic":
+            blocks = response["content"]
+            if not isinstance(blocks, list):
+                raise ValueError
+            content = "".join(
+                str(block.get("text") or "")
+                for block in blocks
+                if isinstance(block, Mapping) and block.get("type") == "text"
+            )
+        else:
+            choices = response["choices"]
+            if not isinstance(choices, list) or len(choices) != 1:
+                raise ValueError
+            message = choices[0]["message"]
+            content = message["content"]
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise ApiPlannerError(ApiPlannerClassification.RESPONSE_INVALID, "provider_response_shape_invalid") from exc
     if not isinstance(content, str) or not content or len(content.encode("utf-8")) > MAX_API_RESPONSE_BYTES:
@@ -341,7 +392,9 @@ def post_chat_completion(
 ) -> Mapping[str, object]:
     if urlparse(url).scheme != "https":
         raise ApiPlannerError(ApiPlannerClassification.UNSAFE_ABORTED, "provider_url_unsafe")
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json", **extra_headers}
+    headers = {"Content-Type": "application/json", "Accept": "application/json", **extra_headers}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=True).encode("utf-8"), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
@@ -349,7 +402,12 @@ def post_chat_completion(
     except urllib.error.HTTPError as exc:
         body = exc.read(4096).decode("utf-8", errors="replace")
         request_id = exc.headers.get("x-request-id") or exc.headers.get("cf-ray")
-        raise ApiTransportHTTPError(exc.code, body, request_id) from exc
+        retry_after_raw = exc.headers.get("Retry-After")
+        try:
+            retry_after = int(retry_after_raw) if retry_after_raw else None
+        except ValueError:
+            retry_after = None
+        raise ApiTransportHTTPError(exc.code, body, request_id, retry_after) from exc
     if len(data) > MAX_API_RESPONSE_BYTES:
         raise ApiPlannerError(ApiPlannerClassification.RESPONSE_INVALID, "provider_response_too_large")
     try:

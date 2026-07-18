@@ -12,8 +12,14 @@ from typing import Any, Literal
 BridgeReviewStatus = Literal["pending", "approved", "rejected", "expired"]
 BridgeChangeType = Literal["created", "modified", "deleted"]
 BridgeDecision = Literal["approved", "rejected"]
-BridgeArtifactSource = Literal["agy_scratch", "forgex_tool_runtime", "codex_exec", "manual_agy_scratch_folder", "expected_agy_scratch_folder"]
-BridgeArtifactType = Literal["scratch_smoke", "tool_runtime_diff", "codex_subscription_bridge_diff", "codex_oauth_bridge_smoke_diff", "scratch_project_import"]
+BridgeArtifactSource = Literal[
+    "agy_scratch", "forgex_tool_runtime", "codex_exec", "manual_agy_scratch_folder",
+    "expected_agy_scratch_folder", "api_coding_agent_fake",
+]
+BridgeArtifactType = Literal[
+    "scratch_smoke", "tool_runtime_diff", "codex_subscription_bridge_diff",
+    "codex_oauth_bridge_smoke_diff", "scratch_project_import", "api_coding_agent_workspace_diff",
+]
 
 
 def workspace_hash(workspace_root: str) -> str:

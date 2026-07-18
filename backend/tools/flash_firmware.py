@@ -15,9 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from serial.tools import list_ports
-
 from ..runtime.failure_classifier import FailureClassification, classify_failure
+from ..runtime.pyserial_compat import (
+    PySerialUnavailableError,
+    list_ports,
+    require_pyserial,
+)
 from ..runtime.result import (
     FailureResult,
     FlashResult,
@@ -153,6 +156,15 @@ class FirmwareFlasher:
                 )
         except asyncio.CancelledError:
             raise
+        except PySerialUnavailableError as exc:
+            return self._classified_failure(
+                started=started,
+                board=board,
+                port=port,
+                exception=exc,
+                signal=str(exc),
+                exception_type=type(exc).__name__,
+            )
         except Exception as exc:
             return self._classified_failure(
                 started=started,
@@ -629,6 +641,7 @@ def _stm32_target_config(artifact: BuildArtifact, board: BoardInfo) -> str:
 
 
 def _port_is_connected(port: str) -> bool:
+    require_pyserial(list_ports)
     return SerialService.is_port_available(port, list(list_ports.comports()))
 
 

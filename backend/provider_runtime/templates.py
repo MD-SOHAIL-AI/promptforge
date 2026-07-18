@@ -2,7 +2,52 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+
+COMPLEXITY_TERMS: tuple[str, ...] = (
+    "advanced",
+    "dashboard",
+    "web dashboard",
+    "web server",
+    "web",
+    "ota",
+    "over the air",
+    "wifi config",
+    "config portal",
+    "settings page",
+    "multi page",
+    "database",
+    "auth",
+    "authentication",
+    "login",
+    "sensor graph",
+    "sensor graphs",
+    "chart",
+    "charts",
+    "real time chart",
+    "real time charts",
+    "mqtt",
+    "cloud",
+    "firebase",
+    "thingspeak",
+    "blynk",
+    "bluetooth",
+    "ble",
+    "spiffs",
+    "littlefs",
+    "file upload",
+    "rest api",
+    "api endpoint",
+    "multi sensor",
+    "scheduler",
+    "rtos",
+    "freertos",
+    "task",
+    "tasks",
+    "interrupt",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,8 +58,32 @@ class VerifiedTemplate:
     files: tuple[tuple[str, str], ...]
 
     def matches(self, task: str) -> bool:
-        text = " ".join(task.casefold().split())
-        return all(keyword in text for keyword in self.keywords)
+        return self.matches_keywords(task) and not complexity_terms(task)
+
+    def matches_keywords(self, task: str) -> bool:
+        text = _normalize(task)
+        return all(_contains_term(text, keyword) for keyword in self.keywords)
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateMatchDecision:
+    template: VerifiedTemplate | None
+    template_candidate: str | None = None
+    template_match_confidence: str | None = None
+    template_match_reason: str | None = None
+    template_rejected_reason: str | None = None
+    matched_complexity_terms: tuple[str, ...] = ()
+
+    def to_safe_dict(self) -> dict[str, object]:
+        return {
+            "source": "verified_template" if self.template is not None else None,
+            "template_id": self.template.id if self.template is not None else None,
+            "template_candidate": self.template_candidate,
+            "template_match_confidence": self.template_match_confidence,
+            "template_match_reason": self.template_match_reason,
+            "template_rejected_reason": self.template_rejected_reason,
+            "matched_complexity_terms": list(self.matched_complexity_terms),
+        }
 
 
 ESP32_INI = """[env:esp32dev]\nplatform = espressif32\nboard = esp32dev\nframework = arduino\nmonitor_speed = 115200\n"""
@@ -57,6 +126,40 @@ TEMPLATES: tuple[VerifiedTemplate, ...] = (
 )
 
 
+def complexity_terms(task: str) -> tuple[str, ...]:
+    text = _normalize(task)
+    return tuple(term for term in COMPLEXITY_TERMS if _contains_term(text, term))
+
+
+def match_template_decision(task: str) -> TemplateMatchDecision:
+    candidates = [template for template in TEMPLATES if template.matches_keywords(task)]
+    blockers = complexity_terms(task)
+    candidate_id = candidates[0].id if len(candidates) == 1 else None
+    if blockers:
+        return TemplateMatchDecision(
+            template=None,
+            template_candidate=candidate_id,
+            template_rejected_reason=f"complexity_terms: {', '.join(blockers)}",
+            matched_complexity_terms=blockers,
+        )
+    if len(candidates) == 1:
+        return TemplateMatchDecision(
+            template=candidates[0],
+            template_candidate=candidates[0].id,
+            template_match_confidence="high",
+            template_match_reason="simple verified template request",
+        )
+    reason = "multiple verified template candidates" if candidates else "no verified template candidate"
+    return TemplateMatchDecision(template=None, template_rejected_reason=reason)
+
+
 def match_template(task: str) -> VerifiedTemplate | None:
-    matches = [template for template in TEMPLATES if template.matches(task)]
-    return matches[0] if len(matches) == 1 else None
+    return match_template_decision(task).template
+
+
+def _normalize(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _contains_term(text: str, term: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text) is not None

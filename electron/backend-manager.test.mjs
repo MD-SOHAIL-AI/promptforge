@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BackendManager } from "../dist/electron/backend-manager.js";
+import { resolveBackendDataRoot } from "../dist/electron/paths.js";
 
 const healthy = {
   reachable: true,
@@ -136,3 +137,30 @@ test("BackendManager cleanup does not kill reused backend", async () => {
 
   assert.deepEqual(child.killCalls, []);
 });
+
+test("resolveBackendDataRoot keeps explicit runtime overrides isolated", () => {
+  const previousDataRoot = process.env.PROMPTFORGE_DATA_ROOT;
+  const previousRuntimeRoot = process.env.PROMPTFORGE_RUNTIME_ROOT;
+  const previousRoot = process.env.PROMPTFORGE_ROOT;
+  try {
+    process.env.PROMPTFORGE_ROOT = "C:\\qa\\forgex-root";
+    delete process.env.PROMPTFORGE_DATA_ROOT;
+    delete process.env.PROMPTFORGE_RUNTIME_ROOT;
+    assert.equal(resolveBackendDataRoot(), "C:\\qa\\forgex-root");
+
+    process.env.PROMPTFORGE_DATA_ROOT = "C:\\qa\\forgex-data";
+    assert.equal(resolveBackendDataRoot(), "C:\\qa\\forgex-data");
+  } finally {
+    restoreEnv("PROMPTFORGE_DATA_ROOT", previousDataRoot);
+    restoreEnv("PROMPTFORGE_RUNTIME_ROOT", previousRuntimeRoot);
+    restoreEnv("PROMPTFORGE_ROOT", previousRoot);
+  }
+});
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}

@@ -1,0 +1,177 @@
+{
+  "callers": {
+    "browser_conversation_authority": [],
+    "codex_model_routing": [],
+    "compatibility_facades": [
+      "backend/agent_runtime/workflow_engine.py",
+      "backend/api/app.py",
+      "backend/connection_registry/__init__.py",
+      "backend/connection_registry/compatibility.py"
+    ],
+    "duplicate_registries": [
+      "backend/agent_runtime/__init__.py",
+      "backend/agent_runtime/api_product_runtime_smoke.py",
+      "backend/agent_runtime/api_provider_detect.py",
+      "backend/agent_runtime/coding_provider_registry.py",
+      "backend/agent_runtime/fake_api_coding_provider_adapter.py",
+      "backend/agent_runtime/product_agent_service.py",
+      "backend/agent_runtime/product_provider_registry.py",
+      "backend/agent_runtime/product_qa_smoke.py",
+      "backend/agent_runtime/unified_agent_service.py",
+      "backend/api/app.py",
+      "backend/bridges/generic/__init__.py",
+      "backend/bridges/generic/coordinator.py",
+      "backend/bridges/generic/registry.py",
+      "backend/workflow/adapters/coding_agent_adapter.py"
+    ],
+    "jsonl_workflow_authority": [
+      "backend/api/app.py",
+      "backend/api/routes/coding_workflow.py"
+    ],
+    "legacy_agent_panels": [
+      "frontend/components/ide/coding-workflow/UnifiedCodingWorkflowPanel.tsx",
+      "frontend/components/ide/forgex-shell.tsx",
+      "frontend/components/ide/model-settings/UnifiedCodingWorkflowPanel.tsx",
+      "frontend/components/ide/product-agent-panel.tsx"
+    ],
+    "legacy_feature_flags": [
+      "backend/agent_runtime/coding_workflow_service.py",
+      "backend/api/app.py",
+      "backend/api/routes/coding_workflow.py",
+      "backend/workflow/adapters/coding_agent_adapter.py",
+      "frontend/components/ide/forgex-shell.tsx",
+      "frontend/lib/coding-workflow-api.ts"
+    ]
+  },
+  "gates": [
+    {
+      "blockers": [],
+      "evidence": "Legacy model fallback must default off and require verified policy/consent evidence.",
+      "name": "phase1_fallback_default_deny",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "Production JSONL stores must be read-compatible but reject every new workflow.",
+      "name": "phase1_jsonl_admission_contained",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "Codex and AGY must remain review-only and production-ineligible.",
+      "name": "phase1_cli_adapters_contained",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "Incomplete unified execution must fail closed without legacy routing.",
+      "name": "phase1_unified_execution_fail_closed",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "Codex must exist only as cli_owned_session Connection and AgentAdapter.",
+      "name": "codex_out_of_model_routing",
+      "passed": true
+    },
+    {
+      "blockers": [
+        "backend/agent_runtime/__init__.py",
+        "backend/agent_runtime/api_product_runtime_smoke.py",
+        "backend/agent_runtime/api_provider_detect.py",
+        "backend/agent_runtime/coding_provider_registry.py",
+        "backend/agent_runtime/fake_api_coding_provider_adapter.py",
+        "backend/agent_runtime/product_agent_service.py",
+        "backend/agent_runtime/product_provider_registry.py",
+        "backend/agent_runtime/product_qa_smoke.py",
+        "backend/agent_runtime/unified_agent_service.py",
+        "backend/api/app.py",
+        "backend/bridges/generic/__init__.py",
+        "backend/bridges/generic/coordinator.py",
+        "backend/bridges/generic/registry.py",
+        "backend/workflow/adapters/coding_agent_adapter.py"
+      ],
+      "evidence": "Production callers must use Connection Registry plus AgentAdapter Registry.",
+      "name": "single_registry_contract",
+      "passed": false
+    },
+    {
+      "blockers": [
+        "backend/api/app.py",
+        "backend/api/routes/coding_workflow.py"
+      ],
+      "evidence": "Durable SQLite workflows must be the only production authority.",
+      "name": "sqlite_workflow_authority",
+      "passed": false
+    },
+    {
+      "blockers": [],
+      "evidence": "Browser storage cannot own conversation state.",
+      "name": "backend_conversation_authority",
+      "passed": true
+    },
+    {
+      "blockers": [
+        "frontend/components/ide/coding-workflow/UnifiedCodingWorkflowPanel.tsx",
+        "frontend/components/ide/forgex-shell.tsx",
+        "frontend/components/ide/model-settings/UnifiedCodingWorkflowPanel.tsx",
+        "frontend/components/ide/product-agent-panel.tsx"
+      ],
+      "evidence": "Legacy panels and their compatibility flag must be absent.",
+      "name": "unified_agent_ui",
+      "passed": false
+    },
+    {
+      "blockers": [
+        "backend/agent_runtime/coding_workflow_service.py",
+        "backend/api/app.py",
+        "backend/api/routes/coding_workflow.py",
+        "backend/workflow/adapters/coding_agent_adapter.py",
+        "frontend/components/ide/forgex-shell.tsx",
+        "frontend/lib/coding-workflow-api.ts"
+      ],
+      "evidence": "Cutover-only feature flags must have no production callers.",
+      "name": "redundant_feature_flags_removed",
+      "passed": false
+    },
+    {
+      "blockers": [],
+      "evidence": "AgentAdapter descriptors must reject every ForgeX-owned authority.",
+      "name": "provider_authority_denied",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "Apply and flash must consume bound ForgeX approvals before executor leases.",
+      "name": "hardware_mutation_requires_forgex_approval",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "0 durable run(s) lack exact immutable profile bindings.",
+      "name": "profile_versioned_runs",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "0 mutation approval(s) lack binding and expiry.",
+      "name": "hardware_and_apply_approval_binding",
+      "passed": true
+    },
+    {
+      "blockers": [],
+      "evidence": "0 persisted usage record(s) lack decisions; router persistence=True.",
+      "name": "explainable_model_calls",
+      "passed": true
+    },
+    {
+      "blockers": [
+        "fail_closed_executor"
+      ],
+      "evidence": "Unified Agent Workspace must complete proposal/apply/build/flash/monitor parity before legacy removal.",
+      "name": "agent_runtime_parity",
+      "passed": false
+    }
+  ],
+  "releasable": false
+}

@@ -1,0 +1,16 @@
+import{connectDurableWorkflow}from"@/lib/durable-workflow";
+export { mergeWorkspaceProjection } from "./agent-workspace-state";
+export interface AgentWorkspaceBootstrap{schema_version:number;profiles:AgentProfileChoice[];runs:Array<{run_id:string;status:string;version:number;safe_summary?:string|null;updated_at:string}>;providers:Array<Record<string,unknown>>;routes:Array<Record<string,unknown>>;adapters:Array<{adapter_id:string;display_name:string;readiness:string;production_eligible:boolean}>;authority:"backend"}
+export interface AgentProfileChoice{profile_id:string;version:number;content_hash:string;published_at:string;identity?:{display_name?:string;description?:string};role?:string;routing_policy?:Record<string,unknown>;workflow_template?:string[]}
+export interface WorkspaceAction{id:string;label:string;tone:"primary"|"danger"|"neutral"}
+export interface AgentWorkspaceProjection{schema_version:number;run:{run_id:string;status:string;version:number;safe_summary?:string|null;failure_code?:string|null};events:Array<Record<string,unknown>&{sequence:number}>;messages:Array<{message_id:string;event_sequence:number;role:"user"|"assistant"|"system";content:string;created_at:string}>;last_sequence:number;profile:{profile_id:string;profile_version:number;profile_content_hash:string}|null;plan:Array<{stage:string;current:boolean;completed:boolean}>;context_disclosure:Record<string,unknown>|null;routing_decision:Record<string,unknown>|null;review:Record<string,unknown>|null;approvals:Array<Record<string,unknown>>;artifacts:Array<Record<string,unknown>>;execution_status:{build:string;flash:string;monitor:string};verification_report:Record<string,unknown>|null;allowed_actions:WorkspaceAction[];project:{project_id?:string;project_name?:string};adapter_eligibility:Array<Record<string,unknown>>}
+const BASE="/api/promptforge/agent-workspace";
+function key(){return crypto.randomUUID()}
+async function decode<T>(request:Promise<Response>){const response=await request;if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.message??body.detail??`Agent workspace unavailable (${response.status})`)}return response.json() as Promise<T>}
+export const agentWorkspaceApi={
+ bootstrap:(projectId?:string|null)=>decode<AgentWorkspaceBootstrap>(fetch(`${BASE}/bootstrap${projectId?`?project_id=${encodeURIComponent(projectId)}`:""}`,{cache:"no-store"})),
+ run:(runId:string,after=0)=>decode<AgentWorkspaceProjection>(fetch(`${BASE}/runs/${encodeURIComponent(runId)}?after_sequence=${after}`,{cache:"no-store"})),
+ start:(body:{project_id:string;instruction:string;profile_id:string;profile_version:number;routing_override?:{provider_id:string;model_id:string}})=>decode<AgentWorkspaceProjection>(fetch(`${BASE}/runs`,{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":key()},body:JSON.stringify(body)})),
+ action:(run:AgentWorkspaceProjection,action:string)=>decode<AgentWorkspaceProjection>(fetch(`${BASE}/runs/${encodeURIComponent(run.run.run_id)}/actions`,{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":key()},body:JSON.stringify({expected_state:run.run.status,expected_version:run.run.version,action})})),
+ live:(runId:string,sequence:number,onEvent:()=>void,onResync:()=>void)=>connectDurableWorkflow(runId,sequence,onEvent,onResync),
+};

@@ -50,9 +50,9 @@ PromptForge is an **AI-powered Embedded Development Environment (EDE)** that col
 
 It is designed for engineers who want to move fast without sacrificing correctness. Every code path passes through a deterministic validation pipeline before it reaches hardware. Every execution step is streamed back to the UI in real time.
 
-**Current status:** active development. The ForgeX-owned agent runtime is integrated behind disabled-by-default product flags. The Codex CLI subscription bridge has a separate experimental QA-only path; it is never product-routeable and does not change the paused status of normal local CLI providers. Gemini, Groq, OpenRouter, OpenAI, and NVIDIA NIM are registered as disabled-by-default API planner providers for the product runtime.
+**Current status:** active development. The ForgeX-owned agent runtime is integrated behind disabled-by-default product flags. The Codex CLI subscription bridge has a separate experimental QA-only path; CLI installation/authentication status is reported separately from model-router and managed-sandbox flags, while Codex product routing remains disabled. Gemini, Groq, OpenRouter, OpenAI, and NVIDIA NIM are registered as disabled-by-default API planner providers for the product runtime.
 
-**Agent runtime provider policy:** models plan; ForgeX acts. API planners may return strict ToolPlan JSON only. ForgeX validates the plan, executes allowed tools in a managed sandbox, captures the diff, creates a Bridge Review, and requires explicit user apply. The Codex subscription bridge instead delegates authentication and model execution to the official CLI while ForgeX retains the external sandbox, diff, review, and apply boundary. It requires `--confirm-real-codex --subscription-bridge-retry`, uses `C:\forgex-codex-sandboxes`, and remains QA-only with no auto-apply/build/flash. AGY and normal Codex local CLI routing are paused, Claude CLI is disabled, and OpenCode is reference-only.
+**Agent runtime provider policy:** models plan; ForgeX acts. API planners may return strict ToolPlan JSON only. ForgeX validates the plan, executes allowed tools in a managed sandbox, captures the diff, creates a Bridge Review, and requires explicit user apply. The Codex subscription bridge instead delegates authentication and model execution to the official CLI while ForgeX retains the external sandbox, diff, review, and apply boundary. It requires `--confirm-real-codex --subscription-bridge-retry`, uses `C:\forgex-codex-sandboxes`, and remains QA-only with no auto-apply/build/flash. AGY and Codex product routing remain disabled, Claude CLI is disabled, and OpenCode is reference-only.
 
 **AGY scratch project import:** AGY remains paused as a direct editor. With `FORGEX_ENABLE_AGY_SCRATCH_IMPORT=1`, a user may paste one exact AGY-generated scratch project folder into the Agent panel. ForgeX validates only that selected tree, blocks secrets/binaries/link escapes and bounded-limit violations, copies safe text project files to a managed import sandbox, and creates a review. It never discovers the newest scratch folder and never auto-applies, builds, or flashes.
 
@@ -111,6 +111,12 @@ It is designed for engineers who want to move fast without sacrificing correctne
 
 ## Architecture
 
+For provider, model-router, agent-runtime, bridge, workflow, and frontend authority boundaries, see [Provider and Runtime Boundaries](docs/architecture/provider-runtime-boundaries.md).
+
+For the proposed provider-backed coding-agent contract, context controls, safety policy, and phased rollout, see [API Coding Agent Architecture](docs/architecture/api-coding-agent.md).
+
+For the provider-neutral Plan -> Coding Agent -> Review/Apply -> Build -> Flash -> Monitor design, see [Unified Coding-Agent Workflow](docs/architecture/unified-coding-agent-workflow.md).
+
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                          Browser                               │
@@ -120,7 +126,7 @@ It is designed for engineers who want to move fast without sacrificing correctne
 │  │  Explorer   │  │  (live events)   │  │  (firmware src) │  │
 │  └──────┬──────┘  └────────┬─────────┘  └────────┬────────┘  │
 │         └──────────────────┴────────────────────┘            │
-│            Okay, thanks.                │  Next.js / TypeScript            │
+│                                        │  Next.js / TypeScript            │
 └────────────────────────────┼──────────────────────────────────┘
                              │  HTTP + WebSocket
 ┌────────────────────────────┼──────────────────────────────────┐
@@ -175,18 +181,26 @@ cd promptforge
 
 ### 2. Backend Setup
 
-```bash
-cd backend
+Run backend setup from the repository root, where `requirements.txt` and `.env.example` are located.
 
-# Create and activate virtual environment
+Windows PowerShell:
+
+```powershell
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install platformio
+Copy-Item .env.example .env
+```
 
-# Install dependencies
-pip install -r requirements.txt
+Git Bash, Linux, or macOS:
 
-# Install PlatformIO (if not already present)
-pip install platformio
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pip install platformio
+cp .env.example .env
 ```
 
 ### 3. Frontend Setup
@@ -203,40 +217,18 @@ npm install
 
 ### Backend — `.env`
 
-Copy the example file and fill in your values:
-
-```bash
-cp backend/.env.example backend/.env
-```
+Copy the root `.env.example` to root `.env` using the command for your shell shown above, then fill in your values.
 
 ```dotenv
-# ── OpenRouter ──────────────────────────────────────────
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-
-# ── Model routing ───────────────────────────────────────
-PRIMARY_MODEL=nvidia/llama-3.1-nemotron-ultra-253b-v1:free
-FAST_MODEL=deepseek/deepseek-v3-0324:free
-
-# ── Server ──────────────────────────────────────────────
-BACKEND_HOST=0.0.0.0
-BACKEND_PORT=8000What is this? What is this? What is this?I'll leave you in a second.
-
-# ── Storage ─────────────────────────────────────────────
-WORKSPACE_ROOT=./workspaces
-ARTIFACT_ROO
-T=./artifacts
-
-# ── Runtime ─────────────────────────────────────────────
-MAX_RETRY_ATTEMPTS=3
-SERIAL_TIMEOUT=30
+PROMPTFORGE_LLM_PROVIDER=OPENROUTER
+OPENROUTER_API_KEY=your-openrouter-api-key
+PROMPTFORGE_MODEL=deepseek/deepseek-chat
+PROMPTFORGE_PROJECTS_ROOT=.promptforge/projects
 ```
 
 ### Frontend — `.env.local`
 
-```bash
-cp frontend/.env.local.example frontend/.env.local
-```
+The frontend works with its checked-in defaults. To override the backend endpoints, create an ignored `frontend/.env.local` containing:
 
 ```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -254,23 +246,24 @@ PromptForge uses a two-model routing strategy:
 | Primary | `nvidia/llama-3.1-nemotron-ultra-253b-v1:free` | Deep planning and code generation |
 | Fast path | `deepseek/deepseek-v3-0324:free` | Failure classification, quick re-runs |
 
-To use commercial models, replace the `*_MODEL` values in `.env` with any model available on [openrouter.ai](https://openrouter.ai/models). The client is provider-agnostic.
-
-```python
-# backend/core/llm_client.py — model routing is configured here
-PRIMARY_MODEL   = os.getenv("PRIMARY_MODEL")
-FAST_MODEL      = os.getenv("FAST_MODEL")
-```
+To select another model, set `PROMPTFORGE_MODEL` in the root `.env` to a model available on [openrouter.ai](https://openrouter.ai/models). Provider-specific defaults can also be configured through ForgeX model settings.
 
 ---
 
 ## Running the Backend
 
-```bash
-cd backend
-source .venv/bin/activate
+Windows PowerShell, from the repository root:
 
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn backend.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Git Bash, Linux, or macOS:
+
+```bash
+source .venv/bin/activate
+python -m uvicorn backend.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The API will be available at `http://localhost:8000`.
@@ -369,10 +362,10 @@ PromptForge validates board-specific constraints at the planning stage. Each boa
 
 ```
 promptforge/
+├── requirements.txt
+├── .env.example
 ├── backend/
-│   ├── main.py                   # FastAPI entry point
-│   ├── requirements.txt
-│   ├── .env.example
+│   ├── api/app.py                # FastAPI entry point
 │   ├── core/
 │   │   ├── engine.py             # 🔒 Workflow orchestration (locked)
 │   │   ├── session.py            # 🔒 Session state (locked)
@@ -434,7 +427,6 @@ promptforge/
 PromptForge has a layered suite with more than **1,700 backend tests**, plus frontend type checks and Electron tests. Exact counts are recorded in phase result documents.
 
 ```bash
-cd backend
 source .venv/bin/activate
 
 # Run all tests
@@ -504,6 +496,15 @@ All generated firmware passes the multi-layer validation pipeline before any bui
 **Subprocess execution**
 PlatformIO and serial processes are managed by `subprocess_mgr.py` with explicit allowlists, timeout enforcement, and output size limits.
 
+**Repository and export hygiene**
+Do not include `.promptforge/`, generated `workspace/projects/`, `workspace/builds/`, or `workspace/artifacts/`, dependency folders such as `node_modules/`, `frontend/tsconfig.tsbuildinfo`, logs, caches, `.env`, or other secret files in shared archives. Preview ignored and untracked files with:
+
+```bash
+git clean -xfdn
+```
+
+Review that preview carefully. `git clean -xfd` is destructive and must not be run unless every listed path is safe to delete.
+
 **API keys**
 Never commit `.env` files. Rotate your `OPENROUTER_API_KEY` if it is accidentally exposed.
 
@@ -530,7 +531,7 @@ cd promptforge
 git checkout -b feat/your-feature-name
 
 # Make your changes and run tests
-cd backend && pytest
+pytest
 
 # Commit using Conventional Commits
 git commit -m "feat(validator): add peripheral address range check"

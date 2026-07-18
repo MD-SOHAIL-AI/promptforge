@@ -1039,6 +1039,247 @@ export interface TerminalOutputResponse extends TerminalSessionResponse {
   events: TerminalOutputEvent[];
 }
 
+export type CodingWorkflowStatus =
+  | "awaiting_apply"
+  | "applying"
+  | "awaiting_build"
+  | "building"
+  | "awaiting_flash"
+  | "flashing"
+  | "awaiting_monitor"
+  | "monitoring"
+  | "repairing"
+  | "cancelling"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "rejected"
+  | string;
+
+export type CodingWorkflowNextAction =
+  | "await_user_approval"
+  | "run_build"
+  | "confirm_flash"
+  | "open_monitor"
+  | null;
+
+export type CodingWorkflowProviderMode = "fake" | "api";
+
+export type CodingWorkflowApiStatusReason =
+  | "UNIFIED_CODING_WORKFLOW_DISABLED"
+  | "REAL_API_CODING_AGENT_DISABLED"
+  | "MODEL_ROUTER_UNAVAILABLE"
+  | "MODEL_PROVIDER_NOT_CONFIGURED"
+  | "MODEL_PROVIDER_UNHEALTHY"
+  | "MODEL_NOT_AVAILABLE"
+  | "REAL_API_CODING_AGENT_READY"
+  | string;
+
+export interface CodingWorkflowApiStatus {
+  unified_workflow_enabled: boolean;
+  real_api_coding_agent_enabled: boolean;
+  coding_agent_repair_loop_enabled?: boolean;
+  ready: boolean;
+  provider_id: string | null;
+  model: string | null;
+  model_router_available: boolean;
+  reason: CodingWorkflowApiStatusReason | null;
+  safe_message: string;
+}
+
+export interface CodingWorkflowEvent {
+  schema_version?: string;
+  event_id: string;
+  run_id: string;
+  sequence: number;
+  event_type: string;
+  stage: string;
+  status: string;
+  safe_message: string;
+  created_at?: string;
+  timestamp?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CodingWorkflowRun {
+  schema_version?: string;
+  run_id: string;
+  task_id?: string | null;
+  project_id?: string | null;
+  provider_id: string;
+  provider_type: string;
+  status: CodingWorkflowStatus;
+  generation_status?: string | null;
+  review_id?: string | null;
+  next_action: CodingWorkflowNextAction;
+  files_changed: string[];
+  created_at?: string;
+  updated_at?: string;
+  in_progress_stage?: string | null;
+  locked?: boolean;
+  lock_stale?: boolean;
+  lock_operation?: string | null;
+  started_at?: string | null;
+  stale_candidate?: boolean;
+  safe_summary?: string | null;
+  failure_code?: string | null;
+  safe_message?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CodingWorkflowGenerateRequest {
+  prompt: string;
+  workspace_path?: string | null;
+  context_mode?: "selected_files" | "file_tree_only" | string;
+}
+
+export interface CodingWorkflowApiGenerateRequest {
+  prompt: string;
+  workspace_path?: string | null;
+  context_mode?: "selected_files" | "project_summary" | string;
+  selected_files?: string[] | null;
+  provider_id?: string | null;
+  model?: string | null;
+  live_api_confirmed?: boolean;
+}
+
+export interface CodingWorkflowRepairBuildRequest {
+  workspace_path?: string | null;
+  selected_files?: string[] | null;
+  provider_id?: string | null;
+  model?: string | null;
+}
+
+export interface CodingWorkflowContextPreviewRequest {
+  workspace_path?: string | null;
+  prompt?: string | null;
+  context_mode: "selected_files" | "project_summary" | string;
+  selected_files?: string[] | null;
+  max_files?: number;
+  max_file_bytes?: number;
+  max_total_bytes?: number;
+}
+
+export interface CodingWorkflowContextIncludedFile {
+  path: string;
+  size_bytes: number;
+  truncated: boolean;
+  kind: string;
+}
+
+export interface CodingWorkflowContextExcludedFile {
+  path: string;
+  reason: string;
+}
+
+export interface CodingWorkflowContextPreview {
+  context_mode: string;
+  workspace_label: string;
+  included_files: CodingWorkflowContextIncludedFile[];
+  excluded_files: CodingWorkflowContextExcludedFile[];
+  tree_summary: string[];
+  total_bytes: number;
+  truncated: boolean;
+  limits: {
+    max_files: number;
+    max_file_bytes: number;
+    max_total_bytes: number;
+    max_tree_entries?: number;
+  };
+}
+
+export interface CodingWorkflowContextFilesRequest {
+  workspace_path?: string | null;
+  max_files?: number;
+  max_file_bytes?: number;
+}
+
+export interface CodingWorkflowContextFileItem {
+  path: string;
+  kind: string;
+  size_bytes: number;
+  selectable: boolean;
+  reason: string | null;
+}
+
+export interface CodingWorkflowContextFilesResponse {
+  workspace_label: string;
+  files: CodingWorkflowContextFileItem[];
+  truncated: boolean;
+  limits: {
+    max_files: number;
+    max_file_bytes: number;
+  };
+}
+
+export interface CodingWorkflowActionResult {
+  status: CodingWorkflowStatus;
+  run_id: string;
+  repair_of_run_id?: string | null;
+  review_id?: string | null;
+  generation_status?: string | null;
+  provider_id?: string;
+  provider_type?: string;
+  summary?: string;
+  files_changed?: string[];
+  next_action?: CodingWorkflowNextAction;
+  events?: CodingWorkflowEvent[];
+  build_status?: string | null;
+  flash_status?: string | null;
+  monitor_status?: string | null;
+  artifact_reference?: string | null;
+  environment?: string | null;
+  board?: string | null;
+  port?: string | null;
+  baud_rate?: number | null;
+  duration_ms?: number | null;
+  output_byte_count?: number;
+  output_preview?: string;
+  truncated?: boolean;
+  failure_code?: string | null;
+  safe_message?: string;
+}
+
+export interface CodingWorkflowStaleRun {
+  run_id: string;
+  status: string;
+  stage: string;
+  started_at: string;
+  age_seconds: number;
+  suggested_action: string;
+}
+
+export interface CodingWorkflowStaleLock {
+  run_id: string;
+  operation: string;
+  created_at: string;
+  expires_at: string;
+  pid?: number | null;
+  suggested_action: string;
+}
+
+export interface CodingWorkflowStaleRunsResponse {
+  runs: CodingWorkflowStaleRun[];
+  count: number;
+  stale_locks?: CodingWorkflowStaleLock[];
+  stale_lock_count?: number;
+  threshold_seconds: number;
+}
+
+export interface CodingWorkflowRunsResponse {
+  runs: CodingWorkflowRun[];
+  count: number;
+}
+
+export interface CodingWorkflowRunResponse {
+  run: CodingWorkflowRun;
+}
+
+export interface CodingWorkflowEventsResponse {
+  events: CodingWorkflowEvent[];
+  count: number;
+}
+
 export interface ApiErrorBody {
   code?: string;
   message?: string;

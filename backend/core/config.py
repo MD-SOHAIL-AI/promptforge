@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE_ENV_VAR = "PROMPTFORGE_ENV_FILE"
 LLM_TIMEOUT_ENV_VAR = "PROMPTFORGE_LLM_TIMEOUT_SECONDS"
 DEFAULT_LLM_TIMEOUT_SECONDS = 180.0
 LLM_MAX_ATTEMPTS_ENV_VAR = "PROMPTFORGE_LLM_MAX_ATTEMPTS"
@@ -21,7 +22,8 @@ DEFAULT_LLM_RETRY_BACKOFF_SECONDS = 1.0
 def load_environment(env_file: str | Path | None = None) -> Path:
     """Load PromptForge's dotenv file without overriding process variables."""
 
-    path = Path(env_file) if env_file is not None else PROJECT_ROOT / ".env"
+    configured_path = os.getenv(ENV_FILE_ENV_VAR)
+    path = Path(env_file) if env_file is not None else Path(configured_path) if configured_path else PROJECT_ROOT / ".env"
     load_dotenv(dotenv_path=path, override=False)
     return path
 

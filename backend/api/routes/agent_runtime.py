@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ...agent_runtime.unified_agent_service import UnifiedAgentService
+from ...connection_registry import AuthState, ConnectionRegistry
 from ...bridges.generic.errors import BridgeDomainError
 from ...bridges.codex_login import CodexLoginService
 from ...bridges.codex_oauth_smoke import CodexOAuthSmokeService
@@ -66,6 +67,12 @@ def _codex_login_service(request: Request) -> CodexLoginService:
     return value
 
 
+def _connection_registry(request: Request) -> ConnectionRegistry:
+    value = required_state(request, "connection_registry", "connection registry")
+    assert isinstance(value, ConnectionRegistry)
+    return value
+
+
 def _codex_smoke_service(request: Request) -> CodexOAuthSmokeService:
     value = required_state(request, "codex_oauth_smoke_service", "Codex OAuth smoke service")
     assert isinstance(value, CodexOAuthSmokeService)
@@ -83,14 +90,21 @@ async def agent_runtime_providers(request: Request) -> dict[str, object]:
 
 @router.get("/providers/codex-oauth/status")
 def codex_oauth_status(request: Request) -> dict[str, object]:
-    payload = _codex_login_service(request).status().to_safe_dict()
-    payload["sandbox_smoke_enabled"] = _codex_smoke_service(request).feature_enabled
+    record = _connection_registry(request).refresh_status(ConnectionRegistry.CODEX_ID)
+    payload = record.to_safe_dict()
+    payload.update(
+        codex_installed=record.detected,
+        codex_version=record.version,
+        auth_status=("signed_in" if record.auth_state is AuthState.AUTHENTICATED else "signed_out" if record.auth_state is AuthState.SIGNED_OUT else "unknown"),
+        oauth_bridge_ready=record.connection_ready,
+        sandbox_smoke_enabled=_codex_smoke_service(request).feature_enabled,
+    )
     return payload
 
 
 @router.get("/providers/codex-oauth/status-diagnostics")
 def codex_oauth_status_diagnostics(request: Request) -> dict[str, object]:
-    return _codex_login_service(request).status_diagnostics()
+    return _connection_registry(request).safe_diagnostics(ConnectionRegistry.CODEX_ID)
 
 
 @router.post("/providers/codex-oauth/login/launch")

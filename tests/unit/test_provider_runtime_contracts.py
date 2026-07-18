@@ -13,7 +13,7 @@ from backend.provider_runtime import (
     WorkspaceMode,
     detect_workspace_mode,
 )
-from backend.provider_runtime.templates import match_template
+from backend.provider_runtime.templates import match_template, match_template_decision
 from backend.agent_runtime.product_agent_service import ProductAgentService, TERMINAL_AGENT_STATUSES
 from backend.agent_runtime.product_provider_registry import ProductProviderRegistry
 from backend.bridges.diff_service import BridgeDiffService
@@ -75,21 +75,75 @@ def test_run_summary_keeps_generation_separate_from_build() -> None:
     assert summary["build_status"] == "build_failed"
 
 
-@pytest.mark.parametrize("task", (
-    "Create an ESP32 blink project",
-    "Create an Arduino blink sketch",
-    "Create a PlatformIO minimal project",
-    "Create a basic serial monitor project",
-    "Create an ESP32 WiFi scan project",
-    "Create a simple OLED test project",
-    "Create a simple sensor read project",
+@pytest.mark.parametrize(("task", "template_id"), (
+    ("basic esp32 blink", "esp32_blink"),
+    ("simple esp32 blink project", "esp32_blink"),
+    ("esp32 blink led", "esp32_blink"),
+    ("arduino blink", "arduino_blink"),
+    ("basic arduino led blink", "arduino_blink"),
+    ("platformio minimal esp32 project", "platformio_minimal"),
+    ("esp32 wifi scan", "wifi_scan"),
+    ("basic serial monitor project", "serial_monitor"),
+    ("basic oled test", "oled_test"),
+    ("read dht sensor", "sensor_read"),
 ))
-def test_verified_template_matching(task: str) -> None:
+def test_verified_template_matching(task: str, template_id: str) -> None:
+    decision = match_template_decision(task)
+
     assert match_template(task) is not None
+    assert decision.template is not None
+    assert decision.template.id == template_id
+    assert decision.template_match_confidence == "high"
+    assert decision.template_match_reason == "simple verified template request"
 
 
-def test_custom_task_does_not_match_template() -> None:
-    assert match_template("Create an advanced ESP32 WiFi dashboard") is None
+@pytest.mark.parametrize("task", (
+    "advanced ESP32 blink dashboard with WiFi config and OTA",
+    "ESP32 blink web server with auth and settings page",
+    "ESP32 sensor dashboard using LittleFS and real time charts",
+    "ESP32 project with FreeRTOS tasks and interrupt scheduler",
+    "ESP32 WiFi monitor with dashboard, charts, and MQTT cloud upload",
+    "Arduino blink project with database login and REST API",
+))
+def test_complex_task_does_not_match_template(task: str) -> None:
+    decision = match_template_decision(task)
+
+    assert match_template(task) is None
+    assert decision.template is None
+    assert decision.matched_complexity_terms
+    assert decision.template_rejected_reason == (
+        f"complexity_terms: {', '.join(decision.matched_complexity_terms)}"
+    )
+
+
+@pytest.mark.parametrize("task", (
+    "ESP32 blink with web",
+    "ESP32 monitor dashboard",
+    "Arduino sensor cloud project",
+))
+def test_ambiguous_task_prefers_custom_generation(task: str) -> None:
+    decision = match_template_decision(task)
+
+    assert match_template(task) is None
+    assert decision.template is None
+    assert decision.matched_complexity_terms
+
+
+def test_rejection_decision_reports_candidate_and_complexity_terms() -> None:
+    decision = match_template_decision(
+        "advanced ESP32 blink dashboard with WiFi config and OTA"
+    )
+
+    assert decision.template_candidate == "esp32_blink"
+    assert decision.matched_complexity_terms == (
+        "advanced",
+        "dashboard",
+        "ota",
+        "wifi config",
+    )
+    assert decision.to_safe_dict()["template_rejected_reason"] == (
+        "complexity_terms: advanced, dashboard, ota, wifi config"
+    )
 
 
 @pytest.mark.asyncio

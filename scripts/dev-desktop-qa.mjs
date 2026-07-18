@@ -1,11 +1,16 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 
 const root = process.cwd();
 const backendPort = process.env.FORGEX_BACKEND_PORT ?? process.env.PROMPTFORGE_BACKEND_PORT ?? "8000";
 const frontendPort = process.env.FORGEX_FRONTEND_PORT ?? "3000";
+const dataRoot = process.env.PROMPTFORGE_DATA_ROOT
+  ?? process.env.PROMPTFORGE_RUNTIME_ROOT
+  ?? process.env.PROMPTFORGE_ROOT
+  ?? path.join(process.env.LOCALAPPDATA ?? os.tmpdir(), "ForgeX", "desktop", "backend-data");
 const backendUrl = `http://localhost:${backendPort}`;
 const frontendUrl = (process.env.FORGEX_FRONTEND_URL ?? `http://localhost:${frontendPort}`).replace(/\/$/, "");
 const healthUrl = `${backendUrl}/health`;
@@ -20,6 +25,7 @@ const qaEnv = {
   FORGEX_BACKEND_PORT: backendPort,
   PROMPTFORGE_BACKEND_PORT: backendPort,
   PROMPTFORGE_BACKEND_URL: backendUrl,
+  PROMPTFORGE_DATA_ROOT: dataRoot,
   FORGEX_FRONTEND_URL: frontendUrl,
 };
 const children = [];

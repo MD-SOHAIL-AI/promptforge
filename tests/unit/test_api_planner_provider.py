@@ -22,6 +22,8 @@ from backend.agent_runtime.product_agent_service import ProductAgentService, TER
 from backend.agent_runtime.product_provider_registry import ProductProviderRegistry
 from backend.bridges.diff_service import BridgeDiffService
 from backend.bridges.review_store import BridgeReviewStore
+from backend.connection_registry import ConnectionRegistry, LegacyProviderRegistryFacade
+from backend.model_router import MemoryCredentialStore, ProviderRegistry, ProviderSettingsStorage
 
 
 def enabled_env(provider_id: str) -> dict[str, str]:
@@ -39,6 +41,26 @@ def enabled_env(provider_id: str) -> dict[str, str]:
     else:
         env[config.model_env] = "unit-test-model"
     return env
+
+
+def connected_product_registry(
+    tmp_path: Path,
+    provider_id: str,
+    *,
+    transport: object,
+) -> ProductProviderRegistry:
+    legacy = ProviderRegistry(ProviderSettingsStorage(tmp_path / "providers.json", credential_store=MemoryCredentialStore()))
+    connections = ConnectionRegistry(legacy)
+    facade = LegacyProviderRegistryFacade(legacy, connections=connections)
+    connections.connect(provider_id, api_key="unit-test-key", enabled=True)
+    connections.record_transport_result(provider_id, {"ok": True, "status": "ready"})
+    return ProductProviderRegistry(
+        env=enabled_env(provider_id),
+        confirm_real_api=True,
+        transport=transport,  # type: ignore[arg-type]
+        model_provider_registry=facade,
+        connection_registry=connections,
+    )
 
 
 def valid_toolplan_json() -> str:
@@ -68,7 +90,7 @@ def test_api_providers_disabled_by_default(provider_id: str) -> None:
     assert status["enabled_by_default"] is False
 
 
-@pytest.mark.parametrize("provider_id", ["gemini", "groq", "openrouter", "openai", "nvidia_nim"])
+@pytest.mark.parametrize("provider_id", ["anthropic", "cerebras", "gemini", "groq", "openrouter", "openai", "nvidia_nim"])
 def test_api_provider_requires_specific_flag(provider_id: str) -> None:
     env = enabled_env(provider_id)
     env.pop(API_PLANNER_CONFIGS[provider_id].provider_flag)
@@ -76,7 +98,7 @@ def test_api_provider_requires_specific_flag(provider_id: str) -> None:
         ProductProviderRegistry(env=env, confirm_real_api=True).resolve(provider_id)
 
 
-@pytest.mark.parametrize("provider_id", ["gemini", "groq", "openrouter", "openai", "nvidia_nim"])
+@pytest.mark.parametrize("provider_id", ["anthropic", "cerebras", "gemini", "groq", "openrouter", "openai", "nvidia_nim"])
 def test_api_provider_missing_key_blocks_before_request(provider_id: str) -> None:
     env = enabled_env(provider_id)
     env[API_PLANNER_CONFIGS[provider_id].api_key_env] = ""
@@ -147,6 +169,55 @@ def test_http_errors_map_to_safe_classifications(status: int, body: str, expecte
     assert metadata["provider_request_id"] == "req-safe-123"
 
 
+def test_rate_limit_retry_after_is_honored_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+    sleeps: list[int] = []
+
+    def transport(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ApiTransportHTTPError(429, "rate limit", "req-retry", retry_after_seconds=2)
+        return envelope(valid_toolplan_json())
+
+    monkeypatch.setattr("backend.agent_runtime.api_planner_provider.time.sleep", sleeps.append)
+    provider = ApiPlannerProvider(
+        API_PLANNER_CONFIGS["openrouter"],
+        env=enabled_env("openrouter"),
+        confirmed=True,
+        transport=transport,
+    )
+
+    plan = provider.request_turn(task="write smoke", tool_results=(), allowed_tools=("write_file",), run_id="run", turn=1)
+
+    assert plan.tool_calls[0].path == API_PRODUCT_SMOKE_PATH
+    assert calls == 2
+    assert sleeps == [2]
+    assert provider.to_safe_metadata()["retry_count"] == 1
+
+
+def test_anthropic_uses_native_messages_contract() -> None:
+    captured: dict[str, object] = {}
+
+    def transport(url: str, payload: dict[str, object], api_key: str, headers: dict[str, str], timeout: float) -> dict[str, object]:
+        captured.update(url=url, payload=payload, api_key=api_key, headers=headers, timeout=timeout)
+        return {"content": [{"type": "text", "text": valid_toolplan_json()}]}
+
+    provider = ApiPlannerProvider(
+        API_PLANNER_CONFIGS["anthropic"],
+        env=enabled_env("anthropic"),
+        confirmed=True,
+        transport=transport,
+    )
+    plan = provider.request_turn(task="write smoke", tool_results=(), allowed_tools=("write_file",), run_id="run", turn=1)
+
+    assert plan.tool_calls[0].path == API_PRODUCT_SMOKE_PATH
+    assert str(captured["url"]).endswith("/v1/messages")
+    assert captured["api_key"] == ""
+    assert captured["headers"] == {"x-api-key": "unit-test-key", "anthropic-version": "2023-06-01"}
+    assert captured["payload"]["system"]
+
+
 def test_network_failure_is_not_reported_as_provider_rate_limit() -> None:
     def transport(*args: object, **kwargs: object) -> dict[str, object]:
         raise urllib.error.URLError("connection refused")
@@ -191,10 +262,8 @@ def test_valid_api_planner_flows_through_product_runtime_and_creates_review(tmp_
             snapshots_path=root / "state" / "snapshots.jsonl",
             reviews_path=root / "state" / "reviews.jsonl",
         ))
-        registry = ProductProviderRegistry(
-            env=enabled_env("gemini"),
-            confirm_real_api=True,
-            transport=lambda *args: envelope(valid_toolplan_json()),
+        registry = connected_product_registry(
+            root, "gemini", transport=lambda *args: envelope(valid_toolplan_json()),
         )
         service = ProductAgentService(
             managed_sandbox_root=root / "sandboxes",
@@ -281,9 +350,7 @@ def test_rate_limited_provider_falls_back_once_then_enters_cooldown(tmp_path: Pa
             snapshots_path=tmp_path / "state" / "snapshots.jsonl",
             reviews_path=tmp_path / "state" / "reviews.jsonl",
         ))
-        registry = ProductProviderRegistry(
-            env=enabled_env("openrouter"), confirm_real_api=True, transport=transport,
-        )
+        registry = connected_product_registry(tmp_path, "openrouter", transport=transport)
         service = ProductAgentService(
             managed_sandbox_root=tmp_path / "sandboxes",
             review_service=reviews,

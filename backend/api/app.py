@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+from backend.connection_registry import ConnectionRegistry
+from backend.connection_registry.compatibility import LegacyProviderRegistryFacade
+from backend.state.domain_persistence import DomainDatabase
+from backend.state.workflow_events import DurableWorkflowEventHub
+from backend.model_router.policy_router import SQLiteDecisionStore
+from backend.operations.resilience import DatabaseMaintenance, DiagnosticExporter, SafeOperationalMetrics, SlidingWindowRateLimiter, StartupReconciler
+from backend.agent_runtime.agent_adapter import AgentAdapterRegistry, verified_template_adapter
+from backend.agent_runtime.agent_profiles import AgentProfileService, builtin_profile_drafts
+from backend.agent_runtime.workflow_engine import AgentWorkflowEngine
+from backend.agent_runtime.codex_cli_adapter import CodexCliAgentAdapter
+from backend.agent_runtime.agy_cli_adapter import AGYCliAgentAdapter
+
 import asyncio
 import logging
 import os
@@ -58,6 +70,8 @@ from ..bridges.agy_trusted_workspace import AGYTrustedWorkspaceService
 from ..bridges.generic.api_policy import GenericRunFeatureFlags
 from ..bridges.audit_log import BridgeAuditLog
 from ..agent_runtime.product_agent_service import ProductAgentService
+from ..agent_runtime.api_coding_agent_service import ApiCodingAgentService
+from ..agent_runtime.coding_workflow_store import CodingWorkflowStore
 from ..agent_runtime.product_provider_registry import ProductProviderRegistry
 from ..agent_runtime.unified_agent_service import UnifiedAgentService
 from ..agent_runtime.approval_broker import AgentApprovalBroker
@@ -95,7 +109,7 @@ from ..workspace.workspace_manager import WorkspaceManager
 from .errors import install_error_handlers
 from .observability import configure_api_logging, request_context_middleware
 from .progress import ExecutionProgressHub
-from .routes import agent_runtime, build, devices, execute, files, flash, generic_runs, health, models, monitor, projects, settings, terminal, websocket
+from .routes import agent_runtime, agent_workspace, build, control_plane, devices, diagnostics, execute, files, flash, generic_runs, health, models, monitor, projects, settings, terminal, websocket
 from .routes import workspace as workspace_routes
 
 
@@ -214,9 +228,15 @@ def create_app(
     )
     platformio = platformio_service or PlatformIOService(manager)
     router_service = model_router_service or ModelRouterService(
-        ProviderRegistry(ProviderSettingsStorage()),
+        LegacyProviderRegistryFacade(ProviderRegistry(ProviderSettingsStorage()), codex_status_service=codex_status, codex_login_helper=codex_login, bridge_detection=bridge_detection),
         UsageTracker(),
     )
+    if not hasattr(router_service.registry, "connections"):
+        router_service.registry = LegacyProviderRegistryFacade(router_service.registry, codex_status_service=codex_status, codex_login_helper=codex_login, bridge_detection=bridge_detection)
+    connection_registry = router_service.registry.connections
+    connection_registry.codex_status_service = codex_status
+    connection_registry.codex_login_helper = codex_login
+    connection_registry.bridge_detection = bridge_detection
     generation_diagnostics = GenerationDiagnosticsStore()
     owned_llm = llm_service
     generation = code_generation_service
@@ -254,6 +274,21 @@ def create_app(
         workspace.workspace_root / "external-projects.json",
     )
     bridge_state_dir = paths.state_directory()
+    workflow_database = DomainDatabase(bridge_state_dir / "domain-state.db")
+    workflow_database.initialize()
+    router_service.decision_store = SQLiteDecisionStore(workflow_database)
+    profile_service = AgentProfileService(workflow_database)
+    for builtin_profile in builtin_profile_drafts():
+        try:
+            profile_service.get_draft(builtin_profile.profile_id)
+        except KeyError:
+            profile_service.save_draft(builtin_profile)
+        profile_service.publish(builtin_profile.profile_id)
+    agent_workflow_engine = AgentWorkflowEngine(workflow_database, agent_workspace.FailClosedForgeXExecutors())
+    operational_metrics = getattr(getattr(router_service, "resilience", None), "metrics", SafeOperationalMetrics())
+    database_maintenance = DatabaseMaintenance(workflow_database, bridge_state_dir / "database-backups")
+    startup_reconciler = StartupReconciler(workflow_database, database_maintenance, agent_workflow_engine.machine, operational_metrics)
+    workflow_event_hub = DurableWorkflowEventHub(workflow_database, metrics=operational_metrics)
     bridge_audit_log = BridgeAuditLog(bridge_state_dir / "bridge-review-audit.jsonl")
     bridge_reviews = bridge_diff_service or BridgeDiffService(
         audit_log=bridge_audit_log,
@@ -263,6 +298,24 @@ def create_app(
         ),
     )
     bridge_sandboxes = BridgeSandboxService(bridge_state_dir / "bridge-sandboxes")
+    agent_adapter_registry = AgentAdapterRegistry((
+        verified_template_adapter(
+            sandboxes=BridgeSandboxService(bridge_state_dir / "verified-template-agent-sandboxes"),
+            reviews=bridge_reviews,
+        ),
+        CodexCliAgentAdapter(
+            sandboxes=BridgeSandboxService(bridge_state_dir / "agent-adapter-sandboxes"),
+            reviews=bridge_reviews,
+            status=codex_status,
+            login=codex_login,
+            connections=connection_registry,
+        ),
+    ))
+    api_coding_agent_service = ApiCodingAgentService(
+        sandbox_service=BridgeSandboxService(bridge_state_dir / "api-coding-agent-sandboxes"),
+        review_service=bridge_reviews,
+    )
+    coding_workflow_store = CodingWorkflowStore.from_state_directory(bridge_state_dir, allow_new_runs=False, allow_mutations=False)
     agy_trusted_workspaces = AGYTrustedWorkspaceService(bridge_state_dir.parent / "agy-trusted-workspaces")
     agy_runner = bridge_agy_runner or AntigravitySandboxRunner(
         sandbox_service=bridge_sandboxes,
@@ -279,14 +332,17 @@ def create_app(
     )
     generic_cutover_enabled = cutover_flags.effective_mode().value == "generic"
     agy_adapter = agy_generic_provider or AGYBridgeProvider(
-        detector=lambda: bridge_detection.detect_provider("antigravity_cli_bridge"),
         runner=agy_runner,
         artifact_root=bridge_state_dir,
         execution_enabled=generic_cutover_enabled,
         availability_override=generic_cutover_enabled,
+        connections=connection_registry,
     )
     agy_sdk_enabled = os.getenv("FORGEX_ENABLE_AGY_SDK_PROVIDER", "").strip() == "1"
     codex_provider_enabled = os.getenv("FORGEX_ENABLE_CODEX_PROVIDER", "").strip() == "1"
+    agy_cli_enabled = os.getenv("FORGEX_ENABLE_AGY_BRIDGE", "").strip() == "1"
+    connection_registry.set_enabled(connection_registry.CODEX_ID, codex_provider_enabled)
+    connection_registry.set_enabled(connection_registry.AGY_ID, generic_cutover_enabled or agy_sdk_enabled or agy_cli_enabled)
     agy_sdk_provider = AGYSDKProvider(
         review_service=bridge_reviews,
         managed_root=bridge_state_dir,
@@ -299,6 +355,7 @@ def create_app(
         managed_root=bridge_state_dir,
         approval_broker=agent_approval_broker,
         execution_enabled=codex_provider_enabled,
+        connections=connection_registry,
     )
     bridge_provider_registry = generic_bridge_registry or BridgeProviderRegistry()
     registered_ids = {item.provider_id for item in bridge_provider_registry.list_registered()}
@@ -376,15 +433,23 @@ def create_app(
         restore_apply_service=rollback_restore_apply,
         audit_log=bridge_audit_log,
     )
+    agent_workflow_engine.executors = agent_workspace.ForgeXWorkflowExecutors(
+        patch_export_service=patch_exports,
+        patch_apply_service=patch_apply,
+        platformio_service=platformio,
+        review_service=bridge_reviews,
+        enabled=os.getenv(agent_workspace.AGENT_EXECUTOR_FLAG, "").strip() == "1",
+        flash_enabled=os.getenv(agent_workspace.AGENT_FLASH_FLAG, "").strip() == "1",
+    )
     provider_run_summaries = ProviderRunSummaryStore(bridge_state_dir / "provider-run-summaries.json")
     product_agent_service = ProductAgentService(
         managed_sandbox_root=bridge_state_dir / "agent-runtime-sandboxes",
         review_service=bridge_reviews,
         provider_registry=ProductProviderRegistry(
             fake_enabled=os.getenv("FORGEX_ENABLE_AGENT_RUNTIME_FAKE_PROVIDER", "").strip() == "1",
-            codex_status_service=codex_status,
             model_provider_registry=router_service.registry,
             confirm_real_api=True,
+            connection_registry=connection_registry,
         ),
         enabled=os.getenv("FORGEX_ENABLE_AGENT_RUNTIME", "").strip() == "1",
         summary_store=provider_run_summaries,
@@ -405,6 +470,15 @@ def create_app(
         review_service=bridge_reviews,
         status_path=bridge_state_dir / "agy-scratch-project-import-status.json",
     )
+    agent_adapter_registry.register(AGYCliAgentAdapter(
+        runner=agy_runner,
+        importer=agy_project_import,
+        sandboxes=BridgeSandboxService(bridge_state_dir / "agy-agent-sandboxes"),
+        reviews=bridge_reviews,
+        managed_generation_root=bridge_state_dir / "agy-managed-generation",
+        enabled=agy_cli_enabled,
+        connections=connection_registry,
+    ))
     assisted_agy = agy_assisted_runner or AGYAssistedRunner(
         repository_root=paths.project_root(),
         active_workspace_root=workspace.workspace_root,
@@ -419,6 +493,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.generic_run_store_status = "ready"
+        try:
+            application.state.startup_reconciliation = startup_reconciler.run()
+        except Exception as exc:
+            application.state.startup_reconciliation = {"status": "degraded", "failure": type(exc).__name__}
+            logger.warning("startup_reconciliation_degraded failure=%s", type(exc).__name__)
+        await workflow_event_hub.start()
         try:
             await generic_coordinator.reconcile_incomplete_runs()
         except BridgeDomainError as exc:
@@ -442,6 +522,7 @@ def create_app(
                 await close()
         await unified_agent_service.close()
         await generic_event_transport.close()
+        await workflow_event_hub.close()
 
     application = FastAPI(
         title="PromptForge AI API",
@@ -452,12 +533,13 @@ def create_app(
     if configuration_error is not None:
         # fix: warn at startup when LLM configuration is unavailable.
         logger.warning(
-            "PromptForge configuration error: %s — LLM features will be unavailable",
+            "PromptForge configuration error: %s ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â LLM features will be unavailable",
             configuration_error,
         )
     application.state.execute_prompt = execute_prompt_fn
     application.state.code_generation_service = generation
     application.state.model_router_service = router_service
+    application.state.connection_registry = connection_registry
     application.state.project_service = projects_service
     application.state.project_import_service = imports_service
     application.state.subprocess_manager = manager
@@ -470,6 +552,16 @@ def create_app(
     application.state.board_detector = board_detector or BoardDetector()
     application.state.tool_executor = tool_executor
     application.state.progress_hub = progress_hub or ExecutionProgressHub()
+    application.state.workflow_event_hub = workflow_event_hub
+    application.state.workflow_database = workflow_database
+    application.state.agent_profile_service = profile_service
+    application.state.agent_workflow_engine = agent_workflow_engine
+    application.state.operational_metrics = operational_metrics
+    application.state.database_maintenance = database_maintenance
+    application.state.startup_reconciler = startup_reconciler
+    application.state.diagnostic_export_limiter = SlidingWindowRateLimiter(limit=3, window_seconds=60)
+    application.state.diagnostic_exporter = DiagnosticExporter(database=workflow_database, metrics=operational_metrics, circuits=router_service.resilience.circuits, runtime_logger=runtime_logs, connection_registry=router_service.registry.connections, reconciler=startup_reconciler)
+    application.state.agent_adapter_registry = agent_adapter_registry
     application.state.workspace_manager = workspace
     application.state.metrics_registry = metrics
     application.state.runtime_logger = runtime_logs
@@ -480,6 +572,8 @@ def create_app(
     application.state.codex_login_service = codex_login
     application.state.codex_oauth_smoke_service = codex_oauth_smoke
     application.state.bridge_diff_service = bridge_reviews
+    application.state.api_coding_agent_service = api_coding_agent_service
+    application.state.coding_workflow_store = coding_workflow_store
     application.state.bridge_patch_export_service = patch_exports
     application.state.bridge_patch_apply_service = patch_apply
     application.state.bridge_patch_preflight_service = patch_preflight
@@ -515,6 +609,8 @@ def create_app(
             "/agent-runtime/providers/codex-oauth/standalone-smoke",
             "/models/bridges/runs",
             "/models/bridges/generic/runs",
+            "/models/api-coding-agent/fake/generate-review",
+            "/models/coding-workflow/fake/generate-review",
         }:
             raw_length = request.headers.get("content-length")
             try:
@@ -537,6 +633,9 @@ def create_app(
     application.include_router(health.router)
     application.include_router(settings.router)
     application.include_router(agent_runtime.router)
+    application.include_router(agent_workspace.router)
+    application.include_router(control_plane.router)
+    application.include_router(diagnostics.router)
     application.include_router(generic_runs.router)
     application.include_router(models.router)
     application.include_router(execute.router)
@@ -552,23 +651,37 @@ def create_app(
     return application
 
 
-def _llm_from_environment(*, timeout_s: float | None = None) -> LLMService:
+def _llm_from_environment(
+    *,
+    timeout_s: float | None = None,
+    connection_registry: ConnectionRegistry | None = None,
+) -> LLMService:
+    """Build the legacy direct client from a canonically verified connection.
+
+    Provider and model remain non-secret deployment selections. Credentials and
+    authentication/readiness decisions are owned exclusively by ConnectionRegistry.
+    """
     provider = os.getenv("PROMPTFORGE_LLM_PROVIDER", "").strip().upper()
     if not provider:
         raise ValueError("PROMPTFORGE_LLM_PROVIDER is required")
     configurations: dict[str, tuple[type[LLMService], str]] = {
-        "OPENAI": (OpenAIService, "OPENAI_API_KEY"),
-        "OPENROUTER": (OpenRouterService, "OPENROUTER_API_KEY"),
-        "ANTHROPIC": (AnthropicService, "ANTHROPIC_API_KEY"),
-        "GEMINI": (GeminiService, "GEMINI_API_KEY"),
+        "OPENAI": (OpenAIService, "openai"),
+        "OPENROUTER": (OpenRouterService, "openrouter"),
+        "ANTHROPIC": (AnthropicService, "anthropic"),
+        "GEMINI": (GeminiService, "gemini"),
     }
     try:
-        service_type, key_name = configurations[provider]
+        service_type, provider_id = configurations[provider]
     except KeyError as exc:
         raise ValueError(f"Unsupported PROMPTFORGE_LLM_PROVIDER: {provider}") from exc
-    api_key = os.getenv(key_name, "").strip()
+    if connection_registry is None:
+        raise ValueError("CONNECTION_REGISTRY_REQUIRED")
+    connection = connection_registry.refresh_status(f"{provider_id}.default")
+    if not connection.enabled or not connection.connection_ready:
+        raise ValueError("PROVIDER_CONNECTION_NOT_READY")
+    api_key = connection_registry.transport_credential(connection.connection_id)
     if not api_key:
-        raise ValueError(f"{key_name} is required")
+        raise ValueError("PROVIDER_CREDENTIAL_UNAVAILABLE")
     model = os.getenv("PROMPTFORGE_MODEL", "").strip()
     if not model:
         raise ValueError("PROMPTFORGE_MODEL is required")
@@ -578,6 +691,5 @@ def _llm_from_environment(*, timeout_s: float | None = None) -> LLMService:
         model=model,
         timeout_s=resolved_timeout_s,
     )
-
 
 app = create_app()

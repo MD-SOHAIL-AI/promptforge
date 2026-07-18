@@ -1,30 +1,47 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.app import _llm_from_environment, create_app
-from backend.core.config import load_environment
+from backend.connection_registry import ConnectionRegistry
+from backend.model_router import MemoryCredentialStore, ProviderRegistry, ProviderSettingsStorage
+from backend.core.config import ENV_FILE_ENV_VAR, load_environment
 from backend.model_router import ModelRouterService
 from backend.services.llm_service import OpenRouterService
 
 
+def _verified_registry(tmp_path: Path, provider_id: str = "openrouter") -> ConnectionRegistry:
+    registry = ConnectionRegistry(
+        ProviderRegistry(
+            ProviderSettingsStorage(
+                tmp_path / "provider-settings.json",
+                credential_store=MemoryCredentialStore(),
+            )
+        )
+    )
+    registry.connect(provider_id, api_key="canonical-credential", enabled=True)
+    registry.record_transport_success(provider_id)
+    return registry
+
 def test_openrouter_is_registered_with_promptforge_model(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("PROMPTFORGE_LLM_PROVIDER", "openrouter")
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
     monkeypatch.setenv("PROMPTFORGE_MODEL", "vendor/firmware-model")
     monkeypatch.setenv("OPENROUTER_MODEL", "legacy/model-must-not-be-used")
 
-    service = _llm_from_environment()
+    service = _llm_from_environment(connection_registry=_verified_registry(tmp_path))
 
     assert isinstance(service, OpenRouterService)
     assert service.model == "vendor/firmware-model"
-    assert service.api_key == "test-openrouter-key"
+    assert service.api_key == "canonical-credential"
     assert service.base_url == "https://openrouter.ai/api/v1"
     assert service.timeout_s == 180
     asyncio.run(service.aclose())
@@ -75,6 +92,7 @@ def test_llm_retry_configuration_flows_to_generation_service(
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "invalid"])
 def test_llm_timeout_configuration_rejects_invalid_values(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     value: str,
 ) -> None:
     monkeypatch.setenv("PROMPTFORGE_LLM_PROVIDER", "OPENROUTER")
@@ -83,7 +101,7 @@ def test_llm_timeout_configuration_rejects_invalid_values(
     monkeypatch.setenv("PROMPTFORGE_LLM_TIMEOUT_SECONDS", value)
 
     with pytest.raises(ValueError, match="PROMPTFORGE_LLM_TIMEOUT_SECONDS"):
-        _llm_from_environment()
+        _llm_from_environment(connection_registry=_verified_registry(tmp_path))
 
 
 def test_load_environment_reads_dotenv_without_overriding_process_environment(
@@ -103,10 +121,25 @@ def test_load_environment_reads_dotenv_without_overriding_process_environment(
 
     load_environment(env_file)
 
-    service = _llm_from_environment()
+    service = _llm_from_environment(connection_registry=_verified_registry(tmp_path))
     assert service.provider.value == "OPENROUTER"
     assert service.model == "process-model"
     asyncio.run(service.aclose())
+
+
+def test_load_environment_honors_configured_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / "configured.env"
+    env_file.write_text("FORGEX_ENABLE_PATCH_APPLY=1\n", encoding="utf-8")
+    monkeypatch.setenv(ENV_FILE_ENV_VAR, str(env_file))
+    monkeypatch.delenv("FORGEX_ENABLE_PATCH_APPLY", raising=False)
+
+    loaded = load_environment()
+
+    assert loaded == env_file
+    assert os.environ["FORGEX_ENABLE_PATCH_APPLY"] == "1"
 
 
 def test_create_app_resolves_openrouter_configuration_at_startup(
@@ -130,12 +163,12 @@ def test_create_app_resolves_openrouter_configuration_at_startup(
     ("missing_name", "message"),
     [
         ("PROMPTFORGE_LLM_PROVIDER", "PROMPTFORGE_LLM_PROVIDER is required"),
-        ("OPENROUTER_API_KEY", "OPENROUTER_API_KEY is required"),
         ("PROMPTFORGE_MODEL", "PROMPTFORGE_MODEL is required"),
     ],
 )
 def test_openrouter_configuration_requires_declared_environment_variables(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     missing_name: str,
     message: str,
 ) -> None:
@@ -151,4 +184,33 @@ def test_openrouter_configuration_requires_declared_environment_variables(
             monkeypatch.setenv(name, value)
 
     with pytest.raises(ValueError, match=message):
+        _llm_from_environment(connection_registry=_verified_registry(tmp_path))
+
+def test_environment_api_key_cannot_bypass_connection_registry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_LLM_PROVIDER", "OPENROUTER")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "environment-only-secret")
+    monkeypatch.setenv("PROMPTFORGE_MODEL", "vendor/firmware-model")
+
+    missing = ConnectionRegistry(
+        ProviderRegistry(
+            ProviderSettingsStorage(
+                tmp_path / "missing-provider-settings.json",
+                credential_store=MemoryCredentialStore(),
+            )
+        )
+    )
+    with pytest.raises(ValueError, match="PROVIDER_CONNECTION_NOT_READY"):
+        _llm_from_environment(connection_registry=missing)
+
+
+def test_legacy_llm_helper_requires_canonical_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_LLM_PROVIDER", "OPENROUTER")
+    monkeypatch.setenv("PROMPTFORGE_MODEL", "vendor/firmware-model")
+
+    with pytest.raises(ValueError, match="CONNECTION_REGISTRY_REQUIRED"):
         _llm_from_environment()

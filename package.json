@@ -14,7 +14,7 @@
     "dev:desktop:qa": "node scripts/dev-desktop-qa.mjs",
     "qa:desktop:packaged": "node scripts/qa-packaged-desktop.mjs",
     "test:qa-packaged": "node --test scripts/qa-packaged-desktop.test.mjs",
-    "test:ui-state": "node --experimental-strip-types --test frontend/lib/patch-apply-status.test.mts frontend/lib/workflow-stage-state.test.mts frontend/lib/websocket.test.mts",
+    "test:ui-state": "node --experimental-strip-types --test frontend/lib/patch-apply-status.test.mts frontend/lib/workflow-stage-state.test.mts frontend/lib/websocket.test.mts frontend/lib/workspace-shell.test.mts",
     "test:agent-ui": "node --experimental-strip-types --test frontend/lib/generic-agent-state.test.mts",
     "test:agy-live": "node --test scripts/qa-agy-generic-live.test.mjs scripts/qa-agy-trusted-workspace.test.mjs scripts/qa-agy-native-write.test.mjs scripts/qa-agy-scratch-import.test.mjs scripts/qa-agy-assisted-runner.test.mjs",
     "test:agy": "npm run test:agy-live",

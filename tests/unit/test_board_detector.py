@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("serial")
+
 from backend.tools.board_detector import (
     BoardDetectionError,
     BoardDetector,

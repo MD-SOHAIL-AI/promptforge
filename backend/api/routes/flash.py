@@ -11,7 +11,11 @@ from fastapi import APIRouter, Request
 from ...runtime.result import FlashResult
 from ...services.platformio_service import PlatformIOService
 from ...services.project_service import ProjectService
-from ...tools.board_detector import BoardDetectionError, BoardDetector
+from ...tools.board_detector import (
+    BoardDependencyError,
+    BoardDetectionError,
+    BoardDetector,
+)
 from ...tools.flash_firmware import FlashConfig
 from ...validation.board_validator import BoardValidator
 from ...workflow.adapters.build_adapter import BuildAdapter, BuildAdapterError
@@ -67,6 +71,8 @@ async def flash_project(body: FlashRequest, request: Request) -> FlashResponse:
         raise APIError(500, "INVALID_BUILD_ARTIFACT", "Build output was invalid") from exc
     try:
         boards = await asyncio.to_thread(detector.detect_boards)
+    except BoardDependencyError as exc:
+        raise APIError(503, "PYSERIAL_REQUIRED", str(exc)) from exc
     except BoardDetectionError as exc:
         raise APIError(503, "BOARD_DETECTION_FAILED", "Connected boards could not be detected") from exc
     board = next((item for item in boards if item.port.casefold() == body.port.casefold()), None)

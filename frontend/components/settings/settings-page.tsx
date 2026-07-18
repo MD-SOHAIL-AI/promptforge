@@ -9,6 +9,11 @@ import { EditorSettings } from "@/components/settings/editor-settings";
 import { GeneralSettings } from "@/components/settings/general-settings";
 import { HardwareSettings } from "@/components/settings/hardware-settings";
 import { ModelSettings } from "@/components/settings/model-settings";
+import { ConnectionsSurface } from "@/components/control-plane/connections-surface";
+import { ModelsRoutesSurface } from "@/components/control-plane/models-routes-surface";
+import { AgentStudioSurface } from "@/components/control-plane/agent-studio-surface";
+import { PoliciesSurface } from "@/components/control-plane/policies-surface";
+import { RunHistorySurface } from "@/components/control-plane/run-history-surface";
 import { SecuritySettings } from "@/components/settings/security-settings";
 import { SettingsSidebar } from "@/components/settings/settings-sidebar";
 import { TerminalSettings } from "@/components/settings/terminal-settings";
@@ -18,6 +23,11 @@ import type { ForgeXSettingsState } from "@/hooks/use-forgex-settings";
 import type { ConsoleEntry, HealthResponse, ModelProviderResponse, ModelRouteResponse, ProjectResponse } from "@/types";
 
 const titles: Record<SettingsCategory, string> = {
+  connections: "Connections",
+  routes: "Models & Routes",
+  agents: "Agent Studio",
+  policies: "Policies",
+  runs: "Run History",
   general: "General",
   appearance: "Appearance",
   models: "Models",
@@ -111,6 +121,11 @@ export function SettingsPage({
               ) : null}
             </header>
 
+            {selectedCategory === "connections" ? <ConnectionsSurface /> : null}
+            {selectedCategory === "routes" ? <ModelsRoutesSurface /> : null}
+            {selectedCategory === "agents" ? <AgentStudioSurface /> : null}
+            {selectedCategory === "policies" ? <PoliciesSurface /> : null}
+            {selectedCategory === "runs" ? <RunHistorySurface /> : null}
             {selectedCategory === "general" ? <GeneralSettings {...sectionProps} /> : null}
             {selectedCategory === "appearance" ? <AppearanceSettings {...sectionProps} /> : null}
             {selectedCategory === "models" ? (
