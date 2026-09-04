@@ -1,0 +1,24 @@
+{
+  "name": "forgex-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ForgeX desktop foundation for the existing Next.js frontend and FastAPI backend.",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev:backend": "node scripts/dev-backend.mjs",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "test:electron": "npm run build:electron && node --test electron/*.test.mjs",
+    "dev:electron": "npm run build:electron && electron .",
+    "dev:desktop": "node scripts/dev-desktop.mjs",
+    "test:ui-state": "node --experimental-strip-types --test frontend/lib/workflow-stage-state.test.mts frontend/lib/websocket.test.mts frontend/lib/forge-agent-autonomy.test.mts frontend/lib/forge-agent-activity.test.mts frontend/lib/layout-state.test.mts frontend/lib/nexus-agent-view.test.mts",
+    "dev:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-cleanup.ps1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "concurrently": "^9.2.1",
+    "electron": "^33.4.11",
+    "typescript": "^5.8.3",
+    "wait-on": "^8.0.3"
+  }
+}
