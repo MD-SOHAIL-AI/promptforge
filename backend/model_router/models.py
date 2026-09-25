@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 
-AuthType = Literal["api_key", "none"]
+AuthType = Literal["api_key", "none", "oauth_external"]
 TaskType = Literal[
     "code_generation",
     "planning",
@@ -32,12 +32,14 @@ class ModelProvider:
     enabled: bool = False
     configured: bool = False
     api_key_masked: str | None = None
-    provider_type: Literal["api_provider"] | None = None
+    provider_type: Literal["api_provider", "local_bridge_provider"] | None = None
     health_status: str = "unknown"
     last_checked_at: str | None = None
     last_error: str | None = None
     masked_api_key: str | None = None
     models_cached: int = 0
+    custom: bool = False
+    protocol: str = "openai-completions"
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -52,6 +54,8 @@ class ModelProvider:
             "last_checked_at": self.last_checked_at,
             "last_error": self.last_error,
             "models_cached": self.models_cached,
+            "custom": self.custom,
+            "protocol": self.protocol,
             "credential_configured": self.configured and self.auth_type == "api_key",
         }
         if self.base_url:
@@ -69,17 +73,7 @@ class ModelInfo:
     context_window: int | None = None
     free: bool | None = None
     local: bool = False
-    supported_parameters: tuple[str, ...] = ()
-
-    @property
-    def agent_compatible(self) -> bool | None:
-        if not self.supported_parameters:
-            return None
-        supported = set(self.supported_parameters)
-        return bool(
-            {"response_format", "structured_outputs"} & supported
-            or {"tools", "tool_choice"}.issubset(supported)
-        )
+    capabilities: "ModelCapabilities | None" = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,8 +83,172 @@ class ModelInfo:
             "context_window": self.context_window,
             "free": self.free,
             "local": self.local,
-            "supported_parameters": list(self.supported_parameters),
-            "agent_compatible": self.agent_compatible,
+            "capabilities": self.capabilities.to_dict() if self.capabilities else None,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ModelCapabilities:
+    """Features supported by one concrete provider/model route.
+
+    The original six fields intentionally remain first to preserve positional
+    construction used by existing provider metadata/tests.
+    """
+
+    streaming: bool = True
+    json_object: bool = False
+    json_schema: bool = False
+    native_tools: bool = False
+    reasoning: bool = False
+    system_prompt: bool = True
+    text_generation: bool = True
+    vision: bool = False
+    embeddings: bool = False
+    reranking: bool = False
+    context_window: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "streaming": self.streaming,
+            "json_object": self.json_object,
+            "json_schema": self.json_schema,
+            "native_tools": self.native_tools,
+            "reasoning": self.reasoning,
+            "system_prompt": self.system_prompt,
+            "text_generation": self.text_generation,
+            "vision": self.vision,
+            "embeddings": self.embeddings,
+            "reranking": self.reranking,
+            "context_window": self.context_window,
+        }
+
+    def satisfies(self, request: "RouteRequest") -> bool:
+        if request.require_text_generation and not self.text_generation:
+            return False
+        if request.require_streaming and not self.streaming:
+            return False
+        if request.require_json_object and not self.json_object:
+            return False
+        if request.require_json_schema and not self.json_schema:
+            return False
+        if request.require_native_tools and not self.native_tools:
+            return False
+        if request.require_reasoning and not self.reasoning:
+            return False
+        if request.require_vision and not self.vision:
+            return False
+        if request.require_embeddings and not self.embeddings:
+            return False
+        if request.require_reranking and not self.reranking:
+            return False
+        if request.min_context_window is not None:
+            if self.context_window is None or self.context_window < request.min_context_window:
+                return False
+        return True
+
+
+RoutingPreference = Literal["balanced", "latency", "quality", "cost"]
+
+
+@dataclass(frozen=True, slots=True)
+class RouteRequest:
+    """Per-invocation deterministic model requirements.
+
+    ``allow_fallback`` is retained as a compatibility input only; Model
+    Runtime V2 never switches providers/models automatically.
+    """
+
+    task_type: TaskType = "general_chat"
+    provider_id: str | None = None
+    model_id: str | None = None
+    variant: str | None = None
+    allow_fallback: bool = False
+    local_only: bool = False
+    require_text_generation: bool = True
+    require_streaming: bool = False
+    require_json_object: bool = False
+    require_json_schema: bool = False
+    require_native_tools: bool = False
+    require_reasoning: bool = False
+    require_vision: bool = False
+    require_embeddings: bool = False
+    require_reranking: bool = False
+    min_context_window: int | None = None
+    preference: RoutingPreference = "balanced"
+
+    def normalized(self) -> "RouteRequest":
+        return RouteRequest(
+            task_type=self.task_type, provider_id=self.provider_id, model_id=self.model_id,
+            variant=self.variant, allow_fallback=False, local_only=self.local_only,
+            require_text_generation=self.require_text_generation,
+            require_streaming=self.require_streaming,
+            require_json_object=self.require_json_object,
+            require_json_schema=self.require_json_schema,
+            require_native_tools=self.require_native_tools,
+            require_reasoning=self.require_reasoning, require_vision=self.require_vision,
+            require_embeddings=self.require_embeddings, require_reranking=self.require_reranking,
+            min_context_window=self.min_context_window, preference=self.preference,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderStatus:
+    provider_id: str
+    configuration: Literal["configured", "missing_credentials", "disabled"]
+    runtime: Literal["unknown", "healthy", "degraded", "unavailable"] = "unknown"
+    message: str | None = None
+
+    @property
+    def routeable(self) -> bool:
+        return self.configuration == "configured" and self.runtime != "unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class RouteAttempt:
+    provider_id: str
+    model_id: str
+    attempt: int
+    reason: str = "selected"
+    success: bool = False
+    error_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RouteDecision:
+    provider_id: str
+    model_id: str
+    attempts: tuple[RouteAttempt, ...] = ()
+    fallback_used: bool = False
+
+    def __post_init__(self) -> None:
+        if self.fallback_used:
+            raise ValueError("Model Runtime V2 does not permit cross-provider fallback")
+        for attempt in self.attempts:
+            if attempt.provider_id != self.provider_id or attempt.model_id != self.model_id:
+                raise ValueError("route attempts must keep the selected provider/model")
+
+
+@dataclass(frozen=True, slots=True)
+class StructuredOutputSpec:
+    """Provider-neutral description of a required structured model result."""
+
+    name: str
+    json_schema: Mapping[str, Any]
+    strict: bool = True
+    allow_prompt_fallback: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.name.strip() or len(self.name) > 128:
+            raise ValueError("structured output name is invalid")
+        if not isinstance(self.json_schema, Mapping):
+            raise TypeError("structured output schema must be a mapping")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "json_schema": dict(self.json_schema),
+            "strict": self.strict,
+            "allow_prompt_fallback": self.allow_prompt_fallback,
         }
 
 
@@ -103,13 +261,21 @@ class ModelRequest:
     provider_id: str | None = None
     temperature: float = 0.7
     max_tokens: int = 1024
-    allow_fallback: bool = True
+    allow_fallback: bool = False
     local_only: bool = False
+    structured_output: StructuredOutputSpec | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class ModelResponse:
+    """Canonical response returned by every model-router provider adapter.
+
+    ``content`` remains the compatibility spelling used by existing Chat and
+    generation callers. New structured consumers should use ``text`` and the
+    typed fields below rather than reading raw provider envelopes.
+    """
+
     content: str
     provider_id: str
     model_id: str
@@ -119,6 +285,16 @@ class ModelResponse:
     total_tokens: int | None = None
     estimated_cost: float | None = None
     raw_usage: dict[str, Any] = field(default_factory=dict)
+    structured_output: dict[str, Any] | None = None
+    tool_calls: tuple[dict[str, Any], ...] = ()
+    finish_reason: str | None = None
+    request_id: str | None = None
+    reasoning: str | None = None
+    truncated: bool = False
+
+    @property
+    def text(self) -> str | None:
+        return self.content or None
 
     def token_usage(self) -> dict[str, int]:
         usage: dict[str, int] = {}
@@ -131,12 +307,31 @@ class ModelResponse:
         return usage
 
 
+CanonicalModelResponse = ModelResponse
+CanonicalResponse = ModelResponse
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalStreamEvent:
+    type: Literal["text_delta", "reasoning_delta", "tool_call_delta", "done", "error"]
+    text: str | None = None
+    tool_call: dict[str, Any] | None = None
+    tool_call_index: int | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    arguments_delta: str | None = None
+    arguments: dict[str, Any] | None = None
+    finish_reason: str | None = None
+    usage: dict[str, int] = field(default_factory=dict)
+    error_code: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class ModelRoute:
     task_type: TaskType
     provider_id: str
     model_id: str
-    fallback_enabled: bool = True
+    fallback_enabled: bool = False
     fallback_provider_id: str | None = None
     local_only: bool = False
 

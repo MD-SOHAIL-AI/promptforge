@@ -12,13 +12,14 @@ export interface DesktopBackgroundSelectionResult {
 }
 
 export interface ForgeXDesktopBridge {
-  getBackendUrl: () => string;
+  backendUrl: string | null;
   getStatus: () => Promise<unknown>;
   openFolder: () => Promise<{ canceled: boolean; path: string | null }>;
   openProject: () => Promise<{ canceled: boolean; path: string | null }>;
   selectBackgroundImage: () => Promise<DesktopBackgroundSelectionResult>;
   resolveBackgroundImage: (assetId: string) => Promise<DesktopBackgroundAsset | null>;
   removeBackgroundImage: (assetId: string) => Promise<{ removed: boolean }>;
+  emitDiagnostic: (payload: Record<string, unknown>) => Promise<{ accepted: boolean }>;
 }
 
 declare global {

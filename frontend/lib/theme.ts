@@ -23,10 +23,6 @@ export const FORGEX_THEMES: ForgeXThemeDefinition[] = [
   { id: "high-contrast-light", label: "High Contrast Light", mode: "light", description: "Crisp accessible light mode", preview: ["#ffffff", "#f5f5f5", "#0047cc"] },
 ];
 
-export const FORGEX_FONT_SANS = '"Segoe UI Variable Text", "Segoe UI Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-
-export const FORGEX_FONT_MONO = '"Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace';
-
 export const ACCENT_COLORS = {
   purple: "#7c5cff",
   blue: "#3b82f6",
@@ -90,16 +86,9 @@ export function applyForgeXTheme(settings?: Record<string, ForgeXSettingValue> |
   document.documentElement.dataset.density = String(merged["appearance.ui_density"] ?? "comfortable");
   document.documentElement.dataset.motion = String(merged["appearance.motion"] ?? "subtle");
   document.documentElement.dataset.panelBorders = String(merged["appearance.panel_borders"] !== false);
-  const accentHsl = hexToHslTriplet(accentValue);
   document.documentElement.style.setProperty("--fx-accent", accentValue);
-  document.documentElement.style.setProperty("--fx-accent-hover", "color-mix(in srgb, var(--fx-accent) 85%, black)");
   document.documentElement.style.setProperty("--fx-accent-soft", `${accentValue}24`);
   document.documentElement.style.setProperty("--fx-accent-faint", `${accentValue}12`);
-  document.documentElement.style.setProperty("--primary", accentHsl);
-  document.documentElement.style.setProperty("--ring", accentHsl);
-  document.documentElement.style.setProperty("--accent", accentHsl);
-  document.documentElement.style.setProperty("--fx-ui-font", FORGEX_FONT_SANS);
-  document.documentElement.style.setProperty("--fx-mono-font", FORGEX_FONT_MONO);
   document.documentElement.style.setProperty("--fx-glow", `${accentValue}${Math.round((glowIntensity / 100) * 102).toString(16).padStart(2, "0")}`);
   document.documentElement.style.setProperty("--fx-font-size", `${Number.isFinite(fontSize) ? fontSize : 14}px`);
   document.documentElement.style.setProperty("--fx-terminal-font-size", `${Number.isFinite(terminalFontSize) ? terminalFontSize : 13}px`);
@@ -129,25 +118,4 @@ export function applyForgeXTheme(settings?: Record<string, ForgeXSettingValue> |
 function clamp(value: number, minimum: number, maximum: number) {
   if (!Number.isFinite(value)) return minimum;
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function hexToHslTriplet(hex: string) {
-  const clean = hex.replace("#", "");
-  const r = Number.parseInt(clean.slice(0, 2), 16) / 255;
-  const g = Number.parseInt(clean.slice(2, 4), 16) / 255;
-  const b = Number.parseInt(clean.slice(4, 6), 16) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const lightness = (max + min) / 2;
-  let hue = 0;
-  let saturation = 0;
-  if (max !== min) {
-    const delta = max - min;
-    saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-    if (max === r) hue = (g - b) / delta + (g < b ? 6 : 0);
-    else if (max === g) hue = (b - r) / delta + 2;
-    else hue = (r - g) / delta + 4;
-    hue *= 60;
-  }
-  return `${Math.round(hue)} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%`;
 }

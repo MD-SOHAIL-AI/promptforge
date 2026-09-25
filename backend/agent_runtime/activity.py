@@ -208,7 +208,7 @@ def activity_for_run_event(event: Mapping[str, object]) -> AgentActivity | None:
             return AgentActivity.SEARCHING
         if tool in {"read_file", "load_skill"}:
             return AgentActivity.READING
-        if tool in {"write_file", "edit_file_simple"}:
+        if tool in {"write_file", "edit_file_simple", "apply_patch"}:
             return AgentActivity.EDITING
         if tool in {"update_plan"}:
             return AgentActivity.PLANNING

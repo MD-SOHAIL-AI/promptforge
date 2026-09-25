@@ -5,18 +5,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-export const TooltipProvider = ({
-  delayDuration = 300,
-  skipDelayDuration = 400,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>) => (
-  <TooltipPrimitive.Provider
-    delayDuration={delayDuration}
-    skipDelayDuration={skipDelayDuration}
-    {...props}
-  />
-);
-
+export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
 export const TooltipTrigger = TooltipPrimitive.Trigger;
 
@@ -29,7 +18,7 @@ export const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-[200] max-w-72 overflow-hidden rounded-[var(--fx-radius-sm)] border border-[var(--fx-border-soft)] bg-[var(--fx-panel-elevated)] px-2 py-1 text-xs text-[var(--fx-text)] shadow-[var(--fx-shadow)]",
+        "z-50 overflow-hidden rounded-[4px] border border-border bg-[#1f2329] px-2 py-1 text-xs text-foreground shadow-xl",
         className,
       )}
       {...props}

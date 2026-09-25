@@ -288,6 +288,20 @@ class ProjectService:
         if backup.exists() or backup.is_symlink():
             raise ProjectServiceError("stale project backup prevents save")
         try:
+            # Preserve additions absent from the old manifest, even when the
+            # caller loaded its GeneratedProject before a ChangeSet was applied.
+            previous_paths = {item["path"] for item in self._read_manifest(target)["files"]}
+            for directory, dirs, names in os.walk(target, followlinks=False):
+                for name in [*dirs, *names]:
+                    _reject_symlink_components(target, Path(directory) / name)
+                for name in names:
+                    source = Path(directory) / name
+                    relative = source.relative_to(target).as_posix()
+                    destination = stage / relative
+                    if relative == _MANIFEST_NAME or relative in previous_paths or destination.exists():
+                        continue
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, destination)
             self._validate_platformio_path(project, stage)
             os.replace(target, backup)
             try:
@@ -387,7 +401,26 @@ class ProjectService:
         manifest: Mapping[str, Any],
     ) -> GeneratedProject:
         files: list[GeneratedFile] = []
-        for item in manifest["files"]:
+        inventory = list(manifest["files"])
+        known = {item["path"] for item in inventory}
+        ignored = {"node_modules", "vendor", "dist", "build", "__pycache__"}
+        for directory, dirs, names in os.walk(project_path, followlinks=False):
+            dirs[:] = sorted(name for name in dirs if not name.startswith(".") and name.casefold() not in ignored)
+            for name in sorted(names):
+                candidate = Path(directory) / name
+                relative = candidate.relative_to(project_path).as_posix()
+                if name.startswith(".") or relative in known:
+                    continue
+                _reject_symlink_components(project_path, candidate)
+                if not candidate.is_file() or candidate.stat().st_size > 512_000:
+                    continue
+                try:
+                    content = candidate.read_text(encoding="utf-8")
+                except UnicodeError:
+                    continue
+                if "\x00" not in content:
+                    inventory.append({"path": relative, "file_type": candidate.suffix.lstrip(".") or "text"})
+        for item in inventory:
             path = item["path"]
             file_path = _contained_file(project_path, path)
             _reject_symlink_components(project_path, file_path)
@@ -592,7 +625,7 @@ def _reject_symlink_components(root: Path, path: Path) -> None:
     current = root
     for part in path.relative_to(root).parts:
         current = current / part
-        if current.is_symlink():
+        if current.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(current):
             raise ProjectStructureError(
                 f"project path component cannot be a symlink: {part}"
             )

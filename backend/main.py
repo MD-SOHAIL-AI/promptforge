@@ -9,7 +9,7 @@ import logging
 
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
@@ -608,6 +608,8 @@ def _invocations(
             project,
             context=generated_context,
         )
+        if generated_context.project_path is not None:
+            config = replace(config, expected_project_root=generated_context.project_path)
         if generation is not None:
             _validate_build_workspace_matches_generation(config.project_dir, generation)
         logger.info(
@@ -1042,10 +1044,17 @@ def _context_from_task(task: Task) -> ExecutionContext:
     if isinstance(context_data, Mapping):
         data = dict(context_data)
         data.setdefault("task_id", task.task_id)
-        return ExecutionContext.from_dict(data)
+        context = ExecutionContext.from_dict(data)
+        active_workspace = context.metadata.get("active_workspace")
+        if isinstance(active_workspace, Mapping):
+            _require_matching_workspace_path(context.project_path, active_workspace)
+        return context
     active_workspace = metadata.get("active_workspace")
     workspace_metadata = active_workspace if isinstance(active_workspace, Mapping) else {}
     workspace_root = _optional_text(workspace_metadata.get("rootPath")) or _optional_text(workspace_metadata.get("root_path"))
+    project_path = _optional_text(metadata.get("project_path")) or workspace_root
+    if workspace_root is not None:
+        _require_matching_workspace_path(project_path, workspace_metadata)
     workspace_board = _optional_text(workspace_metadata.get("board"))
     workspace_framework = _optional_text(workspace_metadata.get("framework"))
     selected_board = _optional_text(workspace_metadata.get("selected_board"))
@@ -1073,7 +1082,7 @@ def _context_from_task(task: Task) -> ExecutionContext:
             context_metadata[key] = workspace_metadata[key]
     return ExecutionContext(
         task_id=task.task_id,
-        project_path=_optional_text(metadata.get("project_path")) or workspace_root,
+        project_path=project_path,
         target_board=target_board,
         framework=framework,
         firmware_path=_optional_text(metadata.get("firmware_path")),
@@ -1089,6 +1098,19 @@ def _context_from_task(task: Task) -> ExecutionContext:
         ),
         metadata=context_metadata,
     )
+
+
+def _require_matching_workspace_path(project_path: str | None, workspace: Mapping[str, object]) -> None:
+    root_value = _optional_text(workspace.get("rootPath")) or _optional_text(workspace.get("root_path"))
+    if root_value is None or project_path is None:
+        return
+    try:
+        root = Path(root_value).expanduser().resolve(strict=True)
+        project = Path(project_path).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("Execution workspace path is invalid") from exc
+    if project != root or not project.is_dir():
+        raise ValueError("Execution project path must match the active workspace")
 
 
 def _optional_text(value: object) -> str | None:

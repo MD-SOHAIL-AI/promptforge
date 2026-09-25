@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -143,6 +144,55 @@ def test_success_returns_structured_result_and_build_command(tmp_path: Path) -> 
     assert manager.calls[1].env == {
         "PLATFORMIO_HOME_DIR": str(tmp_path / "pio-home")
     }
+
+
+def test_build_lifecycle_events_are_written(tmp_path: Path, monkeypatch) -> None:
+    log_path = tmp_path / "build.jsonl"
+    monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    project = make_project(tmp_path / "firmware")
+
+    def successful_build(config: ProcessConfig) -> ProcessResult:
+        create_artifact(project, "esp32dev")
+        return process_result(stdout="Compiling src/main.cpp\n")
+
+    result = run_build(
+        FakeSubprocessManager(version_result(), successful_build),
+        BuildConfig(project_dir=project, environment="esp32dev", session_id="session-123"),
+    )
+
+    assert result.success is True
+    events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    names = [event["event"] for event in events]
+    assert "build.started" in names
+    assert "build.stdout" in names
+    assert "build.succeeded" in names
+    assert "build.completed" in names
+    started = events[names.index("build.started")]
+    assert started["session_id"] == "session-123"
+    assert started["environment"] == "esp32dev"
+    assert started["build_id"].startswith("build-")
+
+
+def test_failed_build_preserves_compiler_diagnostics(tmp_path: Path, monkeypatch) -> None:
+    log_path = tmp_path / "build.jsonl"
+    monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    project = make_project(tmp_path / "firmware")
+    compiler_error = "src/main.cpp:4:10: fatal error: missing.h: No such file or directory\n"
+
+    result = run_build(
+        FakeSubprocessManager(version_result(), process_result(returncode=1, stderr=compiler_error)),
+        BuildConfig(project_dir=project, environment="esp32dev", session_id="session-123"),
+    )
+
+    assert result.success is False
+    events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    names = [event["event"] for event in events]
+    assert "build.stderr" in names
+    assert "build.failed" in names
+    stderr = events[names.index("build.stderr")]
+    assert compiler_error.strip() in stderr["output"]
+    failed = events[names.index("build.failed")]
+    assert failed["status"] == ResultStatus.FAILED.value
 
 
 @pytest.mark.parametrize(
@@ -349,6 +399,7 @@ def test_missing_platformio_executable_is_classified(tmp_path: Path) -> None:
     assert result.failure is not None
     assert result.failure.category == "TOOLCHAIN_MISSING"
     assert result.failure.retryable is False
+    assert "npm run setup:platformio" in result.message
     assert result.process_result is None
     assert len(result.metadata) > 0
 

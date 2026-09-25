@@ -15,6 +15,7 @@ from .credentials import CredentialStore, CredentialStoreError, default_credenti
 SETTINGS_PATH_ENV = "FORGEX_MODEL_ROUTER_SETTINGS_PATH"
 _EMPTY_STATE: dict[str, dict[str, Any]] = {
     "providers": {},
+    "custom_providers": {},
     "routes": {},
     "health": {},
     "models": {},
@@ -56,6 +57,44 @@ class ProviderSettingsStorage:
             providers = self._read_unlocked()["providers"]
             value = providers.get(provider_id, {})
             return dict(value) if isinstance(value, dict) else {}
+
+    def custom_provider_definitions(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            records = self._read_unlocked()["custom_providers"]
+            return {
+                str(key): dict(value)
+                for key, value in records.items()
+                if isinstance(value, dict)
+            }
+
+    def save_custom_provider_definition(
+        self, provider_id: str, definition: dict[str, Any]
+    ) -> None:
+        with self._lock:
+            data = self._read_unlocked()
+            records = dict(data["custom_providers"])
+            records[provider_id] = dict(definition)
+            data["custom_providers"] = records
+            self._write_unlocked(data)
+
+    def delete_custom_provider_definition(self, provider_id: str) -> None:
+        with self._lock:
+            data = self._read_unlocked()
+            records = dict(data["custom_providers"])
+            records.pop(provider_id, None)
+            data["custom_providers"] = records
+            self._write_unlocked(data)
+
+    def delete_provider_state(self, provider_id: str) -> None:
+        """Remove every non-secret record owned by a custom provider."""
+
+        with self._lock:
+            data = self._read_unlocked()
+            for section in ("providers", "custom_providers", "health", "models"):
+                records = dict(data[section])
+                records.pop(provider_id, None)
+                data[section] = records
+            self._write_unlocked(data)
 
     def save_provider_settings(
         self,
@@ -176,6 +215,7 @@ class ProviderSettingsStorage:
             raise ModelRouterStorageError("model_router_settings_invalid_root")
         return {
             "providers": data.get("providers") if isinstance(data.get("providers"), dict) else {},
+            "custom_providers": data.get("custom_providers") if isinstance(data.get("custom_providers"), dict) else {},
             "routes": data.get("routes") if isinstance(data.get("routes"), dict) else {},
             "health": data.get("health") if isinstance(data.get("health"), dict) else {},
             "models": data.get("models") if isinstance(data.get("models"), dict) else {},
@@ -185,6 +225,7 @@ class ProviderSettingsStorage:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "providers": data.get("providers", {}),
+            "custom_providers": data.get("custom_providers", {}),
             "routes": data.get("routes", {}),
             "health": data.get("health", {}),
             "models": data.get("models", {}),

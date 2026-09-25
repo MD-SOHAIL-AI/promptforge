@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Request
 
 from ...services.serial_service import SerialConfiguration, SerialService
-from ...services.serial_stream_broker import SerialStreamBroker
-from ..dependencies import resolve_project_from_request
+from ..dependencies import resolve_project_from_request, services
 from ..errors import APIError, error_responses
 from ..schemas.monitor import MonitorStartRequest, MonitorStatusResponse
 
@@ -39,39 +36,29 @@ async def start_monitor(body: MonitorStartRequest, request: Request) -> MonitorS
             ini,
             ini.is_file(),
         )
-    lock: asyncio.Lock = request.app.state.monitor_lock
+    lock: asyncio.Lock = services(request).monitor_lock
     async with lock:
-        current = getattr(request.app.state, "serial_service", None)
-        current_state = getattr(getattr(current, "state", None), "name", "")
-        if current is not None and current_state in {"CONNECTING", "CONNECTED", "RECONNECTING"}:
+        current = services(request).serial_service
+        if current is not None and current.is_connected():
             configuration = current.configuration
             if (
                 configuration.port == body.port
                 and configuration.baudrate == body.baudrate
                 and configuration.timeout_s == body.timeout_s
             ):
-                await _stream_broker(request).attach(current)
                 return _status(current)
             raise APIError(409, "MONITOR_ALREADY_RUNNING", "Serial monitor is already running")
-        broker = _stream_broker(request)
-        if current is not None:
-            try:
-                await current.disconnect()
-            finally:
-                await broker.detach()
         configuration = SerialConfiguration(
             port=body.port,
             baudrate=body.baudrate,
             timeout_s=body.timeout_s,
         )
-        service = request.app.state.serial_service_factory(configuration)
+        service = services(request).serial_service_factory(configuration)
         try:
             await service.connect()
         except Exception as exc:
             raise APIError(503, "SERIAL_CONNECTION_FAILED", "Serial connection could not be opened") from exc
-        request.app.state.serial_service = service
-        request.app.state.serial_runtime = service
-        await broker.attach(service)
+        services(request).replace_serial_service(service)
         return _status(service)
 
 
@@ -82,11 +69,10 @@ async def start_monitor(body: MonitorStartRequest, request: Request) -> MonitorS
     summary="Stop the serial monitor connection",
 )
 async def stop_monitor(request: Request) -> MonitorStatusResponse:
-    lock: asyncio.Lock = request.app.state.monitor_lock
+    lock: asyncio.Lock = services(request).monitor_lock
     async with lock:
-        service = getattr(request.app.state, "serial_service", None)
+        service = services(request).serial_service
         if service is None:
-            await _stream_broker(request).detach()
             return MonitorStatusResponse(
                 state="DISCONNECTED",
                 connected=False,
@@ -98,37 +84,7 @@ async def stop_monitor(request: Request) -> MonitorStatusResponse:
             await service.disconnect()
         except Exception as exc:
             raise APIError(500, "SERIAL_DISCONNECT_FAILED", "Serial connection could not be closed") from exc
-        await _stream_broker(request).detach()
         return _status(service)
-
-
-@router.get("/stream", summary="Stream live serial observations")
-async def monitor_stream(
-    request: Request,
-    after: int = Query(default=0, ge=0),
-) -> StreamingResponse:
-    broker = _stream_broker(request)
-
-    async def stream():
-        replay, queue = await broker.subscribe(after)
-        try:
-            for event in replay:
-                yield _sse_event(event.to_dict())
-            while True:
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
-                    continue
-                yield _sse_event(event.to_dict())
-        finally:
-            await broker.unsubscribe(queue)
-
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.get(
@@ -137,7 +93,7 @@ async def monitor_stream(
     summary="Get serial monitor status",
 )
 async def monitor_status(request: Request) -> MonitorStatusResponse:
-    service = getattr(request.app.state, "serial_service", None)
+    service = services(request).serial_service
     if service is None:
         return MonitorStatusResponse(
             state="DISCONNECTED",
@@ -164,15 +120,3 @@ def _status(service: SerialService) -> MonitorStatusResponse:
         baudrate=service.configuration.baudrate,
         metrics=metrics,
     )
-
-
-def _stream_broker(request: Request) -> SerialStreamBroker:
-    broker = getattr(request.app.state, "serial_stream_broker", None)
-    if not isinstance(broker, SerialStreamBroker):
-        raise APIError(503, "SERIAL_STREAM_UNAVAILABLE", "Serial stream is unavailable")
-    return broker
-
-
-def _sse_event(payload: dict[str, object]) -> str:
-    sequence = int(payload["sequence"])
-    return f"id: {sequence}\nevent: observation\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n"

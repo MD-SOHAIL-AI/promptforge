@@ -92,20 +92,45 @@ test("missing Python produces a clear error", () => {
   );
 });
 
-test("present virtual environment with missing dependencies does not silently fall back", () => {
+test("broken repository virtual environment fails loudly instead of hiding it with system Python", () => {
   const venvPython = "/repo/.venv/bin/python";
-  let checkCount = 0;
   assert.throws(
     () => resolveBackendPython({
       repoRoot: "/repo",
       env: {},
       platform: "linux",
       existsSync: (filePath) => filePath === venvPython,
-      runCheck: () => {
-        checkCount += 1;
-        return checkCount === 1 ? okRun() : { ok: false, stderr: "ModuleNotFoundError: fastapi" };
+      runCheck: (executable, args) => {
+        if (executable === venvPython) {
+          return args.join(" ").includes("fastapi")
+            ? { ok: false, stderr: "ModuleNotFoundError: fastapi" }
+            : okRun();
+        }
+        if (executable === "python3") return okRun();
+        return { ok: false, error: "not found" };
       },
     }),
-    /ForgeX backend dependencies are not installed/,
+    (error) => {
+      assert.match(error.message, /dependencies are not installed in the selected repository environment/);
+      assert.match(error.message, /Detected Python: \/repo\/\.venv\/bin\/python/);
+      assert.match(error.message, /\.venv\/bin\/python -m pip install -r requirements\.txt/);
+      return true;
+    },
+  );
+});
+
+test("unrunnable repository virtual environment fails instead of falling through", () => {
+  const venvPython = "C:\\repo\\.venv\\Scripts\\python.exe";
+  assert.throws(
+    () => resolveBackendPython({
+      repoRoot: "C:\\repo",
+      env: {},
+      platform: "win32",
+      existsSync: (filePath) => filePath === venvPython,
+      runCheck: (executable) => executable === venvPython
+        ? { ok: false, error: "Access is denied" }
+        : okRun(),
+    }),
+    /repository virtual environment exists but its Python interpreter cannot be executed/,
   );
 });

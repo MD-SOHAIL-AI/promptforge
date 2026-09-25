@@ -6,9 +6,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from backend.model_router.registry import ProviderRegistry as ModelProviderRegistry
+from backend.model_router.router import ModelRouterService
 
-from .api_planner_provider import API_PLANNER_CONFIGS, ApiPlannerProvider, ApiTransport
+from .api_planner_provider import API_PLANNER_CONFIGS, ApiTransport
 from .product_providers import FakeProductPlanner, ProductPlanner, VerifiedTemplatePlanner
+from .router_planner import RouterProductPlanner
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,102 +64,109 @@ class ProductProviderRegistry:
         fake_enabled: bool = False,
         transport: ApiTransport | None = None,
         openrouter_headers: Mapping[str, str] | None = None,
+        model_router: ModelRouterService | None = None,
+        template_enabled: bool = False,
     ) -> None:
         self._model_provider_registry = model_provider_registry
         self._transport = transport
         self._fake_enabled = bool(fake_enabled)
         self._openrouter_headers = dict(openrouter_headers or {})
+        self._model_router = model_router or ModelRouterService(
+            registry=model_provider_registry
+        )
+        self._template_enabled = bool(template_enabled or fake_enabled)
         self.last_planner: ProductPlanner | None = None
 
     def list(self) -> tuple[ProductProviderEntry, ...]:
         active_route = self._model_provider_registry.route_for_task("code_generation")
-        entries: list[ProductProviderEntry] = [
-            ProductProviderEntry(
+        entries: list[ProductProviderEntry] = []
+        # Test doubles are absent from the production provider catalogue. They
+        # are exposed only when an explicit development/test flag enables them.
+        if self._fake_enabled:
+            entries.append(ProductProviderEntry(
                 "fake_planner",
                 "ForgeX Fake Planner",
                 "fake",
-                "enabled" if self._fake_enabled else "disabled",
-                self._fake_enabled,
-                enabled_by_default=False,
-            ),
-            ProductProviderEntry(
-                "verified_template",
-                "Verified template",
-                "template_provider",
-                "ready",
+                "enabled",
                 True,
-                enabled_by_default=True,
-            ),
-        ]
-        for provider_id, config in API_PLANNER_CONFIGS.items():
-            if provider_id not in self._model_provider_registry.provider_ids():
-                continue
+                enabled_by_default=False,
+            ))
+        if self._template_enabled:
+            entries.append(
+                ProductProviderEntry(
+                    "verified_template",
+                    "Verified template (development only)",
+                    "template_provider",
+                    "ready",
+                    True,
+                    enabled_by_default=False,
+                )
+            )
+        for provider_id in self._model_provider_registry.provider_ids():
             provider = self._model_provider_registry.provider(provider_id)
             key_present = bool(self._model_provider_registry.api_key(provider_id))
             model_id = self._selected_model(provider_id)
-            routeable = provider.enabled and provider.configured and key_present and bool(model_id)
+            capabilities = self._model_provider_registry.model_capabilities(
+                provider_id, model_id
+            ) if model_id else None
+            routeable = (
+                provider.enabled
+                and provider.configured
+                and (
+                    provider.local
+                    or key_present
+                )
+                and bool(model_id)
+            )
             entries.append(
                 ProductProviderEntry(
                     provider_id=provider_id,
-                    display_name=config.display_name,
+                    display_name=provider.display_name,
                     kind="api_planner",
                     state="ready" if routeable else provider.health_status,
                     routeable=routeable,
-                    supports_streaming=True,
                     key_present=key_present,
                     model_configured=bool(model_id),
                     model_id=model_id or None,
                     health_status=provider.health_status,
                     local=provider.local,
                     selected=active_route.provider_id == provider_id,
+                    supports_streaming=bool(capabilities and capabilities.streaming),
                 )
             )
         return tuple(sorted(entries, key=lambda item: item.provider_id))
 
-    def resolve(self, provider_id: str) -> ProductPlanner:
+    def resolve(self, provider_id: str, *, model_id: str | None = None, session_id: str | None = None) -> ProductPlanner:
         if provider_id == "verified_template":
+            if not self._template_enabled:
+                raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
             self.last_planner = VerifiedTemplatePlanner()
             return self.last_planner
         if provider_id == "fake_planner" and self._fake_enabled:
             self.last_planner = FakeProductPlanner()
             return self.last_planner
-
-        config = API_PLANNER_CONFIGS.get(provider_id)
-        if config is None or provider_id not in self._model_provider_registry.provider_ids():
+        if provider_id not in self._model_provider_registry.provider_ids():
             raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
         provider = self._model_provider_registry.provider(provider_id)
-        api_key = self._model_provider_registry.api_key(provider_id) or ""
-        model_id = self._selected_model(provider_id)
+        selected_model = model_id or self._selected_model(provider_id)
         if not provider.enabled:
             raise ValueError("API_PROVIDER_DISABLED")
-        if not provider.configured or not api_key:
+        if not provider.configured:
             raise ValueError("API_PROVIDER_KEY_MISSING")
-        if not model_id:
+        if not selected_model:
             raise ValueError("API_PROVIDER_MODEL_MISSING")
-
-        headers = self._openrouter_headers if provider_id == "openrouter" else None
-        model_info = self._model_provider_registry.model_info(provider_id, model_id)
-        supported_parameters = model_info.supported_parameters if model_info is not None else ()
-        route = self._model_provider_registry.route_for_task("code_generation")
-        fallback_model_id = None
-        fallback_supported_parameters: tuple[str, ...] = ()
-        if provider_id == "openrouter" and route.fallback_enabled and model_id != "openrouter/free":
-            fallback_model_id = "openrouter/free"
-            fallback_info = self._model_provider_registry.model_info(provider_id, fallback_model_id)
-            fallback_supported_parameters = (
-                fallback_info.supported_parameters if fallback_info is not None else ("response_format",)
-            )
-        self.last_planner = ApiPlannerProvider(
-            config,
-            api_key=api_key,
-            model_id=model_id,
-            enabled=True,
-            transport=self._transport,
-            extra_headers=headers,
-            endpoint=self._planner_endpoint(provider_id),
-            supported_parameters=supported_parameters,
-            fallback_model_id=fallback_model_id,
-            fallback_supported_parameters=fallback_supported_parameters,
+        # All API-backed Agent planning flows through the canonical ModelRuntime.
+        self.last_planner = RouterProductPlanner(
+            self._model_router,
+            provider_id=provider_id,
+            model_id=selected_model,
+            session_id=session_id,
+            fallback_provider_id=None,
+            fallback_model_id=None,
+            max_tokens=4096,
+            # The turn owner must outlive the adapter's per-request deadline so
+            # same-model retry and error normalization can finish cleanly.
+            turn_timeout_s=300.0,
         )
         return self.last_planner
 
@@ -169,13 +178,21 @@ class ProductProviderRegistry:
         selected = next((item for item in entries if item.selected and item.routeable), None)
         if selected is not None:
             return selected.provider_id
-        template = next((item for item in entries if item.provider_id == "verified_template" and item.routeable), None)
-        if template is not None:
-            return template.provider_id
-        fallback = next((item for item in entries if item.routeable), None)
-        if fallback is None:
-            raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
-        return fallback.provider_id
+        # An unavailable selected provider must not send a user's repository
+        # to an unrelated configured provider without an explicit choice.
+        raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
+
+    def session_model(self, session_id: str | None) -> tuple[str, str] | None:
+        selected, _ = self._model_router.selections.resolve(session_id=session_id)
+        if selected is None:
+            return None
+        # Validate the persisted choice each turn; never substitute another model.
+        from backend.model_router.models import ModelRequest
+        resolved = self._model_router.resolver.resolve(ModelRequest(
+            prompt="", task_type="code_generation", provider_id=selected.provider_id,
+            model_id=selected.model_id,
+        ))
+        return resolved.provider_id, resolved.model_id
 
     def _planner_endpoint(self, provider_id: str) -> str:
         config = API_PLANNER_CONFIGS[provider_id]
@@ -186,36 +203,24 @@ class ProductProviderRegistry:
             return f"{base_url}/openai/chat/completions"
         return f"{base_url}/chat/completions"
 
-    def configured_fallback(self, provider_id: str) -> str | None:
-        route = self._model_provider_registry.route_for_task("code_generation")
-        fallback_id = route.fallback_provider_id
-        if not route.fallback_enabled or route.provider_id != provider_id or not fallback_id:
-            return None
-        if fallback_id not in API_PLANNER_CONFIGS:
-            return None
-        primary = self._model_provider_registry.provider(provider_id)
-        fallback = self._model_provider_registry.provider(fallback_id)
-        if primary.local != fallback.local or not fallback.configured or not fallback.enabled:
-            return None
-        if not self._model_provider_registry.api_key(fallback_id):
-            return None
-        return fallback_id
-
-    def fallback_for_instruction(self, provider_id: str, instruction: str) -> str | None:
-        del instruction
-        return self.configured_fallback(provider_id)
-
     def selected_model_id(self, provider_id: str) -> str | None:
         if provider_id == "verified_template":
-            return "forgex-verified-templates-v1"
+            return "forgex-verified-templates-v1" if self._template_enabled else None
         if provider_id == "fake_planner":
             return "forgex-fake-planner-v1" if self._fake_enabled else None
-        if provider_id not in API_PLANNER_CONFIGS:
+        if provider_id not in self._model_provider_registry.provider_ids():
             return None
-        return self._selected_model(provider_id)
+        return self._selected_model(provider_id) or None
 
-    def workflow_route_metadata(self, provider_id: str, *, fallback_provider_id: str | None = None) -> dict[str, object]:
+    def workflow_route_metadata(
+        self, provider_id: str, *, fallback_provider_id: str | None = None, model_id: str | None = None
+    ) -> dict[str, object]:
+        # ``fallback_provider_id`` is retained only for wire compatibility.
+        # Model Runtime V2 never changes provider/model automatically.
+        del fallback_provider_id
         if provider_id == "verified_template":
+            if not self._template_enabled:
+                raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
             return {
                 "provider_id": provider_id,
                 "model_id": "forgex-verified-templates-v1",
@@ -224,24 +229,48 @@ class ProductProviderRegistry:
                 "local_only": True,
             }
         if provider_id == "fake_planner":
-            raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
-        if provider_id not in API_PLANNER_CONFIGS:
+            if not self._fake_enabled:
+                raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
+            return {
+                "provider_id": provider_id,
+                "model_id": "forgex-fake-planner-v1",
+                "fallback_enabled": False,
+                "fallback_provider_id": None,
+                "local_only": True,
+            }
+        if provider_id not in self._model_provider_registry.provider_ids():
             raise ValueError("PRODUCT_PROVIDER_NOT_ROUTEABLE")
         provider = self._model_provider_registry.provider(provider_id)
-        api_key = self._model_provider_registry.api_key(provider_id)
-        model_id = self._selected_model(provider_id)
+        model_id = model_id or self._selected_model(provider_id)
         if not provider.enabled:
             raise ValueError("API_PROVIDER_DISABLED")
-        if not provider.configured or not api_key:
+        if not provider.configured:
             raise ValueError("API_PROVIDER_KEY_MISSING")
         if not model_id:
             raise ValueError("API_PROVIDER_MODEL_MISSING")
-        fallback_id = fallback_provider_id or self.configured_fallback(provider_id)
         return {
             "provider_id": provider_id,
             "model_id": model_id,
-            "fallback_enabled": bool(fallback_id),
-            "fallback_provider_id": fallback_id,
+            "fallback_enabled": False,
+            "fallback_provider_id": None,
+            "local_only": provider.local,
+        }
+
+    def configured_fallback(self, provider_id: str) -> str | None:
+        del provider_id
+        return None
+
+    def fallback_for_instruction(self, provider_id: str, instruction: str) -> str | None:
+        del provider_id, instruction
+        return None
+
+    def route_snapshot(self, provider_id: str) -> dict[str, object]:
+        provider = self._model_provider_registry.provider(provider_id)
+        return {
+            "provider_id": provider_id,
+            "model_id": self._selected_model(provider_id),
+            "fallback_enabled": False,
+            "fallback_provider_id": None,
             "local_only": provider.local,
         }
 

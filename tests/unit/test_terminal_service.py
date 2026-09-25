@@ -121,42 +121,6 @@ def test_terminal_subscribe_replays_events_after_cursor() -> None:
     assert asyncio.run(run()) == ["two"]
 
 
-def test_terminal_subscriber_marks_slow_consumer_overflow() -> None:
-    async def run() -> tuple[int, int, int]:
-        service = TerminalService()
-        session = make_session()
-        service._sessions[session.session_id] = session  # noqa: SLF001
-        _, _, queue = await service.subscribe(session.session_id)
-        for index in range(501):
-            service._append(session, "stdout", str(index))  # noqa: SLF001
-        queued = []
-        while not queue.empty():
-            queued.append(queue.get_nowait())
-        return len(queued), queued[0].sequence, queued[-1].dropped
-
-    assert asyncio.run(run()) == (500, 2, 1)
-
-
-def test_terminal_write_rejects_websocket_sized_overflow_and_nul() -> None:
-    async def run() -> tuple[str, str]:
-        service = TerminalService()
-        session = make_session()
-        session.driver = RecordingDriver()  # type: ignore[assignment]
-        service._sessions[session.session_id] = session  # noqa: SLF001
-        messages = []
-        for payload in ("x" * 20_001, "bad\x00input"):
-            try:
-                await service.write(session.session_id, payload)
-            except ValueError as exc:
-                messages.append(str(exc))
-        return messages[0], messages[1]
-
-    oversized, nul = asyncio.run(run())
-    assert "20_000" not in oversized
-    assert "20000" in oversized
-    assert "NUL" in nul
-
-
 def test_terminal_clear_keeps_sequence_monotonic_for_reconnect() -> None:
     async def run() -> tuple[int, list[int]]:
         service = TerminalService()

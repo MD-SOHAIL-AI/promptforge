@@ -1,6 +1,7 @@
 """Canonical workflow execution route."""
 
 from __future__ import annotations
+from backend.runtime.process_owner import owned_operation
 
 import asyncio
 import logging
@@ -12,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request, Response
 
-from ..dependencies import required_state, resolve_project_from_request
+from ..dependencies import required_state, resolve_project_from_request, services
 from ..errors import APIError, error_responses
 from ..observability import (
     execution_id_context,
@@ -71,8 +72,22 @@ async def execute_workflow(
     if body.project_id is not None:
         metadata = await resolve_project_from_request(request, body.project_id)
         active_workspace = _active_workspace(metadata)
+        if body.workspace_root is not None and Path(body.workspace_root) != Path(str(active_workspace["rootPath"])):
+            raise APIError(422, "WORKSPACE_ROOT_MISMATCH", "workspace_root must match the selected project")
     elif body.workspace_root is not None:
-        active_workspace = _active_workspace_from_root(body.workspace_root)
+        root = Path(body.workspace_root)
+        project_service = services(request).project_service
+        imported_service = services(request).project_import_service
+        candidates = list(await project_service.list_projects())
+        if imported_service is not None:
+            candidates.extend(await imported_service.list_projects())
+        metadata = next(
+            (item for item in candidates if Path(str(item.project_path)).expanduser().resolve() == root),
+            None,
+        )
+        if metadata is None:
+            raise APIError(422, "WORKSPACE_ROOT_UNREGISTERED", "Import or create this project before executing in it")
+        active_workspace = _active_workspace(metadata)
     if active_workspace is not None:
         _apply_execute_overrides(
             active_workspace,
@@ -137,13 +152,13 @@ async def execute_workflow(
                 code_generation_service=code_generation_service,
                 project_service=project_service,
                 subprocess_manager=subprocess_manager,
-                serial_runtime=getattr(request.app.state, "serial_runtime", None),
+                serial_runtime=services(request).serial_runtime,
                 task_id=task_id,
                 active_workspace=active_workspace,
-                tool_executor=request.app.state.tool_executor,
+                tool_executor=services(request).tool_executor,
                 progress_callback=progress,
-                metrics_registry=getattr(request.app.state, "metrics_registry", None),
-                runtime_logger=getattr(request.app.state, "runtime_logger", None),
+                metrics_registry=services(request).metrics_registry,
+                runtime_logger=services(request).runtime_logger,
             )
         except asyncio.CancelledError:
             logger.info(
@@ -201,7 +216,7 @@ async def execute_workflow(
             },
         )
 
-    workflow_task = asyncio.create_task(run_workflow(), name=f"forgex-workflow-{task_id}")
+    workflow_task = asyncio.create_task(owned_operation(task_id, run_workflow()), name=f"forgex-workflow-{task_id}")
     async with _active_lock:
         _active_executions[task_id] = _ActiveExecution(
             task=workflow_task,
@@ -236,7 +251,7 @@ async def cancel_workflow(task_id: str, request: Request) -> dict[str, str]:
         raise APIError(404, "TASK_NOT_FOUND", "Active task was not found", {"task_id": task_id})
 
     active.task.cancel()
-    await subprocess_manager.kill_all()
+    await subprocess_manager.cancel_owner(task_id)
     return {
         "status": "CANCELLED",
         "task_id": task_id,
@@ -282,24 +297,6 @@ def _active_workspace(metadata: object) -> dict[str, object]:
         },
     )
     return workspace
-
-
-def _active_workspace_from_root(root_value: str) -> dict[str, object]:
-    root = Path(root_value).expanduser().resolve()
-    ini_path = root / "platformio.ini"
-    return {
-        "id": f"workspace-{abs(hash(str(root).casefold()))}",
-        "name": root.name,
-        "rootPath": str(root),
-        "root_path": str(root),
-        "type": "external",
-        "board": "UNKNOWN",
-        "framework": "UNKNOWN",
-        "platformioIniPath": str(ini_path),
-        "platformio_ini_path": str(ini_path),
-        "has_platformio_ini": ini_path.is_file() and not ini_path.is_symlink(),
-        "project_type": "platformio" if ini_path.is_file() else "generic",
-    }
 
 
 def _apply_execute_overrides(

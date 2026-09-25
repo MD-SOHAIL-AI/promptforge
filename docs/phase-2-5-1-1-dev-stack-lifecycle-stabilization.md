@@ -43,8 +43,18 @@ FORGEX_BACKEND_PORT=8000
 
 ## Dev Scripts
 
-- `npm run dev:desktop` starts the frontend and Electron. Electron starts or reuses the backend.
-- `npm run dev:backend` starts only the backend on the configured port.
+- `npm run dev:desktop` is self-contained: it starts/reuses the frontend, launches Electron, and Electron starts/reuses the backend. No manual virtual-environment activation is required after first-time dependency installation.
+- `npm run dev:backend` remains available for backend-only debugging.
+
+## Python Resolution
+
+Desktop startup resolves Python in this order:
+
+- Windows: `FORGEX_PYTHON` → `<repo>/.venv/Scripts/python.exe` → `<repo>/venv/Scripts/python.exe` → `python` → `py`.
+- Linux/macOS: `FORGEX_PYTHON` → `<repo>/.venv/bin/python` → `<repo>/venv/bin/python` → `python3` → `python`.
+
+If a repository virtual environment exists but is broken or lacks `fastapi`/`uvicorn`, startup fails with the detected interpreter and the exact `pip install -r requirements.txt` command instead of silently switching to an unrelated global Python.
+
 - `npm run dev:cleanup` inspects listeners on ports `8000` and `3000` without killing anything by default.
 
 To inspect manually on Windows:

@@ -21,6 +21,13 @@ class ProjectFilesResponse(APIModel):
     entries: list[WorkspaceEntryResponse]
 
 
+class WorkspaceSearchResponse(APIModel):
+    project_id: str
+    query: str
+    paths: list[str]
+    truncated: bool = False
+
+
 class FileContentResponse(APIModel):
     project_id: str
     path: str

@@ -1,6 +1,8 @@
 """Forge Agent V3 continuous model -> tool -> observation loop."""
+
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import shutil
@@ -12,16 +14,20 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from backend.changes import ChangeSet, ChangeSetError, ChangeSetService, IGNORED_DIRS
+from backend.changes.service import is_safe_relative_path
 
 from .api_planner_provider import ApiPlannerError
 from .capabilities import CapabilityGrant, ToolPolicyEngine
+from .canonical_runtime import AttemptAccumulator, LoopGuard, OrderedToolScheduler, ToolInvocation
 from .context_assembler import ContextAssembler
+from .public_progress import LivePlan, public_text
 from .skills import SkillRegistry
 from .tool_contracts import (
     ProductToolPlan,
     RuntimeClassification,
     RuntimeEvent,
     RuntimeEventType,
+    ToolCall,
     ToolName,
     WRITE_TOOLS,
 )
@@ -55,6 +61,7 @@ class ToolRuntimeResult:
     execution_attempted: bool = False
     tool_execution_count: int = 0
     plan: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
+    assistant_message: str | None = None
     events: tuple[RuntimeEvent, ...] = field(default_factory=tuple)
 
     def to_safe_dict(self) -> dict[str, object]:
@@ -73,6 +80,7 @@ class ToolRuntimeResult:
             "execution_attempted": self.execution_attempted,
             "tool_execution_count": self.tool_execution_count,
             "plan": [dict(item) for item in self.plan],
+            "assistant_message": self.assistant_message,
             "events": [event.to_safe_dict() for event in self.events],
         }
 
@@ -87,10 +95,19 @@ class ForgeXToolRuntime:
     ) -> None:
         self.active_workspace_root = Path(active_workspace_root).resolve(strict=True)
         if change_service is None:
-            stage_root = Path(managed_stage_root or (self.active_workspace_root.parent / ".forgex-changes"))
-            change_service = ChangeSetService(state_root=stage_root / "state", staging_root=stage_root / "staging")
+            stage_root = Path(
+                managed_stage_root
+                or (self.active_workspace_root.parent / ".forgex-changes")
+            )
+            change_service = ChangeSetService(
+                state_root=stage_root / "state", staging_root=stage_root / "staging"
+            )
         self.change_service = change_service
         self._events: list[RuntimeEvent] = []
+        self._recovery_baseline = None
+        self._recovery_executor = None
+        self._recovery_active_snapshot = None
+        self._recovery_authorized_paths: set[str] = set()
 
     def run_product(
         self,
@@ -111,10 +128,21 @@ class ForgeXToolRuntime:
         memory_entries: Sequence[Mapping[str, object]] = (),
         steering_callback=None,
         allow_no_changes_success: bool = False,
+        retry_change_set_id: str | None = None,
+        retry_context: Mapping[str, object] | None = None,
     ) -> ToolRuntimeResult:
         bounds = limits or ProductRuntimeLimits()
         cancelled = cancel_event or threading.Event()
-        emit = event_callback or (lambda event: None)
+        publish = event_callback or (lambda event: None)
+
+        def emit(event):
+            if (
+                cancelled.is_set()
+                and event.get("event_type") == "assistant.summary.delta"
+            ):
+                return
+            publish(event)
+
         self._events = []
         self._event(RuntimeEventType.RUNTIME_STARTED)
         provider_id = str(getattr(planner, "provider_id", "unknown_planner"))
@@ -122,6 +150,13 @@ class ForgeXToolRuntime:
         if not isinstance(task, str) or not task.strip() or not callable(request_turn):
             return self._failure(RuntimeClassification.PROVIDER_INVALID, provider_id)
 
+        emit(
+            {
+                "event_type": "context.started",
+                "status": "running",
+                "message": "Reading project context and previous decisions",
+            }
+        )
         active_before = _active_integrity_snapshot(self.active_workspace_root)
         baseline = self.change_service.inspect_workspace(self.active_workspace_root)
         started = time.monotonic()
@@ -134,18 +169,51 @@ class ForgeXToolRuntime:
         provider_task = (
             task
             if provider_kind == "template_provider"
-            else ContextAssembler(self.active_workspace_root).assemble(
+            else ContextAssembler(self.active_workspace_root)
+            .assemble(
                 task=task,
                 snapshot=baseline,
                 memories=memory_entries,
                 skills=skill_labels,
-            ).render()
+            )
+            .render()
+        )
+        recalled_context = [
+            {
+                "kind": str(item.get("kind") or "project context")[:80],
+                "summary": public_text(str(item.get("value") or ""), 240),
+            }
+            for item in memory_entries[:8]
+            if isinstance(item, Mapping) and item.get("verified") is True
+        ]
+        emit(
+            {
+                "event_type": "context.completed",
+                "status": "completed",
+                "message": "Forge context prepared for model planning",
+                "context_files": len(baseline.files),
+                "memory_count": len(recalled_context),
+                "skill_count": len(skill_labels),
+                "recalled_context": recalled_context,
+            }
         )
 
         handlers = dict(service_handlers or {})
-        allowed = [tool.value for tool in ToolName if policy.decisions.get(tool, "deny") != "deny"]
+        allowed = [
+            tool.value
+            for tool in ToolName
+            if policy.decisions.get(tool, "deny") != "deny"
+        ]
         # Host-backed tools are never advertised unless a trusted handler exists.
-        for tool in (ToolName.MEMORY_SEARCH, ToolName.SPAWN_SUBAGENT, ToolName.BUILD_FIRMWARE, ToolName.RUN_COMMAND):
+        for tool in (
+            ToolName.MEMORY_SEARCH,
+            ToolName.SPAWN_SUBAGENT,
+            ToolName.BUILD_FIRMWARE,
+            ToolName.RUN_COMMAND,
+            ToolName.SESSION_EVENT_READ,
+            ToolName.SESSION_EVENT_SEARCH,
+            ToolName.SESSION_TRACE,
+        ):
             if tool not in handlers and tool.value in allowed:
                 allowed.remove(tool.value)
         allowed_tools = tuple(allowed)
@@ -171,85 +239,638 @@ class ForgeXToolRuntime:
             service_handlers=handlers,
             skill_registry=skill_registry,
         )
+        self._recovery_baseline = baseline
+        self._recovery_executor = executor
+        self._recovery_active_snapshot = active_before
+        if retry_change_set_id:
+            try:
+                draft = self.change_service.get(retry_change_set_id)
+                self.change_service.materialize_review_draft(
+                    retry_change_set_id, workspace_root=self.active_workspace_root,
+                    target_stage=stage,
+                )
+                executor.deleted_paths.update(
+                    item.path for item in draft.changed_files if item.change_type == "deleted"
+                )
+            except Exception:
+                shutil.rmtree(stage, ignore_errors=True)
+                raise
         self._event(RuntimeEventType.STAGE_CREATED, count=len(baseline.files))
-        emit({"event_type": "changes.stage.created", "status": "running", "message": "Forge V3 overlay workspace created"})
+        emit(
+            {
+                "event_type": "changes.stage.created",
+                "status": "running",
+                "message": "Forge V3 overlay workspace created",
+            }
+        )
 
         total_calls = 0
         denied_seen = False
         denied_classification: RuntimeClassification | None = None
         observations: list[Mapping[str, object]] = []
-        authorized_paths: set[str] = set()
+        if retry_context:
+            observations.append({"call_id": "retry_context", "status": "completed",
+                                 "tool": "previous_run_failure", "output": dict(retry_context)})
+        authorized_paths: set[str] = (
+            {item.path for item in draft.changed_files} if retry_change_set_id else set()
+        )
+        self._recovery_authorized_paths = authorized_paths
         final_received = False
-        # Planner instances are per-run, so the listener lifetime matches the run.
-        _wire_delta_listener(planner, emit)
+        final_summary: str | None = None
+        live_plan = LivePlan()
+        extension_turns = min(12, max(0, 60 - bounds.max_turns))
+        meaningful_turns: list[int] = []
+        loop_guard = LoopGuard(
+            max_steps=bounds.max_turns + extension_turns,
+            max_tool_calls=bounds.max_total_tool_calls,
+            max_same_call_repeats=max(4, bounds.max_turns),
+        )
         try:
-            for turn in range(1, bounds.max_turns + 1):
+            for turn in range(1, bounds.max_turns + extension_turns + 1):
+                if turn > bounds.max_turns and (turn - bounds.max_turns - 1) % 6 == 0:
+                    if not any(previous >= turn - 5 for previous in meaningful_turns):
+                        return self._abort_stage(
+                            stage, RuntimeClassification.MAX_TURNS, provider_id, total_calls
+                        )
+                    emit({"event_type": "agent.turn_budget_extended", "status": "running",
+                          "turn": turn, "new_limit": min(bounds.max_turns + extension_turns, turn + 5)})
                 if cancelled.is_set():
-                    return self._abort_stage(stage, RuntimeClassification.CANCELLED, provider_id, total_calls)
+                    return self._abort_stage(
+                        stage, RuntimeClassification.CANCELLED, provider_id, total_calls
+                    )
                 if time.monotonic() - started > bounds.max_runtime_seconds:
-                    return self._abort_stage(stage, RuntimeClassification.LIMIT_EXCEEDED, provider_id, total_calls)
-                steering = tuple(steering_callback() if callable(steering_callback) else ())
+                    return self._abort_stage(
+                        stage,
+                        RuntimeClassification.LIMIT_EXCEEDED,
+                        provider_id,
+                        total_calls,
+                    )
+                steering = tuple(
+                    steering_callback() if callable(steering_callback) else ()
+                )
                 if steering:
                     for message in steering:
-                        observations.append({
-                            "call_id": f"steer_{turn}",
-                            "status": "completed",
-                            "tool": "user_steer",
-                            "output": str(message)[:4000],
-                        })
-                    emit({"event_type": "agent.steered", "status": "running", "turn": turn, "message": str(steering[-1])[:500]})
+                        observations.append(
+                            {
+                                "call_id": f"steer_{turn}",
+                                "status": "completed",
+                                "tool": "user_steer",
+                                "output": str(message)[:4000],
+                            }
+                        )
+                    emit(
+                        {
+                            "event_type": "agent.steered",
+                            "status": "running",
+                            "turn": turn,
+                            "message": str(steering[-1])[:500],
+                        }
+                    )
                 compacted = _compact_tool_observations(observations)
-                emit({"event_type": "agent.turn.started", "status": "running", "turn": turn, "message": "Forge is deciding the next tool action"})
-                raw_plan = request_turn(
-                    task=provider_task,
-                    tool_results=compacted,
-                    allowed_tools=allowed_tools,
-                    run_id=capability_run_id or stage.name,
-                    turn=turn,
+                turn_id = f"{capability_run_id or stage.name}:turn-{turn}"
+                step = turn
+                loop_guard.before_step()
+                attempt = AttemptAccumulator(turn=turn, step=step)
+                emit(
+                    {
+                        "event_type": "turn.started",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "message": f"Agent turn {turn}",
+                    }
                 )
-                plan = raw_plan if isinstance(raw_plan, ProductToolPlan) else ProductToolPlan.parse(raw_plan, max_calls=bounds.max_tool_calls_per_turn)
+                emit(
+                    {
+                        "event_type": "step.started",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "message": f"Agent step {step}",
+                    }
+                )
+                emit(
+                    {
+                        "event_type": "model.attempt.started",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "message": "Waiting for model",
+                        "model_id": str(getattr(planner, "model_id", "")),
+                    }
+                )
+                # Legacy migration events remain until all existing projections consume
+                # the canonical journal vocabulary above.
+                emit(
+                    {
+                        "event_type": "agent.turn.started",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "message": "Forge is deciding the next tool action",
+                    }
+                )
+                emit(
+                    {
+                        "event_type": "thinking.started",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "message": "Forge is deciding the next tool action",
+                    }
+                )
+                emit(
+                    {
+                        "event_type": "agent.model.requested",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "message": "Requesting next model tool plan",
+                        "model_id": str(getattr(planner, "model_id", "")),
+                    }
+                )
+                request_turn_stream = getattr(planner, "request_turn_stream", None)
+                streamed_summary = ""
+
+                def on_summary(message: str) -> None:
+                    nonlocal streamed_summary
+                    current = public_text(str(message), 1200)
+                    delta = (
+                        current[len(streamed_summary) :]
+                        if current.startswith(streamed_summary)
+                        else current
+                    )
+                    streamed_summary = current
+                    if delta:
+                        frame = attempt.content_delta(delta)
+                        emit(
+                            {
+                                **frame.to_event(),
+                                "status": "running",
+                                "turn_id": turn_id,
+                                "message": delta,
+                            }
+                        )
+                    # Compatibility channel for existing clients during migration.
+                    emit(
+                        {
+                            "event_type": "assistant.summary.delta",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "message": current,
+                            "transient": True,
+                        }
+                    )
+
+                if callable(request_turn_stream):
+                    raw_plan = request_turn_stream(
+                        task=provider_task,
+                        tool_results=compacted,
+                        allowed_tools=allowed_tools,
+                        run_id=capability_run_id or stage.name,
+                        turn=turn,
+                        on_summary=on_summary,
+                    )
+                else:
+                    raw_plan = request_turn(
+                        task=provider_task,
+                        tool_results=compacted,
+                        allowed_tools=allowed_tools,
+                        run_id=capability_run_id or stage.name,
+                        turn=turn,
+                    )
+                plan = (
+                    raw_plan
+                    if isinstance(raw_plan, ProductToolPlan)
+                    else ProductToolPlan.parse(
+                        raw_plan, max_calls=bounds.max_tool_calls_per_turn
+                    )
+                )
                 if len(plan.tool_calls) > bounds.max_tool_calls_per_turn:
-                    return self._abort_stage(stage, RuntimeClassification.LIMIT_EXCEEDED, provider_id, total_calls)
-                emit({"event_type": "agent.turn.completed", "status": "running", "turn": turn, "tool_count": len(plan.tool_calls), "message": plan.summary})
+                    return self._abort_stage(
+                        stage,
+                        RuntimeClassification.LIMIT_EXCEEDED,
+                        provider_id,
+                        total_calls,
+                    )
+
+                # The attempt settles durably before any provider-originated call can
+                # enter validation or execution. This is the canonical execution barrier.
+                settlement = attempt.settle(
+                    plan.tool_calls,
+                    content=public_text(plan.summary),
+                )
+                emit({**settlement.to_event(), "status": "completed", "turn_id": turn_id})
+                emit(
+                    {
+                        "event_type": "agent.model.responded",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "tool_count": len(plan.tool_calls),
+                        "message": public_text(plan.summary),
+                        "model_id": str(getattr(planner, "model_id", "")),
+                    }
+                )
+                emit(
+                    {
+                        "event_type": "assistant.summary",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "message": public_text(plan.summary),
+                    }
+                )
                 if plan.final:
                     final_received = True
+                    final_summary = public_text(plan.summary).strip() or None
+                    emit(
+                        {
+                            "event_type": "step.settled",
+                            "status": "completed",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "tool_count": 0,
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "turn.settled",
+                            "status": "completed",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "outcome": "completed",
+                            "message": final_summary or "Agent turn completed",
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "agent.turn.completed",
+                            "status": "completed",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "tool_count": 0,
+                            "message": public_text(plan.summary),
+                        }
+                    )
                     break
                 if total_calls + len(plan.tool_calls) > bounds.max_total_tool_calls:
-                    return self._abort_stage(stage, RuntimeClassification.LIMIT_EXCEEDED, provider_id, total_calls)
+                    return self._abort_stage(
+                        stage,
+                        RuntimeClassification.LIMIT_EXCEEDED,
+                        provider_id,
+                        total_calls,
+                    )
 
-                for product_call in plan.tool_calls:
-                    if cancelled.is_set():
-                        return self._abort_stage(stage, RuntimeClassification.CANCELLED, provider_id, total_calls)
+                stage_before_turn = _active_integrity_snapshot(stage)
+                deleted_before_turn = set(executor.deleted_paths)
+                invocation_slots: dict[int, Mapping[str, object]] = {}
+                admitted: list[ToolInvocation] = []
+                calls_by_id = {item.call_id: item for item in plan.tool_calls}
+
+                # Host validation/policy happens before scheduler admission. Denied
+                # calls become deterministic observations but never execute.
+                for invocation in settlement.invocations:
+                    product_call = calls_by_id[invocation.call_id]
+                    emit(
+                        {
+                            "event_type": "tool.pending",
+                            "status": "running",
+                            "tool": invocation.tool.value,
+                            "tool_call_id": invocation.call_id,
+                            "call_id": invocation.call_id,
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "message": "Tool call queued",
+                            "arguments": _tool_arguments_summary(invocation.arguments),
+                        }
+                    )
+                    call = ToolCall(invocation.tool, dict(invocation.arguments))
                     try:
-                        call = product_call.as_runtime_call()
                         executor.validate(call)
-                    except (ToolPolicyError, ValueError) as exc:
+                        loop_guard.admit(invocation)
+                    except (ToolPolicyError, ValueError, RuntimeError) as exc:
                         denied_seen = True
-                        classification = getattr(exc, "classification", RuntimeClassification.POLICY_DENIED)
+                        classification = getattr(
+                            exc, "classification", RuntimeClassification.POLICY_DENIED
+                        )
+                        if isinstance(classification, str):
+                            try:
+                                classification = RuntimeClassification(classification)
+                            except ValueError:
+                                classification = RuntimeClassification.LIMIT_EXCEEDED
                         denied_classification = denied_classification or classification
-                        observations.append({
-                            "call_id": product_call.call_id,
+                        rejected = {
+                            "call_id": invocation.call_id,
                             "status": "denied",
-                            "tool": product_call.tool_type,
+                            "tool": invocation.tool.value,
                             "classification": classification.value,
                             "error": str(exc)[:300],
-                        })
-                        emit({"event_type": "tool.denied", "status": "running", "tool": product_call.tool_type, "classification": classification.value})
+                        }
+                        invocation_slots[invocation.invocation_index] = rejected
+                        emit(
+                            {
+                                "event_type": "tool.invocation.rejected",
+                                "status": "failed",
+                                **invocation.to_event_payload(),
+                                "turn_id": turn_id,
+                                "classification": classification.value,
+                                "message": str(exc)[:300],
+                            }
+                        )
+                        emit(
+                            {
+                                "event_type": "tool.failed",
+                                "status": "failed",
+                                "tool": invocation.tool.value,
+                                "tool_call_id": invocation.call_id,
+                                "turn_id": turn_id,
+                                "classification": classification.value,
+                                "message": str(exc)[:300],
+                            }
+                        )
                         continue
-                    emit({"event_type": "tool.started", "status": "running", "tool": call.tool.value, "message": _tool_activity(call)})
-                    result = executor.execute(call)
+                    emit(
+                        {
+                            "event_type": "tool.invocation.admitted",
+                            "status": "running",
+                            **invocation.to_event_payload(),
+                            "turn_id": turn_id,
+                            "message": "Tool invocation admitted",
+                        }
+                    )
+                    admitted.append(invocation)
+
+                async def execute_invocation(invocation: ToolInvocation) -> Mapping[str, object]:
+                    if cancelled.is_set():
+                        raise RuntimeError("AGENT_RUNTIME_CANCELLED")
+                    call = ToolCall(invocation.tool, dict(invocation.arguments))
+                    emit(
+                        {
+                            "event_type": "tool.execution.started",
+                            "status": "running",
+                            **invocation.to_event_payload(),
+                            "turn_id": turn_id,
+                            "message": _tool_activity(call),
+                            "arguments": _tool_arguments_summary(call.arguments),
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "tool.started",
+                            "status": "running",
+                            "tool": call.tool.value,
+                            "tool_call_id": invocation.call_id,
+                            "turn_id": turn_id,
+                            "message": _tool_activity(call),
+                            "arguments": _tool_arguments_summary(call.arguments),
+                        }
+                    )
+                    try:
+                        result = await asyncio.to_thread(executor.execute, call)
+                    except Exception as exc:
+                        missing_file = (
+                            isinstance(exc, ToolPolicyError)
+                            and exc.classification is RuntimeClassification.FILE_NOT_FOUND
+                        )
+                        emit(
+                            {
+                                "event_type": "tool.execution.settled",
+                                "status": "failed",
+                                **invocation.to_event_payload(),
+                                "turn_id": turn_id,
+                                "outcome": "failed",
+                                "message": str(exc)[:500],
+                                "error_code": (
+                                    RuntimeClassification.FILE_NOT_FOUND.value
+                                    if missing_file else type(exc).__name__
+                                ),
+                            }
+                        )
+                        emit(
+                            {
+                                "event_type": "tool.failed",
+                                "status": "failed",
+                                "tool": call.tool.value,
+                                "tool_call_id": invocation.call_id,
+                                "turn_id": turn_id,
+                                "message": str(exc)[:500],
+                                "error_code": (
+                                    RuntimeClassification.FILE_NOT_FOUND.value
+                                    if missing_file else type(exc).__name__
+                                ),
+                            }
+                        )
+                        if missing_file:
+                            return {
+                                "_forgex_error": f"File or directory not found: {call.arguments.get('path', '.')}",
+                                "_forgex_classification": RuntimeClassification.FILE_NOT_FOUND.value,
+                            }
+                        if isinstance(exc, ValueError) and not isinstance(exc, ToolPolicyError):
+                            return {"_forgex_error": str(exc)[:500]}
+                        raise
+                    return {"_forgex_result": result}
+
+                scheduled = asyncio.run(
+                    OrderedToolScheduler().run(admitted, execute_invocation)
+                )
+                duration_by_index: dict[int, int] = {}
+                for scheduled_result in scheduled:
+                    invocation = scheduled_result.invocation
+                    if "_forgex_error" in scheduled_result.result:
+                        invocation_slots[invocation.invocation_index] = {
+                            "call_id": invocation.call_id,
+                            "tool": invocation.tool.value,
+                            "status": "failed",
+                            "error": scheduled_result.result["_forgex_error"],
+                            **(
+                                {"classification": scheduled_result.result["_forgex_classification"]}
+                                if "_forgex_classification" in scheduled_result.result else {}
+                            ),
+                        }
+                        continue
+                    result = scheduled_result.result.get("_forgex_result")
+                    invocation_slots[invocation.invocation_index] = {"result": result}
+                    duration_ms = max(
+                        0,
+                        int(
+                            (scheduled_result.completed_at - scheduled_result.started_at)
+                            * 1000
+                        ),
+                    )
+                    duration_by_index[invocation.invocation_index] = duration_ms
+                    emit(
+                        {
+                            "event_type": "tool.execution.settled",
+                            "status": "completed",
+                            **invocation.to_event_payload(),
+                            "turn_id": turn_id,
+                            "outcome": "completed",
+                            "queued_at": scheduled_result.queued_at,
+                            "started_at": scheduled_result.started_at,
+                            "completed_at": scheduled_result.completed_at,
+                            "execution_completion_index": scheduled_result.execution_completion_index,
+                            "duration_ms": duration_ms,
+                            "message": _tool_completion(
+                                ToolCall(invocation.tool, dict(invocation.arguments))
+                            ),
+                        }
+                    )
+
+                # Commit observations/results in original model invocation order even
+                # if safe reads completed out-of-order. This is model-visible history.
+                for invocation in settlement.invocations:
+                    outcome = invocation_slots.get(invocation.invocation_index)
+                    if outcome is None:
+                        continue
+                    if outcome.get("status") == "denied":
+                        observations.append(dict(outcome))
+                        continue
+                    if outcome.get("status") == "failed":
+                        total_calls += 1
+                        observations.append(dict(outcome))
+                        emit({
+                            "event_type": "tool.result.committed", "status": "failed",
+                            **invocation.to_event_payload(), "turn_id": turn_id,
+                            "message": outcome["error"],
+                        })
+                        continue
+                    product_call = calls_by_id[invocation.call_id]
+                    call = ToolCall(invocation.tool, dict(invocation.arguments))
+                    result = outcome.get("result")
                     if call.tool in WRITE_TOOLS and product_call.path:
                         authorized_paths.add(product_call.path)
+                        if isinstance(result, Mapping) and isinstance(result.get("path"), str):
+                            authorized_paths.add(result["path"])
+                        if call.tool is ToolName.MOVE_FILE:
+                            authorized_paths.add(str(result["destination"]))
+                    live_plan.observe(
+                        invocation.call_id,
+                        call.tool is not ToolName.UPDATE_PLAN
+                        and not (
+                            isinstance(result, Mapping)
+                            and result.get("success") is False
+                        ),
+                        call.tool.value,
+                    )
+                    if call.tool is ToolName.UPDATE_PLAN:
+                        snapshot = live_plan.update(executor.current_plan)
+                        executor.current_plan = tuple(snapshot["steps"])
+                        emit({"event_type": "plan.updated", **snapshot})
                     total_calls += 1
-                    observations.append(_safe_tool_observation(product_call.call_id, call.tool, result, bounds.max_observation_chars))
-                    emit({"event_type": "tool.completed", "status": "running", "tool": call.tool.value, "tool_execution_count": total_calls, "message": _tool_completion(call)})
+                    observation = _safe_tool_observation(
+                        invocation.call_id,
+                        call.tool,
+                        result,
+                        bounds.max_observation_chars,
+                    )
+                    observations.append(observation)
+                    emit(
+                        {
+                            "event_type": "tool.result.committed",
+                            "status": "completed",
+                            **invocation.to_event_payload(),
+                            "turn_id": turn_id,
+                            "logical_result_index": invocation.invocation_index,
+                            "message": _tool_completion(call),
+                            "result": _tool_result_summary(result),
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "tool.completed",
+                            "status": "completed",
+                            "tool": call.tool.value,
+                            "tool_call_id": invocation.call_id,
+                            "turn_id": turn_id,
+                            "tool_execution_count": total_calls,
+                            "duration_ms": duration_by_index.get(invocation.invocation_index, 0),
+                            "message": _tool_completion(call),
+                            "result": _tool_result_summary(result),
+                        }
+                    )
+
+                emit(
+                    {
+                        "event_type": "step.settled",
+                        "status": "completed",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "tool_count": len(settlement.invocations),
+                    }
+                )
+                emit(
+                    {
+                        "event_type": "turn.settled",
+                        "status": "completed",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "outcome": "continue",
+                        "tool_count": len(settlement.invocations),
+                    }
+                )
+                emit(
+                    {
+                        "event_type": "agent.turn.completed",
+                        "status": "running",
+                        "turn": turn,
+                        "step": step,
+                        "turn_id": turn_id,
+                        "attempt_id": attempt.attempt_id,
+                        "tool_count": len(settlement.invocations),
+                        "message": public_text(plan.summary),
+                    }
+                )
+                if stage_before_turn != _active_integrity_snapshot(stage) or deleted_before_turn != executor.deleted_paths:
+                    meaningful_turns.append(turn)
 
             if not final_received:
-                return self._abort_stage(stage, RuntimeClassification.MAX_TURNS, provider_id, total_calls)
+                return self._abort_stage(
+                    stage, RuntimeClassification.MAX_TURNS, provider_id, total_calls
+                )
             if denied_seen and total_calls == 0:
-                return self._abort_stage(stage, denied_classification or RuntimeClassification.POLICY_DENIED, provider_id, total_calls)
+                return self._abort_stage(
+                    stage,
+                    denied_classification or RuntimeClassification.POLICY_DENIED,
+                    provider_id,
+                    total_calls,
+                )
             if active_before != _active_integrity_snapshot(self.active_workspace_root):
-                return self._abort_stage(stage, RuntimeClassification.UNSAFE_ABORTED, provider_id, total_calls)
+                return self._abort_stage(
+                    stage,
+                    RuntimeClassification.UNSAFE_ABORTED,
+                    provider_id,
+                    total_calls,
+                )
 
             try:
                 change_set = self.change_service.create_from_stage(
@@ -258,13 +879,21 @@ class ForgeXToolRuntime:
                     stage_root=stage,
                     baseline=baseline,
                     authorized_paths=authorized_paths,
+                    deleted_paths=executor.deleted_paths,
                 )
             except ChangeSetError as exc:
                 classification = _classification_for_change_error(exc)
                 # A pure inspection/build turn is valid even if no workspace diff exists.
-                if classification is RuntimeClassification.NO_CHANGES and not authorized_paths and (total_calls > 0 or allow_no_changes_success):
+                if (
+                    classification is RuntimeClassification.NO_CHANGES
+                    and not authorized_paths
+                    and (total_calls > 0 or allow_no_changes_success)
+                ):
                     shutil.rmtree(stage, ignore_errors=True)
-                    self._event(RuntimeEventType.RUNTIME_COMPLETED, classification=RuntimeClassification.PASS.value)
+                    self._event(
+                        RuntimeEventType.RUNTIME_COMPLETED,
+                        classification=RuntimeClassification.PASS.value,
+                    )
                     return ToolRuntimeResult(
                         classification=RuntimeClassification.PASS,
                         provider_id=provider_id,
@@ -274,16 +903,31 @@ class ForgeXToolRuntime:
                         execution_attempted=True,
                         tool_execution_count=total_calls,
                         plan=tuple(executor.current_plan),
+                        assistant_message=final_summary,
                         events=tuple(self._events),
                     )
-                return self._abort_stage(stage, classification, provider_id, total_calls)
+                return self._abort_stage(
+                    stage, classification, provider_id, total_calls
+                )
 
             created, modified, deleted = _change_counts(change_set)
-            if created > bounds.max_created_files or modified > bounds.max_modified_files:
+            if (
+                created > bounds.max_created_files
+                or modified + deleted > bounds.max_modified_files
+            ):
                 self.change_service.discard(change_set.change_set_id)
-                return self._failure(RuntimeClassification.LIMIT_EXCEEDED, provider_id, tool_execution_count=total_calls)
-            self._event(RuntimeEventType.CHANGESET_CREATED, count=len(change_set.changed_files))
-            self._event(RuntimeEventType.RUNTIME_COMPLETED, classification=RuntimeClassification.PASS.value)
+                return self._failure(
+                    RuntimeClassification.LIMIT_EXCEEDED,
+                    provider_id,
+                    tool_execution_count=total_calls,
+                )
+            self._event(
+                RuntimeEventType.CHANGESET_CREATED, count=len(change_set.changed_files)
+            )
+            self._event(
+                RuntimeEventType.RUNTIME_COMPLETED,
+                classification=RuntimeClassification.PASS.value,
+            )
             return ToolRuntimeResult(
                 classification=RuntimeClassification.PASS,
                 provider_id=provider_id,
@@ -297,61 +941,151 @@ class ForgeXToolRuntime:
                 execution_attempted=True,
                 tool_execution_count=total_calls,
                 plan=tuple(executor.current_plan),
+                assistant_message=final_summary,
                 events=tuple(self._events),
             )
         except ApiPlannerError as exc:
-            shutil.rmtree(stage, ignore_errors=True)
-            return self._failure(RuntimeClassification.PROVIDER_INVALID, provider_id, provider_classification=exc.classification, provider_diagnostics=_safe_provider_diagnostics(planner), execution_attempted=True, tool_execution_count=total_calls)
+            provider_failure = exc.safe_code.startswith("PROVIDER_")
+            return self._abort_stage(
+                stage,
+                (
+                    RuntimeClassification.PROVIDER_INVALID
+                    if provider_failure
+                    else RuntimeClassification.MODEL_OUTPUT_INVALID
+                ),
+                provider_id,
+                total_calls,
+                provider_classification=exc.safe_code,
+                provider_diagnostics=_safe_provider_diagnostics(planner),
+                execution_attempted=True,
+            )
         except ToolPolicyError as exc:
-            shutil.rmtree(stage, ignore_errors=True)
-            return self._failure(exc.classification, provider_id, tool_execution_count=total_calls)
-        except (PermissionError, ValueError, TypeError):
-            shutil.rmtree(stage, ignore_errors=True)
-            return self._failure(RuntimeClassification.PROVIDER_INVALID, provider_id, tool_execution_count=total_calls)
+            return self._abort_stage(stage, exc.classification, provider_id, total_calls)
+        except PermissionError:
+            return self._abort_stage(stage, RuntimeClassification.POLICY_DENIED, provider_id, total_calls)
+        except (ValueError, TypeError):
+            return self._abort_stage(
+                stage, RuntimeClassification.UNKNOWN_SAFE_FAILURE, provider_id, total_calls,
+                provider_classification="FORGEX_RUNTIME_ERROR",
+            )
         except OSError:
-            shutil.rmtree(stage, ignore_errors=True)
-            return self._failure(RuntimeClassification.UNSAFE_ABORTED, provider_id, tool_execution_count=total_calls)
+            return self._abort_stage(stage, RuntimeClassification.UNSAFE_ABORTED, provider_id, total_calls)
         except Exception:
+            return self._abort_stage(stage, RuntimeClassification.UNKNOWN_SAFE_FAILURE, provider_id, total_calls)
+
+    def _abort_stage(
+        self,
+        stage: Path,
+        classification: RuntimeClassification,
+        provider_id: str,
+        tool_execution_count: int,
+        *,
+        remove: bool = True,
+        provider_classification: str | None = None,
+        provider_diagnostics: Mapping[str, object] | None = None,
+        execution_attempted: bool = False,
+    ) -> ToolRuntimeResult:
+        draft = None
+        if remove and classification not in {
+            RuntimeClassification.CANCELLED, RuntimeClassification.POLICY_DENIED,
+            RuntimeClassification.PATH_UNSAFE, RuntimeClassification.UNSAFE_ABORTED,
+        }:
+            draft = self._save_recovery_draft(stage, provider_id)
+        if remove and draft is None:
             shutil.rmtree(stage, ignore_errors=True)
-            return self._failure(RuntimeClassification.UNKNOWN_SAFE_FAILURE, provider_id, tool_execution_count=total_calls)
+        return self._failure(
+            classification,
+            provider_id,
+            change_set_id=draft.change_set_id if draft else None,
+            active_unchanged=classification is not RuntimeClassification.UNSAFE_ABORTED,
+            provider_classification=provider_classification,
+            provider_diagnostics=provider_diagnostics,
+            execution_attempted=execution_attempted,
+            tool_execution_count=tool_execution_count,
+        )
 
-    def _abort_stage(self, stage: Path, classification: RuntimeClassification, provider_id: str, tool_execution_count: int, *, remove: bool = True) -> ToolRuntimeResult:
-        if remove:
-            shutil.rmtree(stage, ignore_errors=True)
-        return self._failure(classification, provider_id, active_unchanged=classification is not RuntimeClassification.UNSAFE_ABORTED, tool_execution_count=tool_execution_count)
+    def _save_recovery_draft(self, stage: Path, provider_id: str) -> ChangeSet | None:
+        baseline = self._recovery_baseline
+        executor = self._recovery_executor
+        if baseline is None or executor is None or self._recovery_active_snapshot != _active_integrity_snapshot(self.active_workspace_root):
+            return None
+        paths = []
+        total_bytes = 0
+        for path in stage.rglob("*"):
+            if path.is_symlink():
+                return None
+            if not path.is_file():
+                continue
+            relative = path.relative_to(stage).as_posix()
+            if not is_safe_relative_path(relative):
+                return None
+            paths.append(relative)
+            total_bytes += path.stat().st_size
+        deleted = set(executor.deleted_paths)
+        if not set(paths).issubset(self._recovery_authorized_paths) or not deleted.issubset(self._recovery_authorized_paths):
+            return None
+        if len(paths) + len(deleted) > 100 or total_bytes > 20_000_000 or not all(is_safe_relative_path(path) for path in deleted):
+            return None
+        try:
+            draft = self.change_service.create_from_stage(
+                provider_id=provider_id, workspace_root=self.active_workspace_root,
+                stage_root=stage, baseline=baseline,
+                authorized_paths=(*paths, *deleted), deleted_paths=deleted,
+                authorization_source="recovery_draft", draft=True,
+            )
+            self.change_service.prune_review_drafts(self.active_workspace_root, keep=3)
+            return draft
+        except ChangeSetError:
+            return None
 
-    def _failure(self, classification: RuntimeClassification, provider_id: str, *, created: int = 0, modified: int = 0, deleted: int = 0, active_unchanged: bool = False, provider_classification: str | None = None, provider_diagnostics: Mapping[str, object] | None = None, execution_attempted: bool = False, tool_execution_count: int = 0) -> ToolRuntimeResult:
-        self._event(RuntimeEventType.RUNTIME_FAILED, classification=classification.value)
-        return ToolRuntimeResult(classification=classification, provider_id=provider_id, created_file_count=created, modified_file_count=modified, deleted_file_count=deleted, active_workspace_unchanged=active_unchanged, provider_classification=provider_classification, provider_diagnostics=dict(provider_diagnostics or {}), execution_attempted=execution_attempted, tool_execution_count=tool_execution_count, events=tuple(self._events))
+    def _failure(
+        self,
+        classification: RuntimeClassification,
+        provider_id: str,
+        *,
+        created: int = 0,
+        modified: int = 0,
+        deleted: int = 0,
+        active_unchanged: bool = False,
+        provider_classification: str | None = None,
+        provider_diagnostics: Mapping[str, object] | None = None,
+        execution_attempted: bool = False,
+        tool_execution_count: int = 0,
+        change_set_id: str | None = None,
+    ) -> ToolRuntimeResult:
+        self._event(
+            RuntimeEventType.RUNTIME_FAILED, classification=classification.value
+        )
+        return ToolRuntimeResult(
+            classification=classification,
+            provider_id=provider_id,
+            change_set_id=change_set_id,
+            created_file_count=created,
+            modified_file_count=modified,
+            deleted_file_count=deleted,
+            active_workspace_unchanged=active_unchanged,
+            provider_classification=provider_classification,
+            provider_diagnostics=dict(provider_diagnostics or {}),
+            execution_attempted=execution_attempted,
+            tool_execution_count=tool_execution_count,
+            events=tuple(self._events),
+        )
 
-    def _event(self, event_type: RuntimeEventType, *, classification: str | None = None, count: int | None = None) -> None:
-        self._events.append(RuntimeEvent(event_type, len(self._events) + 1, classification, count))
+    def _event(
+        self,
+        event_type: RuntimeEventType,
+        *,
+        classification: str | None = None,
+        count: int | None = None,
+    ) -> None:
+        self._events.append(
+            RuntimeEvent(event_type, len(self._events) + 1, classification, count)
+        )
 
 
-def _wire_delta_listener(planner: object, emit) -> None:
-    """Forward streamed planner tokens onto the run/session event channels."""
-    attach = getattr(planner, "set_delta_listener", None)
-    if not callable(attach):
-        return
-    state = {"index": 0}
-
-    def listener(turn: int, delta: str) -> None:
-        state["index"] += 1
-        emit({
-            "event_type": "message.delta",
-            "status": "running",
-            "turn": int(turn),
-            "delta": delta,
-            "index": state["index"],
-        })
-
-    try:
-        attach(listener)
-    except Exception:
-        pass
-
-
-def _compact_tool_observations(observations: Sequence[Mapping[str, object]], *, keep: int = 24) -> tuple[Mapping[str, object], ...]:
+def _compact_tool_observations(
+    observations: Sequence[Mapping[str, object]], *, keep: int = 24
+) -> tuple[Mapping[str, object], ...]:
     if len(observations) <= keep:
         return tuple(observations)
     older = observations[:-keep]
@@ -362,14 +1096,22 @@ def _compact_tool_observations(observations: Sequence[Mapping[str, object]], *, 
         "output": {
             "compacted_observations": len(older),
             "tools": [str(item.get("tool") or "unknown") for item in older[-30:]],
-            "failures": sum(item.get("status") in {"failed", "denied"} for item in older),
+            "failures": sum(
+                item.get("status") in {"failed", "denied"} for item in older
+            ),
         },
     }
     return (checkpoint, *observations[-keep:])
 
 
-def _safe_tool_observation(call_id: str, tool: ToolName, result: object, max_chars: int) -> dict[str, object]:
-    observation: dict[str, object] = {"call_id": call_id, "status": "completed", "tool": tool.value}
+def _safe_tool_observation(
+    call_id: str, tool: ToolName, result: object, max_chars: int
+) -> dict[str, object]:
+    observation: dict[str, object] = {
+        "call_id": call_id,
+        "status": "completed",
+        "tool": tool.value,
+    }
     if isinstance(result, str):
         observation["output"] = result[:max_chars]
     elif isinstance(result, tuple):
@@ -389,6 +1131,60 @@ def _safe_tool_observation(call_id: str, tool: ToolName, result: object, max_cha
     return observation
 
 
+def _tool_arguments_summary(arguments: Mapping[str, object]) -> dict[str, object]:
+    summary: dict[str, object] = {}
+    for key in ("path", "pattern", "query", "name", "environment", "role", "command"):
+        value = arguments.get(key)
+        if isinstance(value, str) and value:
+            summary[key] = value[:500]
+    if "content" in arguments and isinstance(arguments.get("content"), str):
+        summary["content_bytes"] = len(str(arguments["content"]).encode("utf-8"))
+    if "old_text" in arguments and isinstance(arguments.get("old_text"), str):
+        summary["old_text_bytes"] = len(str(arguments["old_text"]).encode("utf-8"))
+    if "new_text" in arguments and isinstance(arguments.get("new_text"), str):
+        summary["new_text_bytes"] = len(str(arguments["new_text"]).encode("utf-8"))
+    if isinstance(arguments.get("files"), list):
+        summary["file_count"] = len(arguments["files"])
+    if isinstance(arguments.get("after_sequence"), int):
+        summary["after_sequence"] = int(arguments["after_sequence"])
+    if isinstance(arguments.get("limit"), int):
+        summary["limit"] = int(arguments["limit"])
+    return summary
+
+
+def _tool_result_summary(result: object) -> dict[str, object]:
+    if isinstance(result, str):
+        return {"bytes": len(result.encode("utf-8"))}
+    if isinstance(result, tuple):
+        return {"items": len(result)}
+    if isinstance(result, Mapping):
+        out: dict[str, object] = {}
+        for key in (
+            "path",
+            "bytes",
+            "created",
+            "modified",
+            "steps",
+            "success",
+            "status",
+            "error",
+            "exit_code",
+            "output",
+            "added",
+            "removed",
+            "diff",
+            "count",
+            "files",
+        ):
+            value = result.get(key)
+            if isinstance(value, (str, int, bool, type(None))):
+                out[key] = value
+            elif isinstance(value, list):
+                out[key] = value[:100]
+        return out
+    return {"type": type(result).__name__}
+
+
 def _tool_activity(call) -> str:
     labels = {
         ToolName.LIST_FILES: "Listing project files",
@@ -397,10 +1193,17 @@ def _tool_activity(call) -> str:
         ToolName.READ_FILE: "Reading project source",
         ToolName.WRITE_FILE: "Writing staged file",
         ToolName.EDIT_FILE_SIMPLE: "Applying staged edit",
+        ToolName.APPLY_PATCH: "Applying precise staged patch",
         ToolName.UPDATE_PLAN: "Updating task plan",
         ToolName.LOAD_SKILL: "Loading Forge skill",
         ToolName.MEMORY_SEARCH: "Searching verified project memory",
+        ToolName.SPAWN_SUBAGENT: "Delegating bounded specialist work",
+        ToolName.PRESENT_FILES: "Preparing deliverables",
+        ToolName.SESSION_EVENT_READ: "Reading durable agent history",
+        ToolName.SESSION_EVENT_SEARCH: "Searching durable agent history",
+        ToolName.SESSION_TRACE: "Inspecting agent execution trace",
         ToolName.BUILD_FIRMWARE: "Building staged firmware",
+        ToolName.RUN_SIMULATION: "Running project simulation",
         ToolName.RUN_COMMAND: "Running sandboxed verification command",
     }
     return labels.get(call.tool, call.tool.value)
@@ -444,12 +1247,31 @@ def _safe_provider_diagnostics(planner: object) -> dict[str, object]:
     if not isinstance(metadata, Mapping):
         return {}
     allowed = {
-        "provider_id", "model_id", "requested_model_id", "classification",
-        "outbound_request_count", "request_reached_provider", "http_status",
-        "provider_request_id", "safe_error_code", "toolplan_normalized",
-        "toolplan_repair_attempted", "toolplan_mode", "fallback_used", "fallback_reason",
+        "outbound_request_count",
+        "physical_request_count",
+        "request_reached_provider",
+        "http_status",
+        "provider_request_id",
+        "retry_after_ms",
+        "last_attempt_succeeded",
+        "safe_error_code",
+        "toolplan_normalized",
+        "toolplan_repair_attempted",
+        "last_turn",
+        "response_mode",
+        "last_failure_code",
+        "last_repair_outcome",
+        "last_parse_reason",
+        "last_failure_origin",
+        "last_response_shape",
+        "last_response_tool_count",
+        "stream_fallback_used",
     }
-    return {key: value for key, value in metadata.items() if key in allowed and isinstance(value, (str, int, bool, type(None)))}
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key in allowed and isinstance(value, (str, int, bool, type(None)))
+    }
 
 
 def _active_integrity_snapshot(root: Path) -> dict[str, tuple[object, ...]]:
@@ -466,7 +1288,12 @@ def _active_integrity_snapshot(root: Path) -> dict[str, tuple[object, ...]]:
             elif is_sensitive_path(relative):
                 snapshot[relative] = ("sensitive", info.st_size, info.st_mtime_ns)
             else:
-                snapshot[relative] = ("file", info.st_size, info.st_mtime_ns, _hash_file(path))
+                snapshot[relative] = (
+                    "file",
+                    info.st_size,
+                    info.st_mtime_ns,
+                    _hash_file(path),
+                )
     return snapshot
 
 
@@ -475,11 +1302,17 @@ def _task_with_project_context(task: str, snapshot) -> str:
     root = getattr(snapshot, "workspace_root", None)
     if root:
         try:
-            return ContextAssembler(root).assemble(task=task, snapshot=snapshot).render()
+            return (
+                ContextAssembler(root).assemble(task=task, snapshot=snapshot).render()
+            )
         except Exception:
             pass
     paths = sorted(getattr(snapshot, "files", {}))[:120]
-    return task.strip() + "\n\nWorkspace inventory (use read/search tools for contents):\n" + "\n".join(paths)
+    return (
+        task.strip()
+        + "\n\nWorkspace inventory (use read/search tools for contents):\n"
+        + "\n".join(paths)
+    )
 
 
 def _hash_file(path: Path) -> str:

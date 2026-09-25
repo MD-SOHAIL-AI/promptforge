@@ -55,12 +55,20 @@ class RiskAssessmentService:
     ) -> RiskAssessment:
         score = 0
         reasons: list[str] = []
+        if any(
+            not item.preview_supported or item.diff_preview is None or item.warning
+            for item in change_set.changed_files
+        ):
+            score += 6
+            reasons.append("incomplete_change_analysis")
         paths = [PurePosixPath(item.path) for item in change_set.changed_files]
         if len(paths) > 5:
             score += 2
             reasons.append("broad_file_change")
         if any(item.change_type == "deleted" for item in change_set.changed_files):
-            score += 4
+            # Deletion (including a move's source) always requires the user's
+            # explicit ChangeSet approval, not just an automated reviewer.
+            score += 6
             reasons.append("file_deletion")
         if any(path.name.casefold() in self._HIGH_RISK_NAMES for path in paths):
             score += 3

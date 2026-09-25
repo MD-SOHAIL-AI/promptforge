@@ -2,6 +2,7 @@
 
 import type { ProjectResponse, WorkspaceEntry } from "@/types";
 import { FileExplorer } from "@/components/explorer/file-explorer";
+import { promptForgeApi } from "@/lib/api";
 
 interface IdeExplorerProps {
   activeProject: ProjectResponse | null;
@@ -41,6 +42,9 @@ export function IdeExplorer({
       onRename={onRename}
       onDelete={onDelete}
       onRefresh={onRefresh}
+      onSearchContents={activeProject
+        ? async (query) => (await promptForgeApi.searchProjectFileContents(activeProject.project_id, query)).paths
+        : undefined}
     />
   );
 }

@@ -19,6 +19,8 @@ DEFAULT_LLM_MAX_ATTEMPTS = 2
 LLM_RETRY_BACKOFF_ENV_VAR = "FORGEX_LLM_RETRY_BACKOFF_SECONDS"
 LEGACY_LLM_RETRY_BACKOFF_ENV_VAR = "PROMPTFORGE_LLM_RETRY_BACKOFF_SECONDS"
 DEFAULT_LLM_RETRY_BACKOFF_SECONDS = 1.0
+NVIDIA_NIM_TIMEOUT_ENV_VAR = "FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS"
+DEFAULT_NVIDIA_NIM_TIMEOUT_SECONDS = 120.0
 
 
 def load_environment(env_file: str | Path | None = None) -> Path:
@@ -84,3 +86,27 @@ def llm_retry_backoff_seconds() -> float:
             f"{LLM_RETRY_BACKOFF_ENV_VAR} must be a finite number from 0 to 60"
         )
     return backoff_s
+
+
+def nvidia_nim_timeout_seconds() -> float:
+    """Return the bounded per-request NVIDIA NIM deadline.
+
+    Large hosted reasoning models regularly need longer than 45 seconds for
+    Agent planning. The deadline remains finite so retired or cold endpoints
+    cannot hold a ForgeX run indefinitely.
+    """
+
+    raw_value = os.getenv(NVIDIA_NIM_TIMEOUT_ENV_VAR)
+    if raw_value is None or not raw_value.strip():
+        return DEFAULT_NVIDIA_NIM_TIMEOUT_SECONDS
+    try:
+        timeout_s = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{NVIDIA_NIM_TIMEOUT_ENV_VAR} must be between 5 and 180 seconds"
+        ) from exc
+    if not math.isfinite(timeout_s) or not 5 <= timeout_s <= 180:
+        raise ValueError(
+            f"{NVIDIA_NIM_TIMEOUT_ENV_VAR} must be between 5 and 180 seconds"
+        )
+    return timeout_s

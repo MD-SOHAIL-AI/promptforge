@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, Request
 from ...changes import ChangeSetError, ChangeSetService
 from ..dependencies import required_state
 from ..errors import APIError
+from ..local_security import require_local_http_request
 
 router = APIRouter(prefix="/changes", tags=["changes"])
 
@@ -74,9 +75,4 @@ def _api_error(exc: ChangeSetError) -> APIError:
 
 
 def _require_local_request(request: Request) -> None:
-    origin = request.headers.get("origin")
-    if not origin or origin == "null" or origin.startswith("file://"):
-        return
-    if origin.startswith("http://127.0.0.1:") or origin.startswith("http://localhost:") or origin.startswith("http://[::1]:"):
-        return
-    raise APIError(403, "REMOTE_ORIGIN_REJECTED", "ChangeSet operations are restricted to the local desktop application.")
+    require_local_http_request(request, purpose="ChangeSet operation")

@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.app import _latest_agent_generation_metadata, create_app
-from backend.core.config import llm_max_attempts, llm_retry_backoff_seconds, llm_timeout_seconds, load_environment
+from backend.core.config import llm_max_attempts, llm_retry_backoff_seconds, llm_timeout_seconds, load_environment, nvidia_nim_timeout_seconds
 from backend.model_router import ModelRouterService
 
 
@@ -47,7 +47,7 @@ def test_first_run_model_bootstrap_is_persisted_and_becomes_authoritative(
     monkeypatch.setenv("FORGEX_MODEL", "vendor/firmware-model")
 
     first = create_app()
-    first_route = first.state.model_router_service.registry.route_for_task("code_generation")
+    first_route = first.state.services.model_router_service.registry.route_for_task("code_generation")
     assert first_route.provider_id == "openrouter"
     assert first_route.model_id == "vendor/firmware-model"
 
@@ -56,7 +56,7 @@ def test_first_run_model_bootstrap_is_persisted_and_becomes_authoritative(
     monkeypatch.setenv("FORGEX_MODEL_PROVIDER", "openai")
     monkeypatch.setenv("FORGEX_MODEL", "gpt-should-not-override")
     second = create_app()
-    second_route = second.state.model_router_service.registry.route_for_task("code_generation")
+    second_route = second.state.services.model_router_service.registry.route_for_task("code_generation")
     assert second_route.provider_id == "openrouter"
     assert second_route.model_id == "vendor/firmware-model"
 
@@ -72,7 +72,7 @@ def test_legacy_model_bootstrap_is_supported_for_one_time_migration(
     monkeypatch.setenv("PROMPTFORGE_MODEL", "legacy/bootstrap-model")
 
     application = create_app()
-    route = application.state.model_router_service.registry.route_for_task("code_generation")
+    route = application.state.services.model_router_service.registry.route_for_task("code_generation")
     assert route.provider_id == "openrouter"
     assert route.model_id == "legacy/bootstrap-model"
 
@@ -87,8 +87,8 @@ def test_llm_timeout_configuration_flows_through_application_services(
     monkeypatch.setenv("FORGEX_LLM_TIMEOUT_SECONDS", str(timeout_s))
 
     application = create_app()
-    service = application.state.llm_service
-    generation = application.state.code_generation_service
+    service = application.state.services.llm_service
+    generation = application.state.services.code_generation_service
 
     assert isinstance(service, ModelRouterService)
     assert service.timeout_s == timeout_s
@@ -106,7 +106,7 @@ def test_llm_retry_configuration_flows_to_generation_service(
     monkeypatch.setenv("FORGEX_LLM_RETRY_BACKOFF_SECONDS", "2.5")
 
     application = create_app()
-    generation = application.state.code_generation_service
+    generation = application.state.services.code_generation_service
     assert generation.max_attempts == 4
     assert generation.retry_backoff_s == 2.5
 
@@ -141,6 +141,24 @@ def test_llm_backoff_configuration_rejects_invalid_values(
         llm_retry_backoff_seconds()
 
 
+def test_nvidia_nim_timeout_is_strict_and_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS", raising=False)
+    assert nvidia_nim_timeout_seconds() == 120
+    monkeypatch.setenv("FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS", "30")
+    assert nvidia_nim_timeout_seconds() == 30
+
+
+@pytest.mark.parametrize("value", ["0", "4.9", "181", "nan", "invalid"])
+def test_nvidia_nim_timeout_rejects_unbounded_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValueError, match="FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS"):
+        nvidia_nim_timeout_seconds()
+
+
 def test_load_environment_reads_dotenv_without_overriding_process_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -171,6 +189,28 @@ def test_create_app_starts_without_requiring_provider_credentials(
 
     application = create_app()
     with TestClient(application):
-        assert isinstance(application.state.llm_service, ModelRouterService)
-        assert application.state.code_generation_service is not None
-        assert application.state.configuration_error is None
+        assert isinstance(application.state.services.llm_service, ModelRouterService)
+        assert application.state.services.code_generation_service is not None
+        assert application.state.services.configuration_error is None
+
+
+def test_deprecated_orchestrator_flag_cannot_disable_canonical_engine(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv("FORGEX_DESKTOP", "1")
+    monkeypatch.setenv("FORGEX_LOCAL_TOKEN", "d" * 43)
+    monkeypatch.setenv("FORGEX_ENABLE_AGENT_ORCHESTRATOR_V2", "0")
+    application = create_app()
+    with TestClient(application):
+        assert application.state.services.agent_orchestrator is not None
+        assert application.state.services.product_agent_service.orchestrator is application.state.services.agent_orchestrator
+
+
+def test_deprecated_v3_loop_flag_cannot_disable_canonical_engine(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv("FORGEX_DESKTOP", "1")
+    monkeypatch.setenv("FORGEX_LOCAL_TOKEN", "d" * 43)
+    monkeypatch.setenv("FORGEX_ENABLE_AGENT_V3_LOOP", "0")
+    application = create_app()
+    with TestClient(application):
+        assert application.state.services.agent_orchestrator is not None
+        assert application.state.services.product_agent_service.orchestrator is application.state.services.agent_orchestrator

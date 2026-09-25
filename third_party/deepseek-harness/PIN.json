@@ -1,0 +1,10 @@
+{
+  "name": "@deepseek-ai/dsh-root",
+  "version": "0.1.5-rc.2",
+  "source": "deepseek-harness source archive",
+  "packageJsonSha256": "766b5a990aca5d203457c11937f543256725d4a11487a85df5976c2e55a8e967",
+  "lockfileSha256": "66d87ed26fe3205172560351e13fe4aa736b66c15a29f7dd873c629fc80906de",
+  "license": "MIT",
+  "integration": "reviewed internal architectural fork",
+  "note": "The supplied source archive contained no Git metadata; content hashes are the immutable provenance key."
+}

@@ -9,6 +9,7 @@ can inject a client or transport for testing and deployment-specific control.
 from __future__ import annotations
 
 import asyncio
+from email.utils import parsedate_to_datetime
 import json
 import math
 import time
@@ -18,9 +19,12 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from enum import Enum, unique
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import httpx
+
+if TYPE_CHECKING:
+    from ..model_router.models import CanonicalStreamEvent
 
 from ..core.config import DEFAULT_LLM_TIMEOUT_SECONDS
 from ..utils.serialization import (
@@ -134,9 +138,22 @@ class LLMResponse:
     token_usage: Mapping[str, int] = field(default_factory=dict, hash=False)
     latency_ms: int = 0
     provider_id: str | None = None
+    structured_output: Mapping[str, Any] | None = field(default=None, hash=False)
+    tool_calls: tuple[Mapping[str, Any], ...] = field(default=(), hash=False)
+    finish_reason: str | None = None
+    request_id: str | None = None
+    reasoning: str | None = None
+    truncated: bool = False
 
     def __post_init__(self) -> None:
-        _validate_text(self.content, field_name="content")
+        if not isinstance(self.content, str) or "\x00" in self.content:
+            raise ValueError("content must be a string without NUL characters")
+        if (
+            not self.content.strip()
+            and self.structured_output is None
+            and not self.tool_calls
+        ):
+            raise ValueError("content must be non-empty when no structured output exists")
         if not isinstance(self.provider, LLMProvider):
             raise ValueError("provider must be an LLMProvider")
         if self.provider_id is not None:
@@ -155,14 +172,8 @@ class LLMResponse:
         for key, value in self.token_usage.items():
             if not isinstance(key, str) or not key:
                 raise ValueError("token_usage keys must be non-empty strings")
-            if (
-                not isinstance(value, int)
-                or isinstance(value, bool)
-                or value < 0
-            ):
-                raise ValueError(
-                    "token_usage values must be non-negative integers"
-                )
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("token_usage values must be non-negative integers")
             usage[key] = value
         object.__setattr__(self, "token_usage", MappingProxyType(usage))
 
@@ -250,31 +261,31 @@ class LLMConfigurationError(LLMError):
 class LLMTimeoutError(LLMError):
     """A provider operation exceeded its configured deadline."""
 
-    default_code = "TIMEOUT"
+    default_code = "PROVIDER_TIMEOUT"
 
 
 class LLMAuthenticationError(LLMError):
     """The provider rejected supplied authentication credentials."""
 
-    default_code = "AUTHENTICATION_ERROR"
+    default_code = "PROVIDER_AUTH_ERROR"
 
 
 class LLMRateLimitError(LLMError):
     """The provider rejected a request due to quota or rate limits."""
 
-    default_code = "RATE_LIMITED"
+    default_code = "PROVIDER_RATE_LIMITED"
 
 
 class LLMProviderError(LLMError):
     """The provider returned a non-success response."""
 
-    default_code = "PROVIDER_ERROR"
+    default_code = "PROVIDER_HTTP_ERROR"
 
 
 class LLMResponseError(LLMError):
     """A successful provider response had an invalid or empty shape."""
 
-    default_code = "INVALID_RESPONSE"
+    default_code = "PROVIDER_ENVELOPE_INVALID"
 
 
 class LLMService(ABC):
@@ -349,6 +360,7 @@ class _HTTPService(LLMService, ABC):
             "request_reached_provider": False,
             "http_status": None,
             "provider_request_id": None,
+            "retry_after_ms": None,
         }
 
     def to_safe_metadata(self) -> dict[str, Any]:
@@ -375,20 +387,39 @@ class _HTTPService(LLMService, ABC):
             "request_reached_provider": False,
             "http_status": None,
             "provider_request_id": None,
+            "retry_after_ms": None,
         }
+        request_timeout = _generation_timeout(request, self.timeout_s)
         try:
-            async with _timeout_after(self.timeout_s):
+            async with _timeout_after(request_timeout):
                 response = await self._client.post(
                     self._generation_url(stream=False),
                     headers=self._headers(),
                     params=self._params(stream=False),
                     json=self._payload(request, stream=False),
-                    timeout=self.timeout_s,
+                    timeout=request_timeout,
                 )
                 self._capture_response_metadata(response)
                 self._raise_for_status(response)
                 data = self._decode_json(response)
-                content, usage, response_model = self._parse_response(data)
+                self._raise_embedded_provider_error(data)
+                from backend.model_router.normalization import (
+                    ProviderNormalizationError,
+                    normalize_response,
+                )
+
+                try:
+                    canonical = normalize_response(
+                        data,
+                        provider_id=self.provider.value.casefold(),
+                        model_id=self.model,
+                    )
+                except ProviderNormalizationError as exc:
+                    raise LLMResponseError(
+                        f"{self.provider.value} returned an invalid response: {exc}",
+                        provider=self.provider,
+                        code=exc.code,
+                    ) from exc
         except asyncio.CancelledError:
             raise
         except (TimeoutError, httpx.TimeoutException) as exc:
@@ -405,37 +436,96 @@ class _HTTPService(LLMService, ABC):
             ) from exc
 
         return LLMResponse(
-            content=content,
+            content=canonical.text or "",
             provider=self.provider,
-            model=response_model or self.model,
-            token_usage=usage,
+            model=canonical.model_id or self.model,
+            token_usage=canonical.usage,
             latency_ms=_elapsed_ms(started),
+            provider_id=self.provider.value.casefold(),
+            structured_output=canonical.structured_output,
+            tool_calls=canonical.tool_calls,
+            finish_reason=canonical.finish_reason,
+            request_id=(
+                canonical.request_id
+                or self.to_safe_metadata().get("provider_request_id")
+            ),
+            reasoning=canonical.reasoning,
+            truncated=canonical.truncated,
         )
 
     async def generate_stream(
         self,
         request: LLMRequest,
     ) -> AsyncIterator[str]:
+        async for event in self.generate_event_stream(request):
+            if event.type == "text_delta" and event.text:
+                yield event.text
+
+    async def generate_event_stream(
+        self,
+        request: LLMRequest,
+    ) -> AsyncIterator[CanonicalStreamEvent]:
+        """Yield normalized events; raw provider packets never escape."""
+
         if not isinstance(request, LLMRequest):
             raise TypeError("request must be an LLMRequest")
+        request_timeout = _generation_timeout(request, self.timeout_s)
+        terminal_event: CanonicalStreamEvent | None = None
         try:
-            async with _timeout_after(self.timeout_s):
+            async with _timeout_after(request_timeout):
                 async with self._client.stream(
                     "POST",
                     self._generation_url(stream=True),
                     headers=self._headers(),
                     params=self._params(stream=True),
                     json=self._payload(request, stream=True),
-                    timeout=self.timeout_s,
+                    timeout=request_timeout,
                 ) as response:
+                    self._capture_response_metadata(response)
+                    # Streaming responses are not pre-buffered by httpx. Read
+                    # an error response before the synchronous status decoder
+                    # inspects its JSON/text body; otherwise httpx raises
+                    # ResponseNotRead and hides the real upstream status.
+                    if not response.is_success:
+                        await response.aread()
                     self._raise_for_status(response)
                     async for data in _iter_sse_json(
                         response,
                         provider=self.provider,
                     ):
-                        for delta in self._parse_stream_event(data):
-                            if delta:
-                                yield delta
+                        self._raise_embedded_provider_error(data)
+                        from backend.model_router.normalization import (
+                            ProviderNormalizationError,
+                            normalize_stream_event,
+                        )
+
+                        try:
+                            events = normalize_stream_event(
+                                data, provider_id=self.provider.value.casefold()
+                            )
+                        except ProviderNormalizationError as exc:
+                            raise LLMResponseError(
+                                str(exc), provider=self.provider, code=exc.code
+                            ) from exc
+                        for event in events:
+                            if event.type == "error":
+                                raise LLMResponseError(
+                                    "Provider returned an invalid stream event.",
+                                    provider=self.provider,
+                                    code=event.error_code or "PROVIDER_STREAM_INVALID",
+                                )
+                            if event.type == "done":
+                                # OpenAI-compatible providers commonly send a
+                                # finish_reason packet followed by [DONE]. Keep
+                                # one terminal event and retain the meaningful
+                                # reason/usage from either packet.
+                                terminal_event = _merge_terminal_stream_event(
+                                    terminal_event, event
+                                )
+                            else:
+                                yield event
+                if terminal_event is not None:
+                    yield terminal_event
         except asyncio.CancelledError:
             raise
         except (TimeoutError, httpx.TimeoutException) as exc:
@@ -480,34 +570,49 @@ class _HTTPService(LLMService, ABC):
         common = {
             "provider": self.provider,
             "status_code": response.status_code,
-            "details": {**details, **self.to_safe_metadata()},
+            "details": {
+                **details,
+                **({"upstream_error_code": code} if code else {}),
+                **self.to_safe_metadata(),
+            },
         }
         if response.status_code in {401, 403}:
-            raise LLMAuthenticationError(message, code=code, **common)
+            raise LLMAuthenticationError(message, code="PROVIDER_AUTH_ERROR", **common)
         if response.status_code == 429:
             raise LLMRateLimitError(
                 message,
-                code=code,
+                code="PROVIDER_RATE_LIMITED",
                 retryable=True,
                 **common,
             )
         raise LLMProviderError(
             message,
-            code=code,
+            code=(
+                "PROVIDER_UNAVAILABLE"
+                if response.status_code >= 500
+                else "PROVIDER_HTTP_ERROR"
+            ),
             retryable=response.status_code >= 500,
             **common,
         )
 
     def _capture_response_metadata(self, response: httpx.Response) -> None:
-        request_id = response.headers.get("x-request-id") or response.headers.get("cf-ray")
-        if request_id and (len(request_id) > 128 or not all(
-            character.isalnum() or character in "._:-" for character in request_id
-        )):
+        request_id = response.headers.get("x-request-id") or response.headers.get(
+            "cf-ray"
+        )
+        if request_id and (
+            len(request_id) > 128
+            or not all(
+                character.isalnum() or character in "._:-" for character in request_id
+            )
+        ):
             request_id = None
+        retry_after_ms = _retry_after_ms(response.headers.get("retry-after") or response.headers.get("retry-after-ms"), milliseconds=response.headers.get("retry-after-ms") is not None)
         self._last_request_metadata.update(
             request_reached_provider=True,
             http_status=response.status_code,
             provider_request_id=request_id,
+            retry_after_ms=retry_after_ms,
         )
 
     def _decode_json(self, response: httpx.Response) -> Mapping[str, Any]:
@@ -533,6 +638,102 @@ class _HTTPService(LLMService, ABC):
     def _health_params(self) -> Mapping[str, str]:
         return self._params(stream=False)
 
+    def _raise_embedded_provider_error(self, data: Mapping[str, Any]) -> None:
+        """Classify HTTP-200 provider errors before content normalization."""
+
+        error = data.get("error")
+        if not error:
+            return
+        message = "Provider returned an error"
+        code: str | None = None
+        details: dict[str, Any] = {}
+        if isinstance(error, Mapping):
+            raw_message = error.get("message")
+            raw_code = error.get("code") or error.get("type")
+            if isinstance(raw_message, str) and raw_message.strip():
+                message = raw_message.strip()
+            if (
+                isinstance(raw_code, (str, int))
+                and not isinstance(raw_code, bool)
+                and str(raw_code).strip()
+            ):
+                code = str(raw_code).strip()
+                details["provider_error_code"] = code[:128]
+        elif isinstance(error, str) and error.strip():
+            message = error.strip()
+        numeric_status = _embedded_provider_status(code)
+        combined = f"{code or ''} {message}".casefold()
+        common = {
+            "provider": self.provider,
+            "status_code": numeric_status,
+            "details": {**details, **self.to_safe_metadata()},
+        }
+        if numeric_status in {401, 403} or any(
+            marker in combined for marker in ("invalid api key", "unauthorized", "authentication")
+        ):
+            raise LLMAuthenticationError(
+                message, code="PROVIDER_AUTH_ERROR", retryable=False, **common
+            )
+        if numeric_status == 429 or "rate_limit" in combined or "rate limit" in combined:
+            raise LLMRateLimitError(
+                message, code="PROVIDER_RATE_LIMITED", retryable=True, **common
+            )
+        if any(
+            marker in combined
+            for marker in (
+                "no endpoints found that support",
+                "unsupported parameter",
+                "does not support tool",
+            )
+        ):
+            raise LLMProviderError(
+                message,
+                code="MODEL_CAPABILITY_UNSUPPORTED",
+                retryable=False,
+                **common,
+            )
+        unavailable = (
+            numeric_status is not None and numeric_status >= 500
+        ) or any(
+            marker in combined
+            for marker in ("provider_unavailable", "provider unavailable", "upstream unavailable")
+        )
+        raise LLMProviderError(
+            message,
+            code="PROVIDER_UNAVAILABLE" if unavailable else (code or "PROVIDER_HTTP_ERROR"),
+            retryable=unavailable or _provider_error_message_is_retryable(message),
+            **common,
+        )
+
+    def _parse_stream_event(self, data: Mapping[str, Any]) -> tuple[str, ...]:
+        """Compatibility wrapper over the single canonical stream parser."""
+
+        self._raise_embedded_provider_error(data)
+        from backend.model_router.normalization import (
+            ProviderNormalizationError,
+            normalize_stream_event,
+        )
+
+        try:
+            events = normalize_stream_event(
+                data, provider_id=self.provider.value.casefold()
+            )
+        except ProviderNormalizationError as exc:
+            raise LLMResponseError(
+                str(exc), provider=self.provider, code=exc.code
+            ) from exc
+        error = next((event for event in events if event.type == "error"), None)
+        if error is not None:
+            raise LLMResponseError(
+                "Provider returned an invalid stream event.",
+                provider=self.provider,
+                code=error.error_code or "PROVIDER_STREAM_INVALID",
+            )
+        # Raw reasoning stays out of the legacy public-text iterator.
+        return tuple(
+            event.text or "" for event in events if event.type == "text_delta"
+        )
+
     @abstractmethod
     def _headers(self) -> Mapping[str, str]:
         raise NotImplementedError
@@ -548,18 +749,6 @@ class _HTTPService(LLMService, ABC):
     @abstractmethod
     def _payload(self, request: LLMRequest, *, stream: bool) -> dict[str, Any]:
         raise NotImplementedError
-
-    @abstractmethod
-    def _parse_response(
-        self,
-        data: Mapping[str, Any],
-    ) -> tuple[str, Mapping[str, int], str | None]:
-        raise NotImplementedError
-
-    @abstractmethod
-    def _parse_stream_event(self, data: Mapping[str, Any]) -> tuple[str, ...]:
-        raise NotImplementedError
-
 
 class _OpenAICompatibleService(_HTTPService, ABC):
     """Shared adapter for OpenAI-compatible chat completion APIs."""
@@ -578,106 +767,69 @@ class _OpenAICompatibleService(_HTTPService, ABC):
         return f"{self.base_url}/models"
 
     def _payload(self, request: LLMRequest, *, stream: bool) -> dict[str, Any]:
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         if request.system_prompt is not None:
-            messages.append(
-                {"role": "system", "content": request.system_prompt}
-            )
-        messages.append({"role": "user", "content": request.prompt})
-        return {
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.extend(_openai_canonical_messages(request.prompt, request.metadata))
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "stream": stream,
         }
-
-    def _parse_response(
-        self,
-        data: Mapping[str, Any],
-    ) -> tuple[str, Mapping[str, int], str | None]:
-        self._raise_embedded_provider_error(data)
-        try:
-            choices = data["choices"]
-            choice = choices[0]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise self._invalid_response("missing choices[0]") from exc
-        if not isinstance(choice, Mapping):
-            raise self._invalid_response("choices[0] is not an object")
-
-        content: str | None = None
-        message = choice.get("message")
-        if isinstance(message, Mapping):
-            content = _openai_compatible_content_text(message.get("content"))
-        if content is None:
-            content = _openai_compatible_content_text(choice.get("text"))
-        if content is None:
-            raise self._invalid_response("missing choices[0].message.content")
-        if not content.strip():
-            raise self._invalid_response("response content is empty")
-        usage = data.get("usage")
-        normalized = _normalize_usage(
-            usage,
-            input_key="prompt_tokens",
-            output_key="completion_tokens",
-            total_key="total_tokens",
-        )
-        model = data.get("model")
-        return content, normalized, model if isinstance(model, str) else None
-
-    def _parse_stream_event(self, data: Mapping[str, Any]) -> tuple[str, ...]:
-        try:
-            choices = data.get("choices", ())
-            delta = choices[0].get("delta", {}) if choices else {}
-            content = (
-                _openai_compatible_content_text(delta.get("content"))
-                if isinstance(delta, Mapping)
-                else None
-            )
-        except (AttributeError, IndexError, TypeError):
-            return ()
-        return (content,) if content else ()
-
-    def _raise_embedded_provider_error(self, data: Mapping[str, Any]) -> None:
-        error = data.get("error")
-        if not error:
-            return
-        message = "Provider returned an error"
-        code: str | None = None
-        details: dict[str, Any] = {}
-        if isinstance(error, Mapping):
-            raw_message = error.get("message")
-            raw_code = error.get("code") or error.get("type")
-            if isinstance(raw_message, str) and raw_message.strip():
-                message = raw_message.strip()
-            if isinstance(raw_code, str) and raw_code.strip():
-                code = raw_code.strip()
-                details["provider_error_code"] = code[:128]
-            raw_type = error.get("type")
-            if isinstance(raw_type, str) and raw_type.strip():
-                details["provider_error_type"] = raw_type.strip()[:128]
-        elif isinstance(error, str) and error.strip():
-            message = error.strip()
-        raise LLMProviderError(
-            message,
-            code=code,
-            provider=self.provider,
-            retryable=_provider_error_message_is_retryable(message),
-            details={**details, **self.to_safe_metadata()},
-        )
-
-    def _invalid_response(self, reason: str) -> LLMResponseError:
-        return LLMResponseError(
-            f"{self.provider.value} returned an invalid response: {reason}",
-            provider=self.provider,
-        )
-
+        _apply_openai_structured_output(payload, request.metadata)
+        return payload
 
 class OpenAIService(_OpenAICompatibleService):
     """OpenAI chat-completion provider implementation."""
 
     provider = LLMProvider.OPENAI
     default_base_url = "https://api.openai.com/v1"
+
+
+class OpenAIResponsesService(_OpenAICompatibleService):
+    """OpenAI Responses API implementation for custom provider routes."""
+
+    provider = LLMProvider.OPENAI
+    default_base_url = "https://api.openai.com/v1"
+
+    def _generation_url(self, *, stream: bool) -> str:
+        del stream
+        return f"{self.base_url}/responses"
+
+    def _payload(self, request: LLMRequest, *, stream: bool) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "input": ([{"role": "system", "content": request.system_prompt}] if request.system_prompt else [])
+            + _openai_canonical_messages(request.prompt, request.metadata),
+            "temperature": request.temperature,
+            "max_output_tokens": request.max_tokens,
+            "stream": stream,
+        }
+        spec = _structured_output_metadata(request.metadata)
+        native_tools = _native_tool_metadata(request.metadata)
+        if native_tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "name": item["function"]["name"],
+                    "description": item["function"].get("description", ""),
+                    "parameters": _thaw_json_value(item["function"]["parameters"]),
+                    "strict": bool(item["function"].get("strict", True)),
+                }
+                for item in native_tools
+            ]
+            payload["tool_choice"] = "auto"
+            return payload
+        if spec is not None and isinstance(spec.get("name"), str) and isinstance(spec.get("json_schema"), Mapping):
+            payload["text"] = {"format": {
+                "type": "json_schema",
+                "name": spec["name"],
+                "schema": _thaw_json_value(spec["json_schema"]),
+                "strict": bool(spec.get("strict", True)),
+            }}
+        return payload
 
 
 class OpenRouterService(_OpenAICompatibleService):
@@ -778,55 +930,24 @@ class AnthropicService(_HTTPService):
     def _payload(self, request: LLMRequest, *, stream: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": _anthropic_canonical_messages(request.prompt, request.metadata),
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "stream": stream,
         }
         if request.system_prompt is not None:
             payload["system"] = request.system_prompt
+        native_tools = _native_tool_metadata(request.metadata)
+        if native_tools:
+            payload["tools"] = [
+                {
+                    "name": item["function"]["name"],
+                    "description": item["function"].get("description", ""),
+                    "input_schema": _thaw_json_value(item["function"]["parameters"]),
+                }
+                for item in native_tools
+            ]
         return payload
-
-    def _parse_response(
-        self,
-        data: Mapping[str, Any],
-    ) -> tuple[str, Mapping[str, int], str | None]:
-        blocks = data.get("content")
-        if not isinstance(blocks, Sequence) or isinstance(blocks, (str, bytes)):
-            raise self._invalid_response("content must be a sequence")
-        parts = [
-            block.get("text")
-            for block in blocks
-            if isinstance(block, Mapping)
-            and block.get("type") == "text"
-            and isinstance(block.get("text"), str)
-        ]
-        content = "".join(parts)
-        if not content.strip():
-            raise self._invalid_response("response content is empty")
-        normalized = _normalize_usage(
-            data.get("usage"),
-            input_key="input_tokens",
-            output_key="output_tokens",
-        )
-        model = data.get("model")
-        return content, normalized, model if isinstance(model, str) else None
-
-    def _parse_stream_event(self, data: Mapping[str, Any]) -> tuple[str, ...]:
-        if data.get("type") != "content_block_delta":
-            return ()
-        delta = data.get("delta")
-        if not isinstance(delta, Mapping) or delta.get("type") != "text_delta":
-            return ()
-        text = delta.get("text")
-        return (text,) if isinstance(text, str) and text else ()
-
-    def _invalid_response(self, reason: str) -> LLMResponseError:
-        return LLMResponseError(
-            f"ANTHROPIC returned an invalid response: {reason}",
-            provider=self.provider,
-        )
-
 
 class GeminiService(_HTTPService):
     """Google Gemini generate-content provider implementation."""
@@ -856,58 +977,248 @@ class GeminiService(_HTTPService):
     def _payload(self, request: LLMRequest, *, stream: bool) -> dict[str, Any]:
         del stream
         payload: dict[str, Any] = {
-            "contents": [
-                {"role": "user", "parts": [{"text": request.prompt}]}
-            ],
+            "contents": _gemini_canonical_messages(request.prompt, request.metadata),
             "generationConfig": {
                 "temperature": request.temperature,
                 "maxOutputTokens": request.max_tokens,
             },
         }
         if request.system_prompt is not None:
-            payload["systemInstruction"] = {
-                "parts": [{"text": request.system_prompt}]
-            }
+            payload["systemInstruction"] = {"parts": [{"text": request.system_prompt}]}
+        _apply_gemini_structured_output(payload, request.metadata)
         return payload
 
-    def _parse_response(
-        self,
-        data: Mapping[str, Any],
-    ) -> tuple[str, Mapping[str, int], str | None]:
-        content = self._candidate_text(data)
-        if not content.strip():
-            raise self._invalid_response("response content is empty")
-        normalized = _normalize_usage(
-            data.get("usageMetadata"),
-            input_key="promptTokenCount",
-            output_key="candidatesTokenCount",
-            total_key="totalTokenCount",
-        )
-        model = data.get("modelVersion")
-        return content, normalized, model if isinstance(model, str) else None
 
-    def _parse_stream_event(self, data: Mapping[str, Any]) -> tuple[str, ...]:
-        content = self._candidate_text(data)
-        return (content,) if content else ()
+def _structured_output_metadata(metadata: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    value = metadata.get("forgex_structured_output")
+    return value if isinstance(value, Mapping) else None
 
-    def _candidate_text(self, data: Mapping[str, Any]) -> str:
-        try:
-            candidates = data.get("candidates", ())
-            parts = candidates[0]["content"]["parts"] if candidates else ()
-        except (KeyError, IndexError, TypeError):
-            return ""
-        return "".join(
-            part.get("text", "")
-            for part in parts
-            if isinstance(part, Mapping) and isinstance(part.get("text"), str)
-        )
 
-    def _invalid_response(self, reason: str) -> LLMResponseError:
-        return LLMResponseError(
-            f"GEMINI returned an invalid response: {reason}",
-            provider=self.provider,
-        )
+def _native_tool_metadata(metadata: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    value = metadata.get("forgex_native_tools")
+    if not isinstance(value, (list, tuple)):
+        return ()
+    tools: list[Mapping[str, Any]] = []
+    for item in value:
+        function = item.get("function") if isinstance(item, Mapping) else None
+        if (
+            isinstance(function, Mapping)
+            and isinstance(function.get("name"), str)
+            and isinstance(function.get("parameters"), Mapping)
+        ):
+            tools.append(item)
+    return tuple(tools)
 
+
+def _canonical_message_metadata(metadata: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    value = metadata.get("forgex_messages")
+    if not isinstance(value, (list, tuple)):
+        return ()
+    messages: list[Mapping[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping) or item.get("role") not in {
+            "user", "assistant", "tool"
+        }:
+            continue
+        messages.append(item)
+    return tuple(messages)
+
+
+def _openai_canonical_messages(
+    prompt: str, metadata: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    canonical = _canonical_message_metadata(metadata)
+    if not canonical:
+        return [{"role": "user", "content": prompt}]
+    output: list[dict[str, Any]] = []
+    for message in canonical:
+        role = str(message["role"])
+        content = str(message.get("content") or "")
+        if role == "assistant" and isinstance(message.get("tool_calls"), (list, tuple)):
+            calls = []
+            for call in message["tool_calls"]:
+                if not isinstance(call, Mapping):
+                    continue
+                calls.append({
+                    "id": str(call.get("id") or ""),
+                    "type": "function",
+                    "function": {
+                        "name": str(call.get("name") or ""),
+                        "arguments": json.dumps(
+                            _thaw_json_value(call.get("arguments") or {}),
+                            ensure_ascii=True, sort_keys=True,
+                        ),
+                    },
+                })
+            output.append({"role": "assistant", "content": content or None, "tool_calls": calls})
+        elif role == "tool":
+            output.append({
+                "role": "tool",
+                "tool_call_id": str(message.get("tool_call_id") or ""),
+                "name": str(message.get("name") or ""),
+                "content": content,
+            })
+        else:
+            output.append({"role": role, "content": content})
+    return output
+
+
+def _anthropic_canonical_messages(
+    prompt: str, metadata: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    canonical = _canonical_message_metadata(metadata)
+    if not canonical:
+        return [{"role": "user", "content": prompt}]
+    output: list[dict[str, Any]] = []
+    for message in canonical:
+        role = str(message["role"])
+        content = str(message.get("content") or "")
+        if role == "assistant":
+            blocks: list[dict[str, Any]] = []
+            if content:
+                blocks.append({"type": "text", "text": content})
+            for call in message.get("tool_calls") or ():
+                if isinstance(call, Mapping):
+                    blocks.append({
+                        "type": "tool_use", "id": str(call.get("id") or ""),
+                        "name": str(call.get("name") or ""),
+                        "input": _thaw_json_value(call.get("arguments") or {}),
+                    })
+            output.append({"role": "assistant", "content": blocks})
+        elif role == "tool":
+            block = {
+                "type": "tool_result",
+                "tool_use_id": str(message.get("tool_call_id") or ""),
+                "content": content,
+            }
+            if output and output[-1]["role"] == "user" and isinstance(output[-1]["content"], list):
+                output[-1]["content"].append(block)
+            else:
+                output.append({"role": "user", "content": [block]})
+        else:
+            output.append({"role": "user", "content": content})
+    return output
+
+
+def _gemini_canonical_messages(
+    prompt: str, metadata: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    canonical = _canonical_message_metadata(metadata)
+    if not canonical:
+        return [{"role": "user", "parts": [{"text": prompt}]}]
+    output: list[dict[str, Any]] = []
+    for message in canonical:
+        role = str(message["role"])
+        content = str(message.get("content") or "")
+        parts: list[dict[str, Any]] = []
+        if content:
+            parts.append({"text": content})
+        if role == "assistant":
+            for call in message.get("tool_calls") or ():
+                if isinstance(call, Mapping):
+                    parts.append({"functionCall": {
+                        "name": str(call.get("name") or ""),
+                        "args": _thaw_json_value(call.get("arguments") or {}),
+                    }})
+            output.append({"role": "model", "parts": parts})
+        elif role == "tool":
+            output.append({"role": "user", "parts": [{"functionResponse": {
+                "name": str(message.get("name") or ""),
+                "response": {"result": content},
+            }}]})
+        else:
+            output.append({"role": "user", "parts": parts})
+    return output
+
+
+def _apply_openai_structured_output(
+    payload: dict[str, Any], metadata: Mapping[str, Any]
+) -> None:
+    native_tools = _native_tool_metadata(metadata)
+    if native_tools:
+        payload["tools"] = _thaw_json_value(native_tools)
+        payload["tool_choice"] = "auto"
+        return
+    spec = _structured_output_metadata(metadata)
+    if spec is None:
+        return
+    mode = spec.get("mode")
+    name = spec.get("name")
+    schema = spec.get("json_schema")
+    if not isinstance(name, str) or not isinstance(schema, Mapping):
+        return
+    if mode == "json_schema":
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "strict": bool(spec.get("strict", True)),
+                # LLMRequest freezes metadata recursively. A shallow ``dict``
+                # leaves nested MappingProxyType values behind, which the HTTP
+                # JSON encoder cannot serialize.
+                "schema": _thaw_json_value(schema),
+            },
+        }
+    elif mode == "native_tools":
+        payload["tools"] = [{
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": "Return the requested structured ForgeX result.",
+                "parameters": _thaw_json_value(schema),
+                "strict": bool(spec.get("strict", True)),
+            },
+        }]
+        payload["tool_choice"] = {
+            "type": "function",
+            "function": {"name": name},
+        }
+
+
+def _apply_gemini_structured_output(
+    payload: dict[str, Any], metadata: Mapping[str, Any]
+) -> None:
+    native_tools = _native_tool_metadata(metadata)
+    if native_tools:
+        payload["tools"] = [{
+            "functionDeclarations": [
+                {
+                    "name": item["function"]["name"],
+                    "description": item["function"].get("description", ""),
+                    "parameters": _thaw_json_value(item["function"]["parameters"]),
+                }
+                for item in native_tools
+            ]
+        }]
+        payload["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
+        return
+    spec = _structured_output_metadata(metadata)
+    if spec is None:
+        return
+    mode = spec.get("mode")
+    name = spec.get("name")
+    schema = spec.get("json_schema")
+    if not isinstance(name, str) or not isinstance(schema, Mapping):
+        return
+    if mode == "json_schema":
+        config = payload.setdefault("generationConfig", {})
+        if isinstance(config, dict):
+            config["responseMimeType"] = "application/json"
+            config["responseSchema"] = _thaw_json_value(schema)
+    elif mode == "native_tools":
+        payload["tools"] = [{
+            "functionDeclarations": [{
+                "name": name,
+                "description": "Return the requested structured ForgeX result.",
+                "parameters": _thaw_json_value(schema),
+            }]
+        }]
+        payload["toolConfig"] = {
+            "functionCallingConfig": {
+                "mode": "ANY",
+                "allowedFunctionNames": [name],
+            }
+        }
 
 async def _iter_sse_json(
     response: httpx.Response,
@@ -921,7 +1232,10 @@ async def _iter_sse_json(
         if not line or line.startswith(":") or not line.startswith("data:"):
             continue
         payload = line[5:].strip()
-        if not payload or payload == "[DONE]":
+        if not payload:
+            continue
+        if payload == "[DONE]":
+            yield {"type": "forgex.stream.done"}
             continue
         try:
             data = json.loads(payload)
@@ -938,7 +1252,7 @@ async def _iter_sse_json(
 class _Deadline(AbstractAsyncContextManager[None]):
     """Python 3.10-compatible equivalent of ``asyncio.timeout``."""
 
-    def __init__(self, delay: float) -> None:
+    def __init__(self, delay: float | None) -> None:
         self._delay = delay
         self._task: asyncio.Task[Any] | None = None
         self._handle: asyncio.TimerHandle | None = None
@@ -949,10 +1263,11 @@ class _Deadline(AbstractAsyncContextManager[None]):
         if task is None:
             raise RuntimeError("timeout requires a running asyncio task")
         self._task = task
-        self._handle = asyncio.get_running_loop().call_later(
-            self._delay,
-            self._cancel_for_timeout,
-        )
+        if self._delay is not None:
+            self._handle = asyncio.get_running_loop().call_later(
+                self._delay,
+                self._cancel_for_timeout,
+            )
         return None
 
     async def __aexit__(
@@ -973,8 +1288,14 @@ class _Deadline(AbstractAsyncContextManager[None]):
             self._task.cancel()
 
 
-def _timeout_after(delay: float) -> _Deadline:
+def _timeout_after(delay: float | None) -> _Deadline:
     return _Deadline(delay)
+
+
+def _generation_timeout(request: LLMRequest, default: float) -> float | None:
+    if request.metadata.get("forgex_disable_generation_timeout") is True:
+        return None
+    return default
 
 
 def _normalize_usage(
@@ -988,9 +1309,7 @@ def _normalize_usage(
         return {}
     input_tokens = _non_negative_int(usage.get(input_key))
     output_tokens = _non_negative_int(usage.get(output_key))
-    total_tokens = (
-        _non_negative_int(usage.get(total_key)) if total_key else None
-    )
+    total_tokens = _non_negative_int(usage.get(total_key)) if total_key else None
     normalized: dict[str, int] = {}
     if input_tokens is not None:
         normalized["input_tokens"] = input_tokens
@@ -1003,33 +1322,25 @@ def _normalize_usage(
     return normalized
 
 
-def _openai_compatible_content_text(value: object) -> str | None:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        parts: list[str] = []
-        for item in value:
-            text = _openai_compatible_content_part_text(item)
-            if text is not None:
-                parts.append(text)
-        return "".join(parts)
-    return None
-
-
-def _openai_compatible_content_part_text(value: object) -> str | None:
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, Mapping):
+def _retry_after_ms(value: str | None, *, milliseconds: bool = False) -> int | None:
+    if not value:
         return None
-    text = value.get("text")
-    if isinstance(text, str):
-        return text
-    content = value.get("content")
-    if isinstance(content, str):
-        return content
-    return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        amount = float(text)
+        return max(0, int(amount if milliseconds else amount * 1000))
+    except ValueError:
+        if milliseconds:
+            return None
+    try:
+        when = parsedate_to_datetime(text)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return max(0, int((when - datetime.now(timezone.utc)).total_seconds() * 1000))
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _provider_error_message_is_retryable(message: str) -> bool:
@@ -1043,6 +1354,41 @@ def _provider_error_message_is_retryable(message: str) -> bool:
             "overloaded",
             "timeout",
         )
+    )
+
+
+def _embedded_provider_status(value: object) -> int | None:
+    """Return an HTTP status carried inside a successful SSE response.
+
+    OpenRouter may return HTTP 200 and place an upstream status such as 502
+    in ``error.code``.  Codes can be JSON numbers or numeric strings.
+    """
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if 100 <= value <= 599 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        status = int(value.strip())
+        return status if 100 <= status <= 599 else None
+    return None
+
+
+def _merge_terminal_stream_event(
+    current: CanonicalStreamEvent | None,
+    incoming: CanonicalStreamEvent,
+) -> CanonicalStreamEvent:
+    if current is None:
+        return incoming
+    finish_reason = current.finish_reason
+    if not finish_reason or (
+        finish_reason == "stop" and incoming.finish_reason not in {None, "stop"}
+    ):
+        finish_reason = incoming.finish_reason
+    return type(current)(
+        "done",
+        finish_reason=finish_reason,
+        usage={**current.usage, **incoming.usage},
     )
 
 
@@ -1109,13 +1455,11 @@ def _validate_schema(
     unknown = supplied - expected
     if missing:
         raise ValueError(
-            f"{label} data is missing required fields: "
-            f"{', '.join(sorted(missing))}"
+            f"{label} data is missing required fields: " f"{', '.join(sorted(missing))}"
         )
     if unknown:
         raise ValueError(
-            f"{label} data contains unknown fields: "
-            f"{', '.join(sorted(unknown))}"
+            f"{label} data contains unknown fields: " f"{', '.join(sorted(unknown))}"
         )
     return dict(data)
 

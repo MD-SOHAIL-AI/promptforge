@@ -58,6 +58,61 @@ def test_changeset_stages_without_mutating_workspace_then_applies(tmp_path: Path
     assert target.read_text(encoding="utf-8") == "new\n"
 
 
+def test_review_draft_is_compact_and_requires_a_fresh_run(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "keep.txt").write_text("unchanged", encoding="utf-8")
+    (workspace / "edit.txt").write_text("before", encoding="utf-8")
+    service = make_service(tmp_path)
+    baseline = service.inspect_workspace(workspace)
+    stage = service.create_stage("failed-run")
+    (stage / "keep.txt").write_text("unchanged", encoding="utf-8")
+    (stage / "edit.txt").write_text("after", encoding="utf-8")
+    draft = service.create_review_draft(
+        provider_id="test-provider", workspace_root=workspace,
+        stage_root=stage, baseline=baseline,
+    )
+    assert draft.status == "draft"
+    assert {path.name for path in Path(draft.staging_root).rglob("*") if path.is_file()} == {"edit.txt"}
+    with pytest.raises(ChangeSetError, match="Only pending ChangeSets"):
+        service.apply(draft.change_set_id)
+    fresh_stage = service.create_stage("retry-run")
+    (fresh_stage / "keep.txt").write_text("unchanged", encoding="utf-8")
+    (fresh_stage / "edit.txt").write_text("before", encoding="utf-8")
+    service.materialize_review_draft(
+        draft.change_set_id, workspace_root=workspace, target_stage=fresh_stage,
+    )
+    assert (fresh_stage / "edit.txt").read_text(encoding="utf-8") == "after"
+    assert (workspace / "edit.txt").read_text(encoding="utf-8") == "before"
+    (Path(draft.staging_root) / "edit.txt").write_text("tampered", encoding="utf-8")
+    with pytest.raises(ChangeSetError) as caught:
+        service.materialize_review_draft(
+            draft.change_set_id, workspace_root=workspace, target_stage=fresh_stage,
+        )
+    assert caught.value.code == "CHANGE_STAGE_TAMPERED"
+
+
+def test_review_draft_refuses_workspace_change(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "edit.txt").write_text("before", encoding="utf-8")
+    service = make_service(tmp_path)
+    baseline = service.inspect_workspace(workspace)
+    stage = service.create_stage("failed-run")
+    (stage / "edit.txt").write_text("after", encoding="utf-8")
+    draft = service.create_review_draft(
+        provider_id="test-provider", workspace_root=workspace,
+        stage_root=stage, baseline=baseline,
+    )
+    (workspace / "edit.txt").write_text("user edit", encoding="utf-8")
+    fresh_stage = service.create_stage("retry-run")
+    with pytest.raises(ChangeSetError) as caught:
+        service.materialize_review_draft(
+            draft.change_set_id, workspace_root=workspace, target_stage=fresh_stage,
+        )
+    assert caught.value.code == "CHANGE_CONFLICT"
+
+
 def test_changeset_can_apply_new_file_and_undo_it(tmp_path: Path) -> None:
     service, _, target, _, change_set = prepare_change(tmp_path, relative="new.txt", before=None, after="created\n")
     assert not target.exists()

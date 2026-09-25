@@ -8,13 +8,19 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from ..progress import ExecutionProgressHub
+from ..local_security import websocket_is_authorized
 from ..schemas.websocket import ExecutionEventType
+from ...observability.diagnostics import emit_diagnostic_event
 
 router = APIRouter(tags=["execution"])
 
 
 @router.websocket("/ws/execution/{task_id}")
 async def execution_progress(websocket: WebSocket, task_id: str) -> None:
+    authorized, reason = websocket_is_authorized(websocket)
+    if not authorized:
+        await websocket.close(code=1008, reason=reason)
+        return
     if not _valid_task_id(task_id):
         await websocket.close(code=1008, reason="Invalid task ID")
         return
@@ -26,9 +32,10 @@ async def execution_progress(websocket: WebSocket, task_id: str) -> None:
         await websocket.close(code=1008, reason="Invalid replay sequence")
         return
 
-    hub: ExecutionProgressHub = websocket.app.state.progress_hub
+    hub: ExecutionProgressHub = websocket.app.state.services.progress_hub
     queue, replay = await hub.subscribe(task_id, after=after)
     await websocket.accept()
+    emit_diagnostic_event(component="backend", event="websocket.connected", task_id=task_id, after_sequence=after)
 
     async def sender() -> None:
         for event in replay:
@@ -70,11 +77,20 @@ async def execution_progress(websocket: WebSocket, task_id: str) -> None:
         for task in done:
             try:
                 task.result()
+            except asyncio.CancelledError:
+                pass
             except RuntimeError:
                 if websocket.client_state is not WebSocketState.DISCONNECTED:
                     raise
+    except asyncio.CancelledError:
+        # Client/test teardown cancels the ASGI task after disconnect; this is
+        # normal lifecycle completion, not an application error.
+        pass
     except WebSocketDisconnect:
         pass
+    except Exception as exc:
+        emit_diagnostic_event(component="backend", event="websocket.error", level="ERROR", task_id=task_id, error_code=type(exc).__name__, message=str(exc) or type(exc).__name__)
+        raise
     finally:
         sender_task.cancel()
         receiver_task.cancel()
@@ -84,6 +100,7 @@ async def execution_progress(websocket: WebSocket, task_id: str) -> None:
             return_exceptions=True,
         )
         await hub.unsubscribe(task_id, queue)
+        emit_diagnostic_event(component="backend", event="websocket.disconnected", task_id=task_id)
 
 
 def _valid_task_id(value: str) -> bool:

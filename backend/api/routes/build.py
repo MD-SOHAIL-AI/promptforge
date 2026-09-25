@@ -6,7 +6,7 @@ import logging
 
 from ...services.platformio_service import PlatformIOService
 from ...services.project_service import ProjectService
-from ..dependencies import required_state, resolve_project_from_request
+from ..dependencies import required_state, resolve_project_from_request, services
 from ..errors import APIError, error_responses
 from ..schemas.build import BuildRequest, BuildResponse, BuildResultResponse
 
@@ -43,7 +43,7 @@ async def build_project(body: BuildRequest, request: Request) -> BuildResponse:
     except (OSError, ValueError) as exc:
         message = _build_error_message(root, exc)
         raise APIError(422, "BUILD_REQUEST_INVALID", message, {"project_id": body.project_id, "rootPath": str(root)}) from exc
-    workspace = getattr(request.app.state, "workspace_manager", None)
+    workspace = services(request).workspace_manager
     if workspace is not None:
         _save_build_workspace(workspace, body.project_id, result)
     return BuildResponse(

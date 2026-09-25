@@ -14,14 +14,12 @@ interface UseTerminalSessionOptions {
   activeProject: ProjectResponse | null;
   profileId?: string;
   title?: string;
-  onData: (data: string, meta?: { replay: boolean }) => void;
+  onData: (data: string) => void;
   onReset: () => void;
 }
 
 const MIN_COLS = 20;
 const MIN_ROWS = 5;
-const MAX_INPUT_LENGTH = 20_000;
-const RESIZE_DEBOUNCE_MS = 75;
 
 export function useTerminalSession({
   activeProject,
@@ -38,12 +36,10 @@ export function useTerminalSession({
   const sessionRef = useRef<TerminalSessionResponse | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const cursorRef = useRef(0);
-  const replayBoundaryRef = useRef(0);
   const startingRef = useRef(false);
   const generationRef = useRef(0);
   const titleRef = useRef(title);
   const dimensionsRef = useRef({ cols: 80, rows: 24 });
-  const resizeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     titleRef.current = title;
@@ -81,7 +77,6 @@ export function useTerminalSession({
         return null;
       }
       cursorRef.current = 0;
-      replayBoundaryRef.current = 0;
       replaceSession(next);
       return next;
     } catch (err) {
@@ -103,10 +98,6 @@ export function useTerminalSession({
   const write = useCallback(async (data: string) => {
     const current = sessionRef.current;
     if (!current || current.closed) return;
-    if (!data || data.length > MAX_INPUT_LENGTH || data.includes("\0")) {
-      setError(`Terminal input must be 1-${MAX_INPUT_LENGTH} characters and cannot contain NUL.`);
-      return;
-    }
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "input", data }));
@@ -141,7 +132,6 @@ export function useTerminalSession({
     closeSocket();
     replaceSession(null);
     cursorRef.current = 0;
-    replayBoundaryRef.current = 0;
     onReset();
     if (current) {
       await promptForgeApi.stopTerminal(current.session_id).catch(() => null);
@@ -166,28 +156,23 @@ export function useTerminalSession({
       rows: Math.max(MIN_ROWS, Math.round(rows)),
     };
     dimensionsRef.current = dimensions;
-    if (resizeTimerRef.current !== null) window.clearTimeout(resizeTimerRef.current);
-    resizeTimerRef.current = window.setTimeout(() => {
-      resizeTimerRef.current = null;
-      const current = sessionRef.current;
-      if (!current || current.closed) return;
-      const latest = dimensionsRef.current;
-      const socket = socketRef.current;
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "resize", ...latest }));
-        return;
-      }
-      void promptForgeApi.resizeTerminal(current.session_id, latest.cols, latest.rows)
-        .then(replaceSession)
-        .catch(() => {
-          // The next fit/stream reconnect retries with the latest dimensions.
-        });
-    }, RESIZE_DEBOUNCE_MS);
+    const current = sessionRef.current;
+    if (!current || current.closed) return;
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "resize", ...dimensions }));
+      return;
+    }
+    try {
+      replaceSession(await promptForgeApi.resizeTerminal(
+        current.session_id,
+        dimensions.cols,
+        dimensions.rows,
+      ));
+    } catch {
+      // The next fit/stream reconnect retries with the latest dimensions.
+    }
   }, [replaceSession]);
-
-  useEffect(() => () => {
-    if (resizeTimerRef.current !== null) window.clearTimeout(resizeTimerRef.current);
-  }, []);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -195,7 +180,6 @@ export function useTerminalSession({
     const previous = sessionRef.current;
     replaceSession(null);
     cursorRef.current = 0;
-    replayBoundaryRef.current = 0;
     onReset();
     if (previous) {
       void promptForgeApi.stopTerminal(previous.session_id).catch(() => null);
@@ -224,15 +208,8 @@ export function useTerminalSession({
     const deliver = (event: Pick<TerminalOutputEvent, "sequence" | "data">) => {
       const sequence = Number(event.sequence ?? 0);
       if (sequence <= cursorRef.current) return;
-      const dropped = Math.max(
-        Number((event as TerminalOutputEvent).dropped ?? 0),
-        sequence - cursorRef.current - 1,
-      );
-      if (dropped > 0 && cursorRef.current > 0) {
-        onData(`\r\n\x1b[33m— ${dropped} terminal chunk${dropped === 1 ? "" : "s"} dropped —\x1b[0m\r\n`);
-      }
       cursorRef.current = sequence;
-      onData(String(event.data ?? ""), { replay: sequence <= replayBoundaryRef.current });
+      onData(String(event.data ?? ""));
     };
 
     const scheduleReconnect = () => {
@@ -253,7 +230,6 @@ export function useTerminalSession({
       socket.addEventListener("open", () => {
         if (disposed) return;
         reconnectAttempt = 0;
-        replayBoundaryRef.current = Math.max(replayBoundaryRef.current, cursorRef.current);
         setStreaming(true);
         setError(null);
         socket.send(JSON.stringify({ type: "resize", ...dimensionsRef.current }));
@@ -301,17 +277,10 @@ export function useTerminalSession({
 
   useEffect(() => {
     if (!sessionId || streaming) return;
-    replayBoundaryRef.current = Math.max(replayBoundaryRef.current, cursorRef.current);
     let stopped = false;
-    let timer: number | null = null;
     const poll = async () => {
       const current = sessionRef.current;
-      if (
-        !current
-        || stopped
-        || document.hidden
-        || socketRef.current?.readyState === WebSocket.CONNECTING
-      ) return;
+      if (!current || stopped || document.hidden) return;
       try {
         const response = await promptForgeApi.terminalOutput(
           current.session_id,
@@ -320,12 +289,8 @@ export function useTerminalSession({
         if (stopped) return;
         for (const event of response.events) {
           if (event.sequence <= cursorRef.current) continue;
-          const dropped = Math.max(Number(event.dropped ?? 0), event.sequence - cursorRef.current - 1);
-          if (dropped > 0 && cursorRef.current > 0) {
-            onData(`\r\n\x1b[33m— ${dropped} terminal chunk${dropped === 1 ? "" : "s"} dropped —\x1b[0m\r\n`);
-          }
           cursorRef.current = event.sequence;
-          onData(event.data, { replay: event.sequence <= replayBoundaryRef.current });
+          onData(event.data);
         }
         replaceSession(response);
       } catch (err) {
@@ -334,27 +299,11 @@ export function useTerminalSession({
         }
       }
     };
-    const schedule = () => {
-      if (stopped || document.hidden || timer !== null) return;
-      timer = window.setTimeout(() => {
-        timer = null;
-        void poll().finally(schedule);
-      }, 1_000);
-    };
-    const visibilityChanged = () => {
-      if (document.hidden) {
-        if (timer !== null) window.clearTimeout(timer);
-        timer = null;
-        return;
-      }
-      void poll().finally(schedule);
-    };
-    document.addEventListener("visibilitychange", visibilityChanged);
-    void poll().finally(schedule);
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1_000);
     return () => {
       stopped = true;
-      if (timer !== null) window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", visibilityChanged);
+      window.clearInterval(timer);
     };
   }, [onData, replaceSession, sessionId, streaming]);
 

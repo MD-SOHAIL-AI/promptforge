@@ -7,8 +7,8 @@ test("composer Auto sends backend-routed auto autonomy", () => {
   assert.equal(composerAutonomy(true), "auto");
 });
 
-test("manual composer mode keeps staged changes only", () => {
-  assert.equal(composerAutonomy(false), "staged_changes");
+test("Ask composer mode stays read-only", () => {
+  assert.equal(composerAutonomy(false), "read_only");
 });
 
 assert.equal(composerAutonomy(true, true), "plan_only");

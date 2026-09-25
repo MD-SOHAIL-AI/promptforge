@@ -1,5 +1,8 @@
 # ForgeX Nexus V4 Validation
 
+> **Historical validation snapshot.** For the final hardened package, use `FORGEX_RELEASE_HARDENING_VALIDATION.md`.
+
+
 ## Scope
 
 This package contains the complete ForgeX V3 agent/runtime foundation plus the new ForgeX Nexus V4 UI/UX implementation.

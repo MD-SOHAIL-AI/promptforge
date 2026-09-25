@@ -14,9 +14,13 @@ import asyncio
 import configparser
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
+
+from backend.observability.diagnostics import emit_diagnostic_event
+from backend.security.build_policy import validate_build_configuration
 
 from ..runtime.failure_classifier import FailureClassification, classify_failure
 from ..runtime.result import (
@@ -86,6 +90,7 @@ class BuildConfig:
     env: Mapping[str, str] = field(default_factory=dict)
     session_id: Optional[str] = None
     version_timeout_s: float = 10.0
+    expected_project_root: str | Path | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "extra_args", tuple(self.extra_args))
@@ -113,6 +118,10 @@ class BuildConfig:
             for key, value in self.env.items()
         ):
             raise ValueError("env must contain NUL-free string keys and values")
+        if self.expected_project_root is not None:
+            expected = Path(self.expected_project_root).expanduser()
+            if not expected.is_absolute() or ".." in expected.parts:
+                raise ValueError("expected_project_root must be an absolute canonical path")
 
         _validate_extra_args(self.extra_args)
 
@@ -146,6 +155,7 @@ class FirmwareBuilder:
     async def build(self, config: BuildConfig) -> BuildResult:
         """Validate and execute exactly one PlatformIO build attempt."""
         started_monotonic = time.monotonic()
+        build_id = f"build-{uuid.uuid4().hex}"
 
         try:
             project = self._validate_project(config)
@@ -154,6 +164,7 @@ class FirmwareBuilder:
                 config=config,
                 exc=exc,
                 started_monotonic=started_monotonic,
+                build_id=build_id,
                 message=f"Invalid PlatformIO project: {exc}",
                 metadata={"validation_failed": True},
             )
@@ -181,7 +192,8 @@ class FirmwareBuilder:
                 config=config,
                 exc=exc,
                 started_monotonic=started_monotonic,
-                message=f"PlatformIO could not be started: {exc}",
+                build_id=build_id,
+                message=_platformio_start_failure_message(exc),
                 board=project.board,
                 metadata={"validation_failed": False},
             )
@@ -199,6 +211,7 @@ class FirmwareBuilder:
                 config=config,
                 exc=exc,
                 started_monotonic=started_monotonic,
+                build_id=build_id,
                 message=f"Could not inspect PlatformIO build directory: {exc}",
                 board=project.board,
                 toolchain_version=version,
@@ -211,6 +224,13 @@ class FirmwareBuilder:
             timeout_s=config.timeout_s,
             session_id=config.session_id,
         )
+        _emit_build_event(
+            "build.started",
+            build_id=build_id,
+            config=config,
+            project=project,
+            command=list(process_config.args),
+        )
 
         try:
             process_result = await self._subprocess_mgr.run(process_config)
@@ -221,7 +241,8 @@ class FirmwareBuilder:
                 config=config,
                 exc=exc,
                 started_monotonic=started_monotonic,
-                message=f"PlatformIO build could not be started: {exc}",
+                build_id=build_id,
+                message=_platformio_start_failure_message(exc),
                 board=project.board,
                 toolchain_version=version,
                 metadata={"command": process_config.args},
@@ -231,6 +252,7 @@ class FirmwareBuilder:
                 config=config,
                 exc=exc,
                 started_monotonic=started_monotonic,
+                build_id=build_id,
                 message=f"Unexpected PlatformIO build error: {exc}",
                 board=project.board,
                 toolchain_version=version,
@@ -246,6 +268,7 @@ class FirmwareBuilder:
             "build_root": str(project.build_root),
             "version_probe_failed": version_probe_failed,
         }
+        _emit_build_output(build_id=build_id, config=config, process_result=process_result)
 
         if not process_result.success:
             classification = classify_failure(
@@ -264,6 +287,30 @@ class FirmwareBuilder:
                 f"PlatformIO build timed out after {process_result.elapsed_s:.1f}s"
                 if process_result.timed_out
                 else f"PlatformIO build failed with exit code {process_result.returncode}"
+            )
+            _emit_build_event(
+                "build.failed",
+                build_id=build_id,
+                config=config,
+                project=project,
+                command=list(process_config.args),
+                duration_ms=_elapsed_ms(started_monotonic),
+                status=status.value,
+                message=message,
+                returncode=process_result.returncode,
+                warnings_count=warnings_count,
+            )
+            _emit_build_event(
+                "build.completed",
+                build_id=build_id,
+                config=config,
+                project=project,
+                command=list(process_config.args),
+                duration_ms=_elapsed_ms(started_monotonic),
+                status=status.value,
+                message=message,
+                returncode=process_result.returncode,
+                warnings_count=warnings_count,
             )
             return BuildResult(
                 success=False,
@@ -298,6 +345,7 @@ class FirmwareBuilder:
                 config=config,
                 exc=exc,
                 started_monotonic=started_monotonic,
+                build_id=build_id,
                 message=f"Could not inspect generated firmware artifacts: {exc}",
                 board=project.board,
                 toolchain_version=version,
@@ -314,6 +362,30 @@ class FirmwareBuilder:
                 process_result=process_result,
                 stage="build",
                 tool=_PLATFORM,
+            )
+            _emit_build_event(
+                "build.failed",
+                build_id=build_id,
+                config=config,
+                project=project,
+                command=list(process_config.args),
+                duration_ms=_elapsed_ms(started_monotonic),
+                status=ResultStatus.FAILED.value,
+                message=message,
+                returncode=process_result.returncode,
+                warnings_count=warnings_count,
+            )
+            _emit_build_event(
+                "build.completed",
+                build_id=build_id,
+                config=config,
+                project=project,
+                command=list(process_config.args),
+                duration_ms=_elapsed_ms(started_monotonic),
+                status=ResultStatus.FAILED.value,
+                message=message,
+                returncode=process_result.returncode,
+                warnings_count=warnings_count,
             )
             return BuildResult(
                 success=False,
@@ -340,6 +412,32 @@ class FirmwareBuilder:
             "artifact_environment": artifact.environment,
             "artifacts": [str(item.path) for item in artifacts],
         }
+        _emit_build_event(
+            "build.succeeded",
+            build_id=build_id,
+            config=config,
+            project=project,
+            command=list(process_config.args),
+            duration_ms=_elapsed_ms(started_monotonic),
+            status=ResultStatus.SUCCESS.value,
+            message=f"PlatformIO build succeeded: {artifact.path.name}",
+            firmware_path=str(artifact.path),
+            artifact_type=artifact.artifact_type,
+            warnings_count=warnings_count,
+        )
+        _emit_build_event(
+            "build.completed",
+            build_id=build_id,
+            config=config,
+            project=project,
+            command=list(process_config.args),
+            duration_ms=_elapsed_ms(started_monotonic),
+            status=ResultStatus.SUCCESS.value,
+            message=f"PlatformIO build succeeded: {artifact.path.name}",
+            firmware_path=str(artifact.path),
+            artifact_type=artifact.artifact_type,
+            warnings_count=warnings_count,
+        )
         return BuildResult(
             success=True,
             status=ResultStatus.SUCCESS,
@@ -358,13 +456,15 @@ class FirmwareBuilder:
     @staticmethod
     def _validate_project(config: BuildConfig) -> _ValidatedProject:
         root = Path(config.project_dir).expanduser().resolve()
+        if config.expected_project_root is not None and root != Path(config.expected_project_root).expanduser():
+            raise ProjectValidationError("project directory changed after workspace authorization")
         if not root.exists():
             raise ProjectValidationError(f"project directory does not exist: {root}")
         if not root.is_dir():
             raise ProjectValidationError(f"project path is not a directory: {root}")
 
         project_file = root / _PLATFORMIO_INI
-        if not project_file.is_file():
+        if not project_file.is_file() or project_file.is_symlink():
             raise ProjectValidationError(
                 f"missing {_PLATFORMIO_INI}: {project_file}"
             )
@@ -375,6 +475,10 @@ class FirmwareBuilder:
         )
         with project_file.open("r", encoding="utf-8-sig") as handle:
             parser.read_file(handle)
+        try:
+            validate_build_configuration(parser)
+        except ValueError as exc:
+            raise ProjectValidationError(str(exc)) from exc
 
         environments = tuple(
             section[4:]
@@ -425,6 +529,13 @@ class FirmwareBuilder:
 
     @staticmethod
     def _build_args(config: BuildConfig, project_root: Path) -> list[str]:
+        # PlatformIO's default ``run`` target already builds the program and
+        # checks its size. Requesting both of its internal ``buildprog`` and
+        # ``checkprogsize`` aliases explicitly creates a dependency cycle for
+        # current Espressif32/SCons projects:
+        # buildprog -> checkprogsize -> firmware.bin -> buildprog.
+        # Keep the public CLI invocation here and let each platform define its
+        # own correct build graph.
         args = [
             config.executable,
             "run",
@@ -442,6 +553,7 @@ class FirmwareBuilder:
         config: BuildConfig,
         exc: BaseException,
         started_monotonic: float,
+        build_id: str,
         message: str,
         board: str = "",
         toolchain_version: str = "",
@@ -451,6 +563,17 @@ class FirmwareBuilder:
             exception=exc,
             stage="build",
             tool=_PLATFORM,
+        )
+        _emit_build_event(
+            "build.failed",
+            build_id=build_id,
+            config=config,
+            project=None,
+            command=list((metadata or {}).get("command", [])),
+            duration_ms=_elapsed_ms(started_monotonic),
+            status=ResultStatus.FAILED.value,
+            message=message,
+            error_code=type(exc).__name__,
         )
         return BuildResult(
             success=False,
@@ -499,6 +622,14 @@ def _validate_extra_args(args: Sequence[str]) -> None:
             raise ValueError(
                 f"build target {arg!r} is not allowed by the firmware builder"
             )
+
+
+def _platformio_start_failure_message(exc: OSError) -> str:
+    return (
+        "PlatformIO is not installed or not on PATH. "
+        "Run `npm run setup:platformio`, then restart ForgeX. "
+        f"Original error: {exc}"
+    )
 
 
 def _infer_environment(
@@ -698,6 +829,80 @@ def _combined_output(result: ProcessResult) -> str:
     return "\n".join(
         part for part in (result.stderr_text, result.stdout_text) if part
     )
+
+
+def _emit_build_event(
+    event: str,
+    *,
+    build_id: str,
+    config: BuildConfig,
+    project: _ValidatedProject | None,
+    command: Sequence[str],
+    duration_ms: int | None = None,
+    status: str | None = None,
+    message: str | None = None,
+    returncode: int | None = None,
+    warnings_count: int | None = None,
+    firmware_path: str | None = None,
+    artifact_type: str | None = None,
+    error_code: str | None = None,
+) -> None:
+    fields: dict[str, object] = {
+        "build_id": build_id,
+        "session_id": config.session_id,
+        "project_id": str(Path(config.project_dir)),
+        "command": list(command),
+        "environment": config.environment or (project.selected_environment if project else None),
+        "board": config.board or (project.board if project else None),
+    }
+    if duration_ms is not None:
+        fields["duration_ms"] = duration_ms
+    if status is not None:
+        fields["status"] = status
+    if returncode is not None:
+        fields["returncode"] = returncode
+    if warnings_count is not None:
+        fields["warnings_count"] = warnings_count
+    if firmware_path:
+        fields["firmware_path"] = firmware_path
+    if artifact_type:
+        fields["artifact_type"] = artifact_type
+    if error_code:
+        fields["error_code"] = error_code
+    emit_diagnostic_event(
+        component="build",
+        event=event,
+        level="ERROR" if event == "build.failed" else "INFO",
+        message=message,
+        **fields,
+    )
+
+
+def _emit_build_output(*, build_id: str, config: BuildConfig, process_result: ProcessResult) -> None:
+    if process_result.stdout_text:
+        emit_diagnostic_event(
+            component="build",
+            event="build.stdout",
+            level="DEBUG",
+            build_id=build_id,
+            session_id=config.session_id,
+            project_id=str(Path(config.project_dir)),
+            status="captured",
+            output=process_result.stdout_text[:16_000],
+            output_truncated=process_result.output_truncated or len(process_result.stdout_text) > 16_000,
+        )
+    if process_result.stderr_text:
+        emit_diagnostic_event(
+            component="build",
+            event="build.stderr",
+            level="DEBUG" if process_result.success else "ERROR",
+            build_id=build_id,
+            session_id=config.session_id,
+            project_id=str(Path(config.project_dir)),
+            status="captured",
+            output=process_result.stderr_text[:16_000],
+            output_truncated=process_result.output_truncated or len(process_result.stderr_text) > 16_000,
+        )
 
 
 def _failure_from_classification(

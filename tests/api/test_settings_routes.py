@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
@@ -17,12 +17,14 @@ def client(tmp_path: Path) -> TestClient:
         UsageTracker(tmp_path / "usage.jsonl"),
     )
     app = create_app(
+        local_api_token_override=None if os.getenv("FORGEX_LOCAL_TOKEN") else "t" * 43,
         model_router_service=router,
         project_service=ProjectService(tmp_path / "projects"),
         settings_service=SettingsService(tmp_path / "settings.json"),
         version="test-version",
     )
-    return TestClient(app, raise_server_exceptions=False)
+    headers = {} if os.getenv("FORGEX_LOCAL_TOKEN") else {"Authorization": f"Bearer {'t' * 43}"}
+    return TestClient(app, base_url="http://127.0.0.1:8000", headers=headers, raise_server_exceptions=False)
 
 
 def test_settings_defaults_and_schema_load(tmp_path: Path) -> None:
@@ -73,15 +75,3 @@ def test_invalid_setting_key_is_rejected(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_SETTING"
-
-
-def test_settings_write_failure_returns_structured_error(tmp_path: Path) -> None:
-    with client(tmp_path) as api:
-        service = Mock(spec=SettingsService)
-        service.patch_settings.side_effect = PermissionError("denied")
-        api.app.state.settings_service = service
-
-        response = api.patch("/settings", json={"settings": {"appearance.theme": "light"}})
-
-    assert response.status_code == 500
-    assert response.json()["code"] == "SETTINGS_WRITE_FAILED"

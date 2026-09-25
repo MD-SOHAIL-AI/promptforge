@@ -414,8 +414,10 @@ class CodeGenerationService:
         if fallback_llm_service is not None and not isinstance(fallback_llm_service, LLMService):
             raise ValueError("fallback_llm_service must implement LLMService")
         self._llm_service = llm_service
-        self._fallback_llm_service = fallback_llm_service
-        self._fallback_enabled = bool(fallback_enabled)
+        # Legacy fallback arguments are accepted for settings/test compatibility only.
+        # Runtime execution is deterministic: the selected provider/model never changes implicitly.
+        self._fallback_llm_service = None
+        self._fallback_enabled = False
         self.max_repair_attempts = max_repair_attempts
         self.max_project_repair_attempts = max_project_repair_attempts
         self._temperature = float(temperature)
@@ -601,17 +603,6 @@ class CodeGenerationService:
                     rollback_performed=rolled_back,
                     message="Restored workspace after failed generation",
                 )
-                if isinstance(exc, LLMError) and _supports_builtin_wifi_monitor(
-                    request, target_board, framework
-                ):
-                    return await self._generate_builtin_wifi_monitor_fallback(
-                        request,
-                        project_name=project_name,
-                        target_board=target_board,
-                        framework=framework,
-                        attempts=attempts,
-                        cause=exc,
-                    )
                 raise
             if transaction is not None and owns_transaction:
                 transaction.commit()
@@ -669,16 +660,7 @@ class CodeGenerationService:
                 files_total=len(project.files),
             )
             return result
-        except LLMError as provider_error:
-            if _supports_builtin_wifi_monitor(request, target_board, framework):
-                return await self._generate_builtin_wifi_monitor_fallback(
-                    request,
-                    project_name=project_name,
-                    target_board=target_board,
-                    framework=framework,
-                    attempts=attempts,
-                    cause=provider_error,
-                )
+        except LLMError:
             raise
         except (GeneratedOutputError, ProjectValidationError) as initial_error:
             last_error: CodeGenerationError = initial_error
@@ -722,48 +704,9 @@ class CodeGenerationService:
             except (GeneratedOutputError, ProjectValidationError) as repair_error:
                 last_error = repair_error
 
-        if self._fallback_allowed(request):
-            try:
-                project = await self._generate_project_attempt(
-                    request,
-                    project_name=project_name,
-                    target_board=target_board,
-                    framework=framework,
-                    prompt=self._build_fallback_prompt(
-                        request,
-                        project_name=project_name,
-                        previous_error=last_error,
-                    ),
-                    system_prompt=system_prompt,
-                    attempt_number=len(attempts) + 1,
-                    attempt_type="fallback",
-                    attempts=attempts,
-                    repair_used=self.max_repair_attempts > 0,
-                    fallback_used=True,
-                    llm_service=self._fallback_llm_service or self._llm_service,
-                )
-                result = self._with_generation_report(project, attempts, request)
-                await _emit_generation_event(
-                    request,
-                    "generation_completed",
-                    generation_mode="one_shot",
-                    strategy="fallback",
-                    status="success",
-                    provider_id=_provider_id(self._fallback_llm_service or self._llm_service),
-                    model_id=str(getattr(self._fallback_llm_service or self._llm_service, "model", "")),
-                    repair_used=self.max_repair_attempts > 0,
-                    fallback_used=True,
-                    message=f"Generation completed with fallback: {len(project.files)} files",
-                    files_written=len(project.files),
-                    files_total=len(project.files),
-                )
-                return result
-            except (GeneratedOutputError, ProjectValidationError) as fallback_error:
-                last_error = fallback_error
-
         details = dict(getattr(last_error, "details", {}))
         details["generation_attempts"] = [attempt.to_dict() for attempt in attempts]
-        details["suggestion"] = "Try a stronger model or enable fallback"
+        details["suggestion"] = "Retry the selected model later or explicitly choose another model"
         await _emit_generation_event(
             request,
             "generation_failed",
@@ -776,7 +719,7 @@ class CodeGenerationService:
             error_code=last_error.code,
         )
         raise type(last_error)(
-            f"{last_error.message} Suggestion: Try a stronger model or enable fallback.",
+            f"{last_error.message} Suggestion: Retry the selected model later or explicitly choose another model.",
             details=details,
         ) from last_error
 
@@ -833,78 +776,6 @@ class CodeGenerationService:
             },
         )
 
-    async def _generate_builtin_wifi_monitor_fallback(
-        self,
-        request: CodeGenerationRequest,
-        *,
-        project_name: str,
-        target_board: TargetBoard,
-        framework: Framework,
-        attempts: list[GenerationAttempt],
-        cause: LLMError,
-    ) -> GeneratedProject:
-        await _emit_generation_event(
-            request,
-            "fallback_started",
-            generation_mode="builtin_template",
-            strategy="deterministic_fallback",
-            status="generating",
-            provider_id="forgex_builtin",
-            model_id="deterministic-esp32-wifi-monitor-v1",
-            fallback_used=True,
-            fallback_kind="deterministic_template",
-            error_code=cause.code,
-            message="Provider unavailable; generating verified ESP32 Wi-Fi monitor fallback",
-        )
-        started_at = _utc_now()
-        project = _build_builtin_wifi_monitor_project(
-            request,
-            project_name=project_name,
-            target_board=target_board,
-            framework=framework,
-        )
-        self.validate_project(project)
-        _validate_prompt_specific_project(project, request)
-        self._record_attempt(
-            attempts,
-            GenerationAttempt(
-                attempt_id=f"attempt-{uuid.uuid4().hex}",
-                execution_id=_execution_id(request),
-                task_id=request.plan.task_id,
-                provider_id="forgex_builtin",
-                model_id="deterministic-esp32-wifi-monitor-v1",
-                route_id=str(request.context.metadata.get("route_id", "code_generation")),
-                prompt_hash=_hash_prompt(_request_text(request), "deterministic_fallback"),
-                attempt_number=len(attempts) + 1,
-                attempt_type="builtin_fallback",
-                started_at=started_at,
-                completed_at=_utc_now(),
-                success=True,
-                parsed_file_count=len(project.files),
-                required_files_present=True,
-                fallback_used=True,
-                latency_ms=0,
-                parse_success=True,
-                validation_success=True,
-            ),
-        )
-        result = self._with_generation_report(project, attempts, request)
-        await _emit_generation_event(
-            request,
-            "fallback_completed",
-            generation_mode="builtin_template",
-            strategy="deterministic_fallback",
-            status="success",
-            provider_id="forgex_builtin",
-            model_id="deterministic-esp32-wifi-monitor-v1",
-            fallback_used=True,
-            fallback_kind="deterministic_template",
-            message=f"Verified fallback generated: {len(project.files)} files",
-            files_written=len(project.files),
-            files_total=len(project.files),
-        )
-        return result
-
     async def _generate_project_attempt(
         self,
         request: CodeGenerationRequest,
@@ -931,7 +802,7 @@ class CodeGenerationService:
             "task_type": "code_generation",
             "attempt_type": attempt_type,
             "attempt_number": attempt_number,
-            "allow_fallback": _metadata_bool(request.context.metadata, "fallback_enabled", True) and not fallback_used,
+            "allow_fallback": False,
             "local_only": _metadata_bool(request.context.metadata, "local_only", False),
         }
         metadata.update(_llm_route_metadata(request.context.metadata))
@@ -1387,7 +1258,7 @@ class CodeGenerationService:
                         "task_type": "code_generation",
                         "attempt_type": attempt_type,
                         "attempt_number": attempt_number,
-                        "allow_fallback": True,
+                        "allow_fallback": False,
                         "local_only": _metadata_bool(request.context.metadata, "local_only", False),
                         **_llm_route_metadata(request.context.metadata),
                     },
@@ -1443,10 +1314,7 @@ class CodeGenerationService:
         for attempt_type, repair_used, fallback_used, service in (
             ("file", False, False, self._llm_service),
             ("file_repair", True, False, self._llm_service),
-            ("file_fallback", True, True, self._fallback_llm_service or self._llm_service),
         ):
-            if fallback_used and not self._fallback_allowed(request):
-                continue
             prompt = _chunk_file_prompt(
                 request,
                 summary=summary,
@@ -1500,7 +1368,7 @@ class CodeGenerationService:
                             "attempt_type": attempt_type,
                             "attempt_number": attempt_number,
                             "target_file": path,
-                            "allow_fallback": not fallback_used,
+                            "allow_fallback": False,
                             "local_only": _metadata_bool(request.context.metadata, "local_only", False),
                             **_llm_route_metadata(request.context.metadata),
                             **({"skip_provider_id": attempts[0].provider_id} if fallback_used and attempts else {}),
@@ -1658,7 +1526,7 @@ class CodeGenerationService:
         detail = errors[-1] if errors else "no supported file manifest format found"
         raise GeneratedOutputError(
             "Selected model did not return a valid project. "
-            f"Try another model or enable fallback. Details: {detail}",
+            f"Retry the selected model later or explicitly choose another model. Details: {detail}",
             details={"reason": detail},
         )
 
@@ -1827,14 +1695,8 @@ class CodeGenerationService:
         )
 
     def _fallback_allowed(self, request: CodeGenerationRequest) -> bool:
-        if not self._fallback_enabled:
-            return False
-        metadata = request.context.metadata
-        if _metadata_bool(metadata, "fallback_enabled", True) is False:
-            return False
-        if _metadata_bool(metadata, "local_only", False):
-            return False
-        return self._fallback_llm_service is not None or _router_like(self._llm_service)
+        del request
+        return False
 
     def _with_generation_report(
         self,
@@ -2469,13 +2331,10 @@ def _llm_route_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
     route: dict[str, Any] = {}
     provider_id = _metadata_text(metadata.get("provider_id"))
     model_id = _metadata_text(metadata.get("model_id"))
-    fallback_provider_id = _metadata_text(metadata.get("fallback_provider_id"))
     if provider_id and provider_id not in {"verified_template", "fake_planner", "forgex_builtin", "forgex_local"}:
         route["provider_id"] = provider_id
     if model_id and provider_id not in {"verified_template", "fake_planner", "forgex_builtin", "forgex_local"}:
         route["model_id"] = model_id
-    if fallback_provider_id:
-        route["fallback_provider_id"] = fallback_provider_id
     return route
 
 
@@ -2627,125 +2486,6 @@ def _build_builtin_blink_project(
         target_board=target_board,
         files=tuple(files),
         metadata={"task_id": request.plan.task_id, "generation_source": "forgex_builtin"},
-    )
-
-
-def _supports_builtin_wifi_monitor(
-    request: CodeGenerationRequest,
-    target_board: TargetBoard,
-    framework: Framework,
-) -> bool:
-    if framework is not Framework.PLATFORMIO or target_board not in _BUILTIN_PLATFORMIO_BOARDS:
-        return False
-    text = _request_text(request)
-    return ("wifi" in text or "wi-fi" in text) and any(
-        term in text for term in ("monitor", "device", "status", "webserver", "web server")
-    )
-
-
-def _build_builtin_wifi_monitor_project(
-    request: CodeGenerationRequest,
-    *,
-    project_name: str,
-    target_board: TargetBoard,
-    framework: Framework,
-) -> GeneratedProject:
-    platform, board, fallback_led_pin = _BUILTIN_PLATFORMIO_BOARDS[target_board]
-    files = (
-        GeneratedFile(
-            path="platformio.ini",
-            file_type="ini",
-            content=(
-                f"[env:{board}]\n"
-                f"platform = {platform}\n"
-                f"board = {board}\n"
-                "framework = arduino\n"
-                "monitor_speed = 115200\n"
-            ),
-        ),
-        GeneratedFile(
-            path="include/config.h",
-            file_type="h",
-            content=(
-                "#pragma once\n\n"
-                "// Replace these values before flashing.\n"
-                "constexpr char WIFI_SSID[] = \"YOUR_WIFI_SSID\";\n"
-                "constexpr char WIFI_PASSWORD[] = \"YOUR_WIFI_PASSWORD\";\n"
-                "constexpr char DEVICE_NAME[] = \"forgex-esp32-monitor\";\n"
-            ),
-        ),
-        GeneratedFile(
-            path="src/main.cpp",
-            file_type="cpp",
-            content=(
-                "#include <Arduino.h>\n"
-                "#include <WebServer.h>\n"
-                "#include <WiFi.h>\n"
-                "#include \"config.h\"\n\n"
-                "#ifndef LED_BUILTIN\n"
-                f"#define LED_BUILTIN {fallback_led_pin}\n"
-                "#endif\n\n"
-                "WebServer server(80);\n"
-                "unsigned long startedAt = 0;\n\n"
-                "String statusJson() {\n"
-                "  String json = \"{\\\"device\\\":\\\"\" + String(DEVICE_NAME) + \"\\\",\";\n"
-                "  json += \"\\\"ip\\\":\\\"\" + WiFi.localIP().toString() + \"\\\",\";\n"
-                "  json += \"\\\"rssi\\\":\" + String(WiFi.RSSI()) + \",\";\n"
-                "  json += \"\\\"uptime_ms\\\":\" + String(millis() - startedAt) + \"}\";\n"
-                "  return json;\n"
-                "}\n\n"
-                "void handleRoot() {\n"
-                "  server.send(200, \"text/html\",\n"
-                "    \"<!doctype html><meta name='viewport' content='width=device-width'>\"\n"
-                "    \"<title>ESP32 Monitor</title><h1>ESP32 Device Monitor</h1>\"\n"
-                "    \"<pre id='status'>Loading...</pre><script>async function refresh(){\"\n"
-                "    \"status.textContent=JSON.stringify(await (await fetch('/api/status')).json(),null,2)}\"\n"
-                "    \"refresh();setInterval(refresh,2000)</script>\");\n"
-                "}\n\n"
-                "void setup() {\n"
-                "  Serial.begin(115200);\n"
-                "  pinMode(LED_BUILTIN, OUTPUT);\n"
-                "  digitalWrite(LED_BUILTIN, LOW);\n"
-                "  WiFi.setHostname(DEVICE_NAME);\n"
-                "  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);\n"
-                "  Serial.print(\"Connecting to Wi-Fi\");\n"
-                "  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print('.'); }\n"
-                "  startedAt = millis();\n"
-                "  Serial.println();\n"
-                "  Serial.println(WiFi.localIP());\n"
-                "  server.on(\"/\", handleRoot);\n"
-                "  server.on(\"/api/status\", []() { server.send(200, \"application/json\", statusJson()); });\n"
-                "  server.begin();\n"
-                "  digitalWrite(LED_BUILTIN, HIGH);\n"
-                "}\n\n"
-                "void loop() {\n"
-                "  server.handleClient();\n"
-                "  delay(2);\n"
-                "}\n"
-            ),
-        ),
-        GeneratedFile(
-            path="README.md",
-            file_type="md",
-            content=(
-                f"# {project_name}\n\n"
-                "Deterministic ForgeX ESP32 Wi-Fi device monitor fallback. It exposes `/` and `/api/status` on port 80.\n\n"
-                "1. Set `WIFI_SSID` and `WIFI_PASSWORD` in `include/config.h`.\n"
-                "2. Build with `pio run`.\n"
-                "3. Flash with `pio run --target upload`, then open the IP printed at 115200 baud.\n"
-            ),
-        ),
-    )
-    return GeneratedProject(
-        project_name=project_name,
-        framework=framework,
-        target_board=target_board,
-        files=files,
-        metadata={
-            "task_id": request.plan.task_id,
-            "generation_source": "forgex_builtin",
-            "fallback_kind": "deterministic_template",
-        },
     )
 
 

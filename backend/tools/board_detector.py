@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Iterable, Optional
 
-from serial.tools import list_ports
+from backend.utils.serial_compat import list_ports
 
 __all__ = [
     "BoardDetectionError",

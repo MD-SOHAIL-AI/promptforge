@@ -2,17 +2,35 @@
   "name": "forgex-desktop",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "description": "ForgeX desktop foundation for the existing Next.js frontend and FastAPI backend.",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev:backend": "node scripts/dev-backend.mjs",
     "dev:frontend": "cd frontend && npm run dev",
-    "build:electron": "tsc -p electron/tsconfig.json",
+    "test:python": "python -m pytest -q",
+    "build:harness": "tsc -p harness/tsconfig.json",
+    "test:harness": "npm run build:harness && node --test harness/tests/*.test.mjs",
+    "build:electron": "npm run build:harness && tsc -p electron/tsconfig.json",
     "test:electron": "npm run build:electron && node --test electron/*.test.mjs",
+    "typecheck:frontend": "npm --prefix frontend run typecheck",
+    "lint:frontend": "npm --prefix frontend run lint -- --max-warnings=0",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:release-scripts": "node --test scripts/*.test.mjs",
+    "scan:release": "node scripts/scan-release-content.mjs",
+    "scan:source-release": "node scripts/scan-release-content.mjs --source-tree .",
+    "signoff:esp32": ".venv\\Scripts\\python.exe scripts/esp32_hardware_signoff.py",
+    "verify:beta": "node scripts/verify-beta.mjs",
     "dev:electron": "npm run build:electron && electron .",
     "dev:desktop": "node scripts/dev-desktop.mjs",
-    "test:ui-state": "node --experimental-strip-types --test frontend/lib/workflow-stage-state.test.mts frontend/lib/websocket.test.mts frontend/lib/forge-agent-autonomy.test.mts frontend/lib/forge-agent-activity.test.mts frontend/lib/layout-state.test.mts frontend/lib/nexus-agent-view.test.mts",
-    "dev:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-cleanup.ps1"
+    "setup:platformio": "node scripts/setup-platformio.mjs",
+    "logs:live": "node scripts/logs-live.mjs",
+    "test:ui-state": "node --experimental-strip-types --test frontend/lib/activity-stream-render.test.mjs frontend/lib/activity-stream.test.mts frontend/lib/workflow-stage-state.test.mts frontend/lib/websocket.test.mts frontend/lib/forge-agent-autonomy.test.mts frontend/lib/forge-agent-activity.test.mts frontend/lib/nexus-agent-view.test.mts frontend/lib/diagnostics.test.mts frontend/lib/agent-stream-policy.test.mts frontend/lib/composer-model-options.test.mts frontend/lib/model-role-bindings.test.mts frontend/lib/code-viewer.test.mts frontend/lib/workspace-helpers.test.mts frontend/lib/workspace-import-policy.test.mts frontend/lib/chat-stream.test.mts frontend/lib/model-provider-status.test.mts frontend/lib/agent-recovery.test.mts frontend/lib/agent-slash-commands.test.mts frontend/lib/frontend-architecture.test.mts",
+    "dev:cleanup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-cleanup.ps1",
+    "test:conversations": "npm --prefix frontend exec -- playwright test --config frontend/playwright.config.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.29",

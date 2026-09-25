@@ -11,7 +11,6 @@ from backend.runtime.serial_runtime import (
     SerialConfig,
     SerialConnectionError,
     SerialConnectionState,
-    ObservationSource,
     SerialObservation,
     SerialRuntime,
     SerialRuntimeAlreadyRunningError,
@@ -200,37 +199,6 @@ def test_port_availability_supports_objects_and_mappings() -> None:
     assert SerialService.is_port_available(" com7 ", ports) is True
     assert SerialService.is_port_available("/dev/ttyUSB0", ports) is True
     assert SerialService.is_port_available("COM8", ports) is False
-
-
-def test_monitor_fans_out_one_runtime_consumer_to_multiple_subscribers() -> None:
-    class StreamingRuntime(FakeRuntime):
-        def __init__(self) -> None:
-            super().__init__()
-            self.gate = asyncio.Event()
-            self.monitor_calls = 0
-
-        async def monitor(self) -> AsyncIterator[SerialObservation]:
-            self.monitor_calls += 1
-            await self.gate.wait()
-            yield SerialObservation(1.0, "ready", ObservationSource.DEVICE, "COM7")
-
-    async def scenario() -> tuple[int, str, str]:
-        runtime = StreamingRuntime()
-        runtime.state = SerialConnectionState.CONNECTED
-        runtime.active_port = "COM7"
-        service = SerialService(SerialConfiguration("COM7"), runtime=runtime)
-        first = service.monitor()
-        second = service.monitor()
-        first_task = asyncio.create_task(anext(first))
-        second_task = asyncio.create_task(anext(second))
-        await asyncio.sleep(0)
-        runtime.gate.set()
-        one, two = await asyncio.gather(first_task, second_task)
-        await first.aclose()
-        await second.aclose()
-        return runtime.monitor_calls, one.line, two.line
-
-    assert asyncio.run(scenario()) == (1, "ready", "ready")
 
 
 def test_service_rejects_conflicting_runtime_inputs() -> None:

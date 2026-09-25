@@ -27,6 +27,13 @@ export interface HealthResponse {
     planner: boolean;
     coordinator: boolean;
   };
+  platformio?: {
+    available: boolean;
+    executable?: string | null;
+    version?: string | null;
+    reason: "available" | "missing" | "failed" | string;
+    message: string;
+  } | null;
 }
 
 export interface ProjectResponse {
@@ -95,6 +102,13 @@ export interface ProjectFilesResponse {
   project_id: string;
   project_name: string;
   entries: WorkspaceEntry[];
+}
+
+export interface WorkspaceSearchResponse {
+  project_id: string;
+  query: string;
+  paths: string[];
+  truncated: boolean;
 }
 
 export interface FileContentResponse {
@@ -173,15 +187,6 @@ export interface MonitorStatusResponse {
   metrics: Record<string, unknown>;
 }
 
-export interface SerialMonitorEvent {
-  sequence: number;
-  timestamp: number;
-  line: string;
-  source: "DEVICE" | "RUNTIME" | "OVERFLOW" | "RECONNECT" | string;
-  port: string;
-  metadata: Record<string, unknown>;
-}
-
 export interface DetectedBoard {
   board_type: string;
   port: string;
@@ -209,23 +214,33 @@ export interface WorkspaceLogsResponse {
   count: number;
 }
 
-export interface ModelProviderResponse {
+export interface ProviderReadinessFields {
+  cli_version?: string | null;
+  auth_status?: string | null;
+  invocation_compatible?: boolean | null;
+  network_status?: string | null;
+  blocking_code?: string | null;
+}
+
+export interface ModelProviderResponse extends ProviderReadinessFields {
   provider_id: string;
   display_name: string;
   enabled: boolean;
   configured: boolean;
-  auth_type: "api_key" | "none";
+  auth_type: "api_key" | "none" | "oauth_external";
   local: boolean;
   default_model: string;
   base_url?: string;
   api_key_masked?: string;
   masked_api_key?: string | null;
   credential_configured?: boolean;
-  provider_type?: "api_provider";
+  provider_type?: "api_provider" | "local_bridge_provider";
   health_status?: string | null;
   last_checked_at?: string | null;
   last_error?: string | null;
   models_cached?: number;
+  custom?: boolean;
+  protocol?: "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generate-content";
 }
 
 export interface ModelProvidersResponse {
@@ -245,6 +260,17 @@ export interface ModelRoutesResponse {
   routes: ModelRouteResponse[];
 }
 
+export type ModelRole = "main" | "explore" | "review" | "verify" | "compact" | "title";
+
+export interface ModelRoleBinding {
+  model: string | null;
+  source: "session_role" | "role" | "session" | "application" | "task_route";
+}
+
+export interface ModelRoleBindingsResponse {
+  bindings: Record<ModelRole, ModelRoleBinding>;
+}
+
 export interface ModelInfoResponse {
   provider_id: string;
   model_id: string;
@@ -252,8 +278,7 @@ export interface ModelInfoResponse {
   context_window?: number | null;
   free?: boolean | null;
   local: boolean;
-  supported_parameters?: string[];
-  agent_compatible?: boolean | null;
+  capabilities?: { text_generation?: boolean; native_tools?: boolean; json_schema?: boolean } | null;
 }
 
 export interface ProviderModelsResponse {
@@ -263,16 +288,18 @@ export interface ProviderModelsResponse {
   error?: string | null;
 }
 
+export interface ProviderHealthDetails extends ProviderReadinessFields {
+  provider_id: string;
+  ok: boolean;
+  status: string;
+  latency_ms?: number | null;
+  error_code?: string | null;
+  message?: string | null;
+  checked_at?: string | null;
+}
+
 export interface ProviderHealthResponse {
-  health: {
-    provider_id: string;
-    ok: boolean;
-    status: string;
-    latency_ms?: number | null;
-    error_code?: string | null;
-    message?: string | null;
-    checked_at?: string | null;
-  };
+  health: ProviderHealthDetails;
 }
 
 export interface ModelUsageRecord {
@@ -499,7 +526,7 @@ export interface TerminalSessionResponse {
   rows: number;
   profile_id: string;
   title: string;
-  process_capability: "conpty" | "pty" | "pipe";
+  process_capability: "conpty" | "pipe";
   lifecycle_status: "running" | "stopping" | "exited" | "closed";
   exit_code: number | null;
 }
@@ -523,7 +550,6 @@ export interface TerminalOutputEvent {
   stream: "stdout" | "stderr" | "system";
   data: string;
   timestamp: number;
-  dropped?: number;
 }
 
 export interface TerminalOutputResponse extends TerminalSessionResponse {
@@ -536,7 +562,7 @@ export interface ApiErrorBody {
   details?: Record<string, unknown>;
 }
 
-export type ProductAgentStatus = "queued" | "running" | "cancelling" | "awaiting_flash_confirmation" | "completed" | "failed" | "cancelled" | "blocked" | "timed_out";
+export type ProductAgentStatus = "queued" | "running" | "cancelling" | "awaiting_flash_confirmation" | "paused_model_unavailable" | "completed" | "failed" | "cancelled" | "blocked" | "timed_out" | "interrupted";
 export type ProductAgentStageStatus = "pending" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export interface ProductValidationIssue {
@@ -561,6 +587,7 @@ export interface ProductValidationReport {
 }
 
 export interface ProductAgentRun {
+  schema_version?: string | number;
   run_id: string;
   project_id: string;
   provider_id: string;
@@ -573,6 +600,7 @@ export interface ProductAgentRun {
   stage_messages?: Record<string, string>;
   active_workflow_task_id?: string | null;
   build_result?: Record<string, unknown> | null;
+  simulation_result?: Record<string, unknown> | null;
   flash_result?: Record<string, unknown> | null;
   monitor_result?: Record<string, unknown> | null;
   flash_confirmation_required?: boolean;
@@ -598,15 +626,27 @@ export interface ProductAgentRun {
   pending_decision?: boolean;
   suggested_alternatives?: string[];
   provider_diagnostics?: {
-    actual_provider_id?: string | null;
-    model_id?: string | null;
-    fallback_reason?: string | null;
     outbound_request_count: number;
+    physical_request_count?: number;
     request_reached_provider: boolean;
     http_status?: number | null;
     provider_request_id?: string | null;
+    retry_after_ms?: number | null;
+    last_turn?: number | null;
+    response_mode?: string | null;
+    last_failure_code?: string | null;
+    last_repair_outcome?: string | null;
+    last_parse_reason?: string | null;
+    last_failure_origin?: string | null;
+    last_response_shape?: string | null;
+    last_response_tool_count?: number | null;
+    stream_fallback_used?: boolean;
   };
   summary?: ForgeXRunSummary;
+  retry_of_run_id?: string | null;
+  interrupted_at?: string | null;
+  recoverable?: boolean;
+  recovery_actions?: string[];
 }
 
 export interface ForgeXRunSummary {
@@ -637,7 +677,22 @@ export interface ForgeXRunSummary {
   next_suggested_action?: string | null;
 }
 
+export interface AgentGuidanceQueueItem {
+  item_id: string;
+  session_id: string;
+  run_id?: string | null;
+  mode: "FOLLOW_UP" | "STEER" | "CONTEXT_INJECTION" | string;
+  source: string;
+  content: string;
+  status: "queued" | "claimed" | "removed" | string;
+  insertion_sequence: number;
+  created_at?: string;
+  updated_at?: string;
+  claimed_at?: string;
+}
+
 export interface ProductAgentEvent {
+  activity_record?: import("../lib/activity-stream").ActivityRecord;
   run_id: string;
   session_id?: string;
   node_id?: string;
@@ -650,6 +705,13 @@ export interface ProductAgentEvent {
   message?: string;
   model_id?: string | null;
   turn?: number;
+  step?: number;
+  attempt_id?: string;
+  revision?: number;
+  frame_index?: number;
+  transient?: boolean;
+  transient_sequence?: number;
+  content?: string;
   tool?: string;
   tool_count?: number;
   tool_execution_count?: number;
@@ -661,17 +723,7 @@ export interface ProductAgentEvent {
   activity?: string;
   activity_label?: string;
   activity_phase?: "active" | "completed" | string;
-  delta?: string;
-  index?: number;
 }
-
-export interface AgentMessageDeltaEvent extends ProductAgentEvent {
-  event_type: "message.delta";
-  delta: string;
-  index: number;
-}
-
-export type AgentEvent = ProductAgentEvent | AgentMessageDeltaEvent;
 
 export interface AgentGraphNode {
   node_id: string;
@@ -692,7 +744,7 @@ export interface AgentExecutionGraph {
   nodes: AgentGraphNode[];
 }
 
-export interface ProductAgentProvider {
+export interface ProductAgentProvider extends ProviderReadinessFields {
   provider_id: string;
   display_name: string;
   kind: "fake" | "api_planner" | "template_provider" | string;
@@ -719,12 +771,23 @@ export interface ForgeAgentMessage {
   created_at: string;
   run_id?: string | null;
   metadata?: Record<string, string | number | boolean | null>;
-  streaming?: boolean;
+}
+
+export interface ForgeAgentPlanRecord {
+  plan_id: string;
+  revision: number;
+  plan_hash: string;
+  source_run_id: string;
+  status: "ready" | "approved" | "superseded" | string;
+  steps: Array<{ text: string; status: string }>;
+  created_at: string;
 }
 
 export interface ForgeAgentSession {
   session_id: string;
   project_id: string;
+  provider_id?: string | null;
+  model_id?: string | null;
   title: string;
   status: string;
   active_run_id?: string | null;
@@ -732,6 +795,7 @@ export interface ForgeAgentSession {
   updated_at: string;
   message_count: number;
   messages?: ForgeAgentMessage[];
+  current_plan?: ForgeAgentPlanRecord | null;
 }
 
 export interface ForgeAgentActivityEvent {
@@ -748,7 +812,7 @@ export interface ForgeAgentActivityEvent {
   timestamp?: string;
 }
 
-export type ChangeSetStatus = "pending" | "applied" | "undone" | "discarded" | "conflicted" | "failed";
+export type ChangeSetStatus = "pending" | "draft" | "applied" | "undone" | "discarded" | "conflicted" | "failed";
 export type ChangeType = "created" | "modified" | "deleted";
 
 export interface ChangedFileResponse {
@@ -785,4 +849,18 @@ export interface ModelSelectionResponse {
   fallback_enabled: boolean;
   fallback_provider_id?: string | null;
   local_only: boolean;
+}
+
+export interface ForgeChatSession {
+  session_id: string;
+  kind: "chat";
+  project_id: string | null;
+  title: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  messages: ForgeAgentMessage[];
+  provider_id?: string | null;
+  model_id?: string | null;
 }

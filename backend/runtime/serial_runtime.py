@@ -36,8 +36,7 @@ import time
 import threading
 from typing import AsyncIterator, Callable, Deque, Optional, Sequence
 
-import serial
-import serial.tools.list_ports
+from backend.utils.serial_compat import serial
 
 # ---------------------------------------------------------------------------
 # Module logger — structured, lightweight, no external deps

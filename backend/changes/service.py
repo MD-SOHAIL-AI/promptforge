@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import shutil
+import stat
 import tempfile
 import threading
 import uuid
@@ -84,26 +85,36 @@ class ChangeSetService:
         stage_root: str | Path,
         baseline: WorkspaceSnapshot,
         authorized_paths: Iterable[str],
+        deleted_paths: Iterable[str] = (),
         authorization_id: str | None = None,
         authorization_source: str = "explicit_review",
         risk_level: str = "unassessed",
         review_required: bool = True,
+        draft: bool = False,
     ) -> ChangeSet:
         active = _resolve_root(workspace_root)
         stage = Path(stage_root).resolve(strict=True)
         self._assert_owned_stage(stage)
         if Path(baseline.workspace_root).resolve() != active:
             raise ChangeSetError("CHANGE_BASELINE_MISMATCH", "The baseline does not belong to the active workspace.")
-        authorized = {
-            _normalize_relative(path)
-            for path in authorized_paths
-            if path not in STAGE_ONLY_INTERNAL_FILES
-        }
         staged_paths = {
             path.relative_to(stage).as_posix()
             for path in _iter_files(stage)
             if path.relative_to(stage).as_posix() not in STAGE_ONLY_INTERNAL_FILES
         }
+        # File identity follows the host filesystem. On Windows an overlay
+        # write can have different casing from its immutable baseline file.
+        # Keep baseline spelling for review/undo while comparing identity keys.
+        canonical_paths = {os.path.normcase(path): path for path in staged_paths}
+        canonical_paths.update({os.path.normcase(path): path for path in baseline.files})
+        def canonical(path: str) -> str:
+            normalized = _normalize_relative(path)
+            return canonical_paths.get(os.path.normcase(normalized), normalized)
+        staged_paths = {canonical(path) for path in staged_paths}
+        authorized = {canonical(path) for path in authorized_paths if path not in STAGE_ONLY_INTERNAL_FILES}
+        deleted = {canonical(path) for path in deleted_paths}
+        if deleted - authorized or deleted & staged_paths:
+            raise ChangeSetError("CHANGE_DELETE_INVALID", "Deleted paths must be authorized and absent from the stage.")
         unexpected = sorted(staged_paths - authorized)
         if unexpected:
             raise ChangeSetError("CHANGE_EXTRA_FILES", "The stage contains files the model did not authorize.", {"paths": unexpected})
@@ -130,6 +141,21 @@ class ChangeSetService:
                     warning=warning,
                 )
             )
+        for relative in sorted(deleted):
+            previous = baseline.files.get(relative)
+            if previous is None:
+                continue  # Creating then deleting a file is a net no-op.
+            preview = None
+            if previous.content is not None:
+                preview = "\n".join(difflib.unified_diff(
+                    previous.content.splitlines(), [], fromfile=relative,
+                    tofile="/dev/null", lineterm="",
+                ))[:MAX_DIFF_CHARS]
+            changed.append(ChangedFile(
+                path=relative, change_type="deleted", previous_hash=previous.hash,
+                new_hash=None, diff_preview=preview,
+                preview_supported=previous.content is not None,
+            ))
         if not changed:
             raise ChangeSetError("CHANGE_NO_CHANGES", "The staged result does not change the workspace.")
 
@@ -138,7 +164,7 @@ class ChangeSetService:
             provider_id=provider_id,
             workspace_root=str(active),
             staging_root=str(stage),
-            status="pending",
+            status="draft" if draft else "pending",
             changed_files=tuple(changed),
             summary=_summarize(tuple(changed)),
             base_revision=baseline.revision,
@@ -153,6 +179,82 @@ class ChangeSetService:
             self._sets[change_set.change_set_id] = change_set
             self._persist(change_set)
         return change_set
+
+    def create_review_draft(
+        self, *, provider_id: str, workspace_root: str | Path,
+        stage_root: str | Path, baseline: WorkspaceSnapshot,
+    ) -> ChangeSet:
+        """Retain bounded safe changes from a failed run for a future retry."""
+        stage = Path(stage_root).resolve(strict=True)
+        self._assert_owned_stage(stage)
+        paths: list[str] = []
+        total_bytes = 0
+        for source in _iter_files(stage):
+            relative = source.relative_to(stage).as_posix()
+            if relative in STAGE_ONLY_INTERNAL_FILES:
+                continue
+            previous = baseline.files.get(relative)
+            if previous is not None and previous.hash == hash_file(source):
+                continue
+            if not is_safe_relative_path(relative):
+                raise ChangeSetError("CHANGE_PATH_FORBIDDEN", "A draft contains an unsafe changed path.")
+            total_bytes += source.stat().st_size
+            paths.append(relative)
+            if len(paths) > 100 or total_bytes > 20_000_000:
+                raise ChangeSetError("CHANGE_DRAFT_LIMIT", "The draft exceeds the recovery limit.")
+        deleted = set(baseline.files) - {
+            path.relative_to(stage).as_posix() for path in _iter_files(stage)
+        }
+        if len(paths) + len(deleted) > 100 or any(not is_safe_relative_path(path) for path in deleted):
+            raise ChangeSetError("CHANGE_DRAFT_LIMIT", "The draft contains too many or unsafe deletions.")
+        compact = self.create_stage()
+        try:
+            for relative in paths:
+                target = compact.joinpath(*relative.split("/"))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(stage.joinpath(*relative.split("/")), target)
+            draft = self.create_from_stage(
+                provider_id=provider_id, workspace_root=workspace_root,
+                stage_root=compact, baseline=baseline,
+                authorized_paths=(*paths, *deleted), deleted_paths=deleted,
+                authorization_source="recovery_draft", draft=True,
+            )
+            self.prune_review_drafts(Path(workspace_root).resolve(), keep=3)
+            return draft
+        except Exception:
+            shutil.rmtree(compact, ignore_errors=True)
+            raise
+
+    def materialize_review_draft(
+        self, change_set_id: str, *, workspace_root: str | Path, target_stage: str | Path,
+    ) -> None:
+        """Seed a fresh run only when both workspace and draft still match."""
+        draft = self.get(change_set_id)
+        if draft.status != "draft" or Path(draft.workspace_root).resolve() != Path(workspace_root).resolve():
+            raise ChangeSetError("CHANGE_DRAFT_NOT_READY", "The recovery draft is unavailable.")
+        if self.inspect_workspace(workspace_root).tree_hash != draft.base_workspace_hash:
+            raise ChangeSetError("CHANGE_CONFLICT", "The workspace changed after the draft was saved.")
+        source_root = Path(draft.staging_root).resolve(strict=True)
+        self._assert_owned_stage(source_root)
+        if _stage_manifest_hash(source_root, draft.changed_files) != draft.staged_manifest_hash:
+            raise ChangeSetError("CHANGE_STAGE_TAMPERED", "The recovery draft changed after review.")
+        target_root = Path(target_stage).resolve(strict=True)
+        self._assert_owned_stage(target_root)
+        for item in draft.changed_files:
+            relative = _normalize_relative(item.path)
+            target = target_root.joinpath(*relative.split("/"))
+            if item.change_type == "deleted":
+                target.unlink(missing_ok=True)
+            else:
+                source = _safe_join(source_root, relative, must_exist=True)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+
+    def prune_review_drafts(self, workspace_root: Path, *, keep: int = 3) -> None:
+        drafts = [item for item in self.list(status="draft")
+                  if Path(item.workspace_root).resolve() == workspace_root]
+        for item in drafts[keep:]:
+            self.discard(item.change_set_id)
 
     def get(self, change_set_id: str) -> ChangeSet:
         with self._lock:
@@ -228,12 +330,16 @@ class ChangeSetService:
                 )
 
             # Validate every conflict before writing any target.
-            prepared: list[tuple[ChangedFile, Path, bytes, bytes | None]] = []
+            prepared: list[tuple[ChangedFile, Path, bytes | None, bytes | None]] = []
             for item in change_set.changed_files:
+                if item.path.split("/", 1)[0].rstrip(" .").casefold() == "__undo__":
+                    raise ChangeSetError("CHANGE_UNDO_BACKUP_INVALID", "The undo backup namespace cannot be changed.")
                 target = _safe_join(active, item.path, must_exist=False)
-                source = _safe_join(stage, item.path, must_exist=True)
-                staged_bytes = source.read_bytes()
-                if hashlib.sha256(staged_bytes).hexdigest() != item.new_hash:
+                source = _safe_join(stage, item.path, must_exist=item.change_type != "deleted")
+                staged_bytes = None if item.change_type == "deleted" else source.read_bytes()
+                if (item.change_type == "deleted" and (source.exists() or item.new_hash is not None)) or (
+                    staged_bytes is not None and hashlib.sha256(staged_bytes).hexdigest() != item.new_hash
+                ):
                     self._mark(change_set, "failed")
                     raise ChangeSetError("CHANGE_STAGE_TAMPERED", "A staged file changed after review.", {"path": item.path})
                 current_bytes: bytes | None = None
@@ -252,27 +358,35 @@ class ChangeSetService:
                 prepared.append((item, target, staged_bytes, current_bytes))
 
             undo_root = stage / "__undo__"
-            undo_root.mkdir(parents=False, exist_ok=True)
             applied: list[tuple[Path, bytes | None]] = []
             try:
+                _reject_reparse_path(stage, undo_root)
+                # A pending ChangeSet never owns a pre-existing backup directory.
+                undo_root.mkdir(parents=False, exist_ok=False)
                 for item, target, staged_bytes, original in prepared:
                     if original is not None:
-                        backup = undo_root.joinpath(*item.path.split("/"))
+                        backup = _backup_path(stage, item.path, must_exist=False)
                         backup.parent.mkdir(parents=True, exist_ok=True)
+                        backup = _backup_path(stage, item.path, must_exist=False)
                         _atomic_write_bytes(backup, original)
+                    _reject_reparse_path(active, target)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     _reject_symlink_components(active, target.parent)
-                    _atomic_write_bytes(target, staged_bytes)
+                    if staged_bytes is None:
+                        target.unlink()
+                    else:
+                        _atomic_write_bytes(target, staged_bytes)
                     applied.append((target, original))
-            except OSError as exc:
+            except (OSError, ChangeSetError) as exc:
                 # Best-effort transactional rollback for the bounded set of text files.
                 for target, original in reversed(applied):
                     try:
+                        _reject_reparse_path(active, target)
                         if original is None:
                             target.unlink(missing_ok=True)
                         else:
                             _atomic_write_bytes(target, original)
-                    except OSError:
+                    except (OSError, ChangeSetError):
                         pass
                 self._mark(change_set, "failed")
                 raise ChangeSetError("CHANGE_APPLY_FAILED", "The ChangeSet could not be applied safely.") from exc
@@ -292,40 +406,65 @@ class ChangeSetService:
             self._assert_owned_stage(stage)
             undo_root = stage / "__undo__"
 
+            # Validate and retain all backup bytes before mutating any target.
+            originals: dict[str, bytes] = {}
+            for item in change_set.changed_files:
+                if item.change_type == "created":
+                    continue
+                try:
+                    backup = _backup_path(stage, item.path, must_exist=True)
+                    original = backup.read_bytes()
+                except (OSError, ChangeSetError) as exc:
+                    raise ChangeSetError("CHANGE_UNDO_BACKUP_INVALID", "An undo backup is missing or unsafe.", {"path": item.path}) from exc
+                if item.previous_hash is None or hashlib.sha256(original).hexdigest() != item.previous_hash:
+                    raise ChangeSetError("CHANGE_UNDO_BACKUP_INVALID", "An undo backup failed its integrity check.", {"path": item.path})
+                originals[item.path] = original
+
             # Never overwrite user edits that happened after the ChangeSet apply.
             for item in change_set.changed_files:
                 target = _safe_join(active, item.path, must_exist=False)
+                if item.change_type == "deleted":
+                    if target.exists():
+                        raise ChangeSetError("CHANGE_UNDO_CONFLICT", "A deleted path has been recreated.", {"path": item.path})
+                    continue
                 if not target.exists() or not target.is_file() or target.is_symlink():
                     raise ChangeSetError("CHANGE_UNDO_CONFLICT", "A changed file no longer matches the applied ChangeSet.", {"path": item.path})
                 if item.new_hash is None or hash_file(target) != item.new_hash:
                     raise ChangeSetError("CHANGE_UNDO_CONFLICT", "A changed file was edited after the ChangeSet was applied.", {"path": item.path})
 
-            restored: list[tuple[Path, bytes]] = []
+            restored: list[tuple[Path, bytes | None]] = []
             deleted_created: list[tuple[Path, bytes]] = []
             try:
                 for item in reversed(change_set.changed_files):
-                    target = _safe_join(active, item.path, must_exist=True)
-                    current = target.read_bytes()
+                    _reject_reparse_path(active, active.joinpath(*item.path.split("/")))
+                    target = _safe_join(active, item.path, must_exist=item.change_type != "deleted")
+                    current = None if item.change_type == "deleted" else target.read_bytes()
                     if item.change_type == "created":
                         target.unlink()
                         deleted_created.append((target, current))
                         continue
-                    backup = _safe_join(undo_root, item.path, must_exist=True)
-                    original = backup.read_bytes()
+                    original = originals[item.path]
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    _reject_symlink_components(active, target.parent)
                     _atomic_write_bytes(target, original)
                     restored.append((target, current))
             except (OSError, ChangeSetError) as exc:
                 # Best effort to restore the applied state if undo itself fails.
                 for target, applied_bytes in reversed(restored):
                     try:
-                        _atomic_write_bytes(target, applied_bytes)
-                    except OSError:
+                        _reject_reparse_path(active, target)
+                        if applied_bytes is None:
+                            target.unlink(missing_ok=True)
+                        else:
+                            _atomic_write_bytes(target, applied_bytes)
+                    except (OSError, ChangeSetError):
                         pass
                 for target, applied_bytes in reversed(deleted_created):
                     try:
+                        _reject_reparse_path(active, target)
                         target.parent.mkdir(parents=True, exist_ok=True)
                         _atomic_write_bytes(target, applied_bytes)
-                    except OSError:
+                    except (OSError, ChangeSetError):
                         pass
                 if isinstance(exc, ChangeSetError):
                     raise
@@ -340,8 +479,8 @@ class ChangeSetService:
     def discard(self, change_set_id: str) -> ChangeSet:
         with self._lock:
             change_set = self.get(change_set_id)
-            if change_set.status != "pending":
-                raise ChangeSetError("CHANGE_SET_NOT_PENDING", "Only pending ChangeSets can be discarded.")
+            if change_set.status not in {"pending", "draft"}:
+                raise ChangeSetError("CHANGE_SET_NOT_PENDING", "Only pending ChangeSets or drafts can be discarded.")
             stage = Path(change_set.staging_root)
             if stage.exists():
                 try:
@@ -514,6 +653,31 @@ def _safe_join(root: Path, relative: str, *, must_exist: bool) -> Path:
     return target
 
 
+def _reject_reparse_path(root: Path, target: Path) -> None:
+    """Check lexical components before resolving away a link or Windows junction."""
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise ChangeSetError("CHANGE_PATH_ESCAPE", "A path escapes the allowed root.") from exc
+    current = root
+    for part in (None, *relative.parts):
+        if part is not None:
+            current = current / part
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+            raise ChangeSetError("CHANGE_PATH_SYMLINK", "Links and reparse points are not allowed.")
+
+
+def _backup_path(stage: Path, relative: str, *, must_exist: bool) -> Path:
+    normalized = _normalize_relative(relative)
+    target = stage / "__undo__" / normalized
+    _reject_reparse_path(stage, target)
+    return _safe_join(stage, "__undo__/" + normalized, must_exist=must_exist)
+
+
 def _nearest_existing_parent(path: Path) -> Path:
     current = path
     while not current.exists() and current != current.parent:
@@ -557,10 +721,13 @@ def _snapshot_hash(files: dict[str, SnapshotFile]) -> str:
 def _stage_manifest_hash(stage: Path, changed_files: Iterable[ChangedFile]) -> str:
     digest = hashlib.sha256()
     for item in sorted(changed_files, key=lambda value: value.path):
-        source = _safe_join(stage, item.path, must_exist=True)
+        source = _safe_join(stage, item.path, must_exist=item.change_type != "deleted")
         digest.update(item.path.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(hash_file(source).encode("ascii"))
+        if item.change_type == "deleted" and not source.exists():
+            digest.update(b"<deleted>")
+        else:
+            digest.update(hash_file(source).encode("ascii"))
         digest.update(b"\n")
     return digest.hexdigest()
 

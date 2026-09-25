@@ -7,7 +7,9 @@ export function resolveRepoRoot(): string {
 }
 
 export function resolveApplicationRoot(isPackaged: boolean, resourcesPath: string, cwd: string): string {
-  return isPackaged ? path.dirname(resourcesPath) : cwd;
+  if (!isPackaged) return cwd;
+  const looksWindows = /^[A-Za-z]:[\\/]/.test(resourcesPath) || resourcesPath.includes("\\");
+  return looksWindows ? path.win32.dirname(resourcesPath) : path.posix.dirname(resourcesPath);
 }
 
 export function resolveBackendCwd(): string {
@@ -25,6 +27,35 @@ export function resolveBackendPort(): number {
 
 export function resolveBackendUrl(port = resolveBackendPort()): string {
   return `http://127.0.0.1:${port}`;
+}
+
+export function resolveHarnessPort(): number {
+  const raw = process.env.FORGEX_HARNESS_PORT ?? "8765";
+  const port = Number.parseInt(raw, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid harness port: ${raw}`);
+  }
+  return port;
+}
+
+export function resolveHarnessUrl(port = resolveHarnessPort()): string {
+  return `http://127.0.0.1:${port}`;
+}
+
+export function resolveHarnessEntry(): string {
+  const candidates = [
+    path.join(resolveRepoRoot(), "dist", "harness", "server.js"),
+    path.join(process.resourcesPath, "harness", "server.js"),
+  ];
+  const entry = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!entry) throw new Error("Built Forge Harness host entry was not found.");
+  return entry;
+}
+
+export function resolveHarnessDataDir(): string {
+  const directory = path.join(app.getPath("userData"), "harness");
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
 }
 
 export function resolveFrontendUrl(): string {

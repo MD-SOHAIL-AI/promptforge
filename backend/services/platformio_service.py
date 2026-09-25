@@ -12,7 +12,10 @@ import asyncio
 import configparser
 import json
 import math
+import os
 import re
+import shutil
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,10 +38,34 @@ __all__ = [
     "PlatformIOProjectError",
     "PlatformIOResponseError",
     "PlatformIOService",
+    "PlatformIOStatus",
+    "resolve_platformio_executable",
 ]
 
 _PLATFORMIO_INI = "platformio.ini"
 _UNRESOLVED_INTERPOLATION_RE = re.compile(r"\$\{[^}]+\}")
+_DEFAULT_PLATFORMIO_EXECUTABLE = "pio"
+_PLATFORMIO_EXECUTABLE_ENV = ("FORGEX_PLATFORMIO_EXECUTABLE", "PLATFORMIO_EXECUTABLE")
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformIOStatus:
+    """Host PlatformIO readiness for health checks and setup guidance."""
+
+    available: bool
+    executable: str | None
+    version: str | None
+    reason: str
+    message: str
+
+    def to_dict(self) -> dict[str, str | bool | None]:
+        return {
+            "available": self.available,
+            "executable": self.executable,
+            "version": self.version,
+            "reason": self.reason,
+            "message": self.message,
+        }
 
 
 class PlatformIOError(RuntimeError):
@@ -170,7 +197,7 @@ class PlatformIOService:
         self,
         subprocess_mgr: SubprocessManager,
         *,
-        executable: str = "pio",
+        executable: str = _DEFAULT_PLATFORMIO_EXECUTABLE,
         timeout_s: float = 180.0,
         env: Mapping[str, str] | None = None,
         session_id: str | None = None,
@@ -188,10 +215,60 @@ class PlatformIOService:
         if session_id is not None:
             _validate_text(session_id, field_name="session_id")
         self._subprocess_mgr = subprocess_mgr
-        self._executable = executable
+        resolved = resolve_platformio_executable(executable=executable)
+        self._executable = resolved.executable or executable
+        self._base_status = resolved
         self._timeout_s = float(timeout_s)
         self._env = _validate_env(env or {})
         self._session_id = session_id
+
+    @property
+    def executable(self) -> str:
+        """PlatformIO command used for subprocess calls."""
+
+        return self._executable
+
+    async def status(self, *, timeout_s: float = 8.0) -> PlatformIOStatus:
+        """Return host PlatformIO readiness without requiring a project."""
+
+        if not self._base_status.available or not self._base_status.executable:
+            return self._base_status
+        try:
+            result = await self._run(
+                [self._base_status.executable, "--version"],
+                timeout_s=timeout_s,
+            )
+        except asyncio.CancelledError:
+            raise
+        except PlatformIOCommandError as exc:
+            return PlatformIOStatus(
+                available=False,
+                executable=self._base_status.executable,
+                version=None,
+                reason="failed",
+                message=f"PlatformIO executable was found but could not be started: {exc}",
+            )
+        if not result.success:
+            detail = result.stderr_text.strip() or result.stdout_text.strip()
+            suffix = f": {detail[:300]}" if detail else ""
+            return PlatformIOStatus(
+                available=False,
+                executable=self._base_status.executable,
+                version=None,
+                reason="failed",
+                message=f"PlatformIO readiness check failed{suffix}",
+            )
+        version = _parse_platformio_version_output(result.stdout_text, result.stderr_text)
+        return PlatformIOStatus(
+            available=True,
+            executable=self._base_status.executable,
+            version=version,
+            reason="available",
+            message=(
+                f"PlatformIO is available at {self._base_status.executable}"
+                + (f" ({version})" if version else "")
+            ),
+        )
 
     def validate_project(
         self,
@@ -246,6 +323,7 @@ class PlatformIOService:
             _validate_environment_selection(validated.environments, environment)
             config = BuildConfig(
                 project_dir=validated.project_path,
+                expected_project_root=validated.project_path,
                 environment=environment,
                 board=board,
                 timeout_s=_validated_timeout(timeout_s, self._timeout_s),
@@ -255,6 +333,28 @@ class PlatformIOService:
                 session_id=self._session_id,
             )
         return await FirmwareBuilder(self._subprocess_mgr).build(config)
+
+    async def search_libraries(self, query: str, *, limit: int = 5) -> tuple[str, ...]:
+        """Return bounded registry package IDs without trusting registry prose."""
+        if not isinstance(query, str) or not 1 <= len(query) <= 100 or any(
+            ord(char) < 32 or ord(char) == 127 for char in query
+        ):
+            raise ValueError("invalid PlatformIO library search query")
+        result = await self._run(
+            [self._executable, "pkg", "search", query], timeout_s=10.0
+        )
+        if not result.success:
+            return ()
+        packages: list[str] = []
+        for line in result.stdout_text.splitlines():
+            candidate = line.strip()
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/[A-Za-z0-9][A-Za-z0-9_. +()-]{0,99}", candidate):
+                continue
+            if candidate.casefold() not in {item.casefold() for item in packages}:
+                packages.append(candidate)
+            if len(packages) >= max(1, min(limit, 5)):
+                break
+        return tuple(packages)
 
     async def clean(
         self,
@@ -421,6 +521,90 @@ def _load_project(
             f"invalid {_PLATFORMIO_INI}: {exc}"
         ) from exc
     return root, ini_path, parser
+
+
+def resolve_platformio_executable(
+    *,
+    executable: str = _DEFAULT_PLATFORMIO_EXECUTABLE,
+    repo_root: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
+    path: str | None = None,
+) -> PlatformIOStatus:
+    """Resolve PlatformIO local-first without mutating process PATH."""
+
+    _validate_text(executable, field_name="executable")
+    environment = env or os.environ
+    if executable != _DEFAULT_PLATFORMIO_EXECUTABLE:
+        return PlatformIOStatus(
+            available=True,
+            executable=executable,
+            version=None,
+            reason="available",
+            message=f"Using configured PlatformIO executable: {executable}",
+        )
+
+    for key in _PLATFORMIO_EXECUTABLE_ENV:
+        value = str(environment.get(key, "")).strip()
+        if not value:
+            continue
+        return PlatformIOStatus(
+            available=True,
+            executable=value,
+            version=None,
+            reason="available",
+            message=f"Using PlatformIO executable from {key}: {value}",
+        )
+
+    root = Path(repo_root).resolve() if repo_root is not None else Path(__file__).resolve().parents[2]
+    candidates = (
+        root / ".venv" / "Scripts" / "pio.exe",
+        root / ".venv" / "Scripts" / "pio",
+        root / ".venv" / "bin" / "pio",
+        root / ".venv" / "bin" / "pio.exe",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return PlatformIOStatus(
+                available=True,
+                executable=str(candidate),
+                version=None,
+                reason="available",
+                message=f"Using repo-local PlatformIO executable: {candidate}",
+            )
+
+    path_value = path if path is not None else str(environment.get("PATH", ""))
+    found = shutil.which("pio", path=path_value) or shutil.which("platformio", path=path_value)
+    if found:
+        return PlatformIOStatus(
+            available=True,
+            executable=found,
+            version=None,
+            reason="available",
+            message=f"Using PlatformIO executable from PATH: {found}",
+        )
+
+    suffix = ".venv\\Scripts\\pio.exe" if sys.platform == "win32" else ".venv/bin/pio"
+    return PlatformIOStatus(
+        available=False,
+        executable=None,
+        version=None,
+        reason="missing",
+        message=f"PlatformIO is not installed or not on PATH. Run `npm run setup:platformio` to install repo-local PlatformIO at {suffix}.",
+    )
+
+
+def _parse_platformio_version_output(*parts: str) -> str | None:
+    output = "\n".join(part.strip() for part in parts if part.strip())
+    if not output:
+        return None
+    match = re.search(
+        r"(?:PlatformIO\s+Core,\s+version\s+|PlatformIO\s+Core\s+)([^\s]+)",
+        output,
+        re.IGNORECASE,
+    )
+    if match:
+        return match.group(1)
+    return output.splitlines()[0].strip()[:128]
 
 
 def _discover_from_parser(

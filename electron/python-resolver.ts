@@ -39,25 +39,33 @@ export function resolveBackendPython(options: PythonResolverOptions): PythonReso
   for (const candidate of candidates) {
     if (isPathLike(candidate.executable) && !existsSync(candidate.executable)) {
       if (candidate.source === "FORGEX_PYTHON") {
-        throw dependencyError(candidate.executable, `Python executable was not found: ${candidate.executable}`);
+        throw pythonEnvironmentError(candidate.executable, `Python executable was not found: ${candidate.executable}`, "FORGEX_PYTHON points to a Python executable that does not exist.");
       }
       continue;
     }
 
     const runnable = checkPython(candidate.executable, ["-c", "import sys; print(sys.executable)"], options.repoRoot, options.runCheck);
     if (!runnable.ok) {
-      if (candidate.required) {
-        throw dependencyError(candidate.executable, runnable.error ?? runnable.stderr ?? "Python executable is not runnable.");
+      if (candidate.required || candidate.source === "repo-venv") {
+        throw pythonEnvironmentError(
+          candidate.executable,
+          runnable.error ?? runnable.stderr ?? "Python executable is not runnable.",
+          "The repository virtual environment exists but its Python interpreter cannot be executed.",
+        );
       }
       continue;
     }
 
     const dependencies = checkPython(candidate.executable, ["-c", DEPENDENCY_CHECK], options.repoRoot, options.runCheck);
     if (!dependencies.ok) {
-      if (!candidate.required) {
-        continue;
+      if (candidate.required || candidate.source === "repo-venv") {
+        throw pythonEnvironmentError(
+          candidate.executable,
+          dependencies.stderr ?? dependencies.error ?? "Required backend dependencies are missing.",
+          "ForgeX backend dependencies are not installed in the selected repository environment.",
+        );
       }
-      throw dependencyError(candidate.executable, dependencies.stderr ?? dependencies.error ?? "Required backend dependencies are missing.");
+      continue;
     }
 
     return {
@@ -90,15 +98,15 @@ export function pythonCandidates(repoRoot: string, env: NodeJS.ProcessEnv = proc
 
   if (platform === "win32") {
     candidates.push(
-      { executable: path.win32.join(repoRoot, ".venv", "Scripts", "python.exe"), source: "repo-venv", required: true },
-      { executable: path.win32.join(repoRoot, "venv", "Scripts", "python.exe"), source: "repo-venv", required: true },
+      { executable: path.win32.join(repoRoot, ".venv", "Scripts", "python.exe"), source: "repo-venv", required: false },
+      { executable: path.win32.join(repoRoot, "venv", "Scripts", "python.exe"), source: "repo-venv", required: false },
       { executable: "python", source: "fallback", required: false },
       { executable: "py", source: "fallback", required: false },
     );
   } else {
     candidates.push(
-      { executable: path.posix.join(repoRoot, ".venv", "bin", "python"), source: "repo-venv", required: true },
-      { executable: path.posix.join(repoRoot, "venv", "bin", "python"), source: "repo-venv", required: true },
+      { executable: path.posix.join(repoRoot, ".venv", "bin", "python"), source: "repo-venv", required: false },
+      { executable: path.posix.join(repoRoot, "venv", "bin", "python"), source: "repo-venv", required: false },
       { executable: "python3", source: "fallback", required: false },
       { executable: "python", source: "fallback", required: false },
     );
@@ -126,10 +134,10 @@ function checkPython(
   };
 }
 
-function dependencyError(executable: string, detail: string): Error {
+function pythonEnvironmentError(executable: string, detail: string, summary = "ForgeX backend dependencies are not installed."): Error {
   return new Error(
     [
-      "ForgeX backend dependencies are not installed or the Python environment is unusable.",
+      summary,
       "",
       `Detected Python: ${executable}`,
       "",

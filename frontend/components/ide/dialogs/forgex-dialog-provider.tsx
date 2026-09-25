@@ -1,11 +1,10 @@
 "use client";
 
-import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
 import { ConfirmDialog, type ConfirmDialogVariant } from "@/components/ide/dialogs/confirm-dialog";
-import { FORGEX_INPUT_FIELD_ID, InputDialog } from "@/components/ide/dialogs/input-dialog";
+import { InputDialog } from "@/components/ide/dialogs/input-dialog";
 import { MessageDialog } from "@/components/ide/dialogs/message-dialog";
-import { FxOverlay } from "@/components/ui/fx-overlay";
 
 export interface ForgeXInputDialogRequest {
   title: string;
@@ -68,85 +67,50 @@ export function ForgeXDialogProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo(() => ({ input, confirmAction, message }), [confirmAction, input, message]);
 
-  const finishInput = useCallback(
-    (value: string | null) => {
-      if (!dialog || dialog.type !== "input") return;
-      dialog.resolve(value);
-      setDialog(null);
-    },
-    [dialog],
-  );
-
-  const finishConfirm = useCallback(
-    (value: boolean) => {
-      if (!dialog || dialog.type !== "confirm") return;
-      dialog.resolve(value);
-      setDialog(null);
-    },
-    [dialog],
-  );
-
-  const finishMessage = useCallback(() => {
-    if (!dialog || dialog.type !== "message") return;
-    dialog.resolve();
-    setDialog(null);
-  }, [dialog]);
-
-  const dismiss = useCallback(() => {
-    switch (dialog?.type) {
-      case "input":
-        finishInput(null);
-        break;
-      case "confirm":
-        finishConfirm(false);
-        break;
-      case "message":
-        finishMessage();
-        break;
-    }
-  }, [dialog, finishConfirm, finishInput, finishMessage]);
+  const close = useCallback(() => setDialog(null), []);
 
   return (
     <DialogContext.Provider value={api}>
       {children}
-      <FxOverlay
-        open={dialog !== null}
-        onOpenChange={(next) => {
-          if (!next) dismiss();
-        }}
-        title={dialog?.title ?? ""}
-        description={dialog?.description}
-        size="sm"
-        initialFocusId={dialog?.type === "input" ? FORGEX_INPUT_FIELD_ID : undefined}
-      >
-        {dialog?.type === "input" && dialog.label !== undefined ? (
-          <InputDialog
-            label={dialog.label}
-            placeholder={dialog.placeholder}
-            defaultValue={dialog.defaultValue}
-            confirmText={dialog.confirmText}
-            cancelText={dialog.cancelText}
-            validate={dialog.validate}
-            onConfirm={(value) => finishInput(value)}
-            onCancel={() => finishInput(null)}
-          />
-        ) : null}
-        {dialog?.type === "confirm" ? (
-          <ConfirmDialog
-            confirmText={dialog.confirmText}
-            cancelText={dialog.cancelText}
-            variant={dialog.variant}
-            onConfirm={() => finishConfirm(true)}
-            onCancel={() => finishConfirm(false)}
-          />
-        ) : null}
-        {dialog?.type === "message" ? (
-          <MessageDialog
-            confirmText={dialog.confirmText}
-            onConfirm={finishMessage}
-          />
-        ) : null}
-      </FxOverlay>
+      {dialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+          {dialog.type === "input" ? (
+            <InputDialog
+              {...dialog}
+              onCancel={() => {
+                dialog.resolve(null);
+                close();
+              }}
+              onConfirm={(value) => {
+                dialog.resolve(value);
+                close();
+              }}
+            />
+          ) : null}
+          {dialog.type === "confirm" ? (
+            <ConfirmDialog
+              {...dialog}
+              onCancel={() => {
+                dialog.resolve(false);
+                close();
+              }}
+              onConfirm={() => {
+                dialog.resolve(true);
+                close();
+              }}
+            />
+          ) : null}
+          {dialog.type === "message" ? (
+            <MessageDialog
+              {...dialog}
+              onConfirm={() => {
+                dialog.resolve();
+                close();
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </DialogContext.Provider>
   );
 }

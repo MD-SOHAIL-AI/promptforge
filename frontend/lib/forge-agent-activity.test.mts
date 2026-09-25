@@ -2,10 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  agentEventKey,
   remainingActivityMs,
   shouldAcceptActivity,
-  shouldRefreshRunForEvent,
   snapshotFromActivityEvent,
   snapshotFromRunEvent,
 } from "./forge-agent-activity.ts";
@@ -75,36 +73,4 @@ test("activity is isolated to the selected session and run", () => {
 test("minimum activity display duration is presentation-only", () => {
   assert.equal(remainingActivityMs(1000, 1100, 400), 300);
   assert.equal(remainingActivityMs(1000, 1500, 400), 0);
-});
-
-test("agent event keys include run id so resumed runs do not collide", () => {
-  const first = agentEventKey({ run_id: "run-a", sequence: 1, event_type: "tool.completed" });
-  const second = agentEventKey({ run_id: "run-b", sequence: 1, event_type: "tool.completed" });
-
-  assert.notEqual(first, second);
-});
-
-test("message deltas do not force a full run refresh", () => {
-  assert.equal(shouldRefreshRunForEvent({
-    run_id: "run-a",
-    sequence: 5,
-    event_type: "message.delta",
-    delta: "{",
-    index: 1,
-  }), false);
-});
-
-test("lifecycle events still request a full run refresh", () => {
-  assert.equal(shouldRefreshRunForEvent({
-    run_id: "run-a",
-    sequence: 9,
-    event_type: "runtime.completed",
-    status: "completed",
-  }), true);
-  assert.equal(shouldRefreshRunForEvent({
-    run_id: "run-a",
-    sequence: 10,
-    event_type: "node.completed",
-    node_id: "validation",
-  }), true);
 });

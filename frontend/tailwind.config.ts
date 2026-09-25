@@ -11,88 +11,35 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        border: "var(--fx-border)",
-        input: "var(--fx-input)",
-        ring: "var(--fx-accent)",
-        background: "var(--fx-bg)",
-        foreground: "var(--fx-text)",
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: "var(--fx-accent)",
-          foreground: "var(--fx-accent-contrast)",
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
-          DEFAULT: "var(--fx-panel-elevated)",
-          foreground: "var(--fx-text)",
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
         },
         muted: {
-          DEFAULT: "var(--fx-hover)",
-          foreground: "var(--fx-text-muted)",
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          DEFAULT: "var(--fx-accent-soft)",
-          foreground: "var(--fx-text)",
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
         },
         destructive: {
-          DEFAULT: "var(--fx-error)",
-          foreground: "#ffffff",
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
         },
-        success: {
-          DEFAULT: "var(--fx-success)",
-          soft: "var(--fx-success-soft)",
-          fg: "var(--fx-success)",
-        },
-        warning: {
-          DEFAULT: "var(--fx-warning)",
-          soft: "var(--fx-warning-soft)",
-          fg: "var(--fx-warning)",
-        },
-        info: {
-          DEFAULT: "var(--fx-info)",
-          soft: "var(--fx-info-soft)",
-          fg: "var(--fx-info)",
-        },
-        error: {
-          DEFAULT: "var(--fx-error)",
-          soft: "var(--fx-error-soft)",
-          fg: "var(--fx-error)",
-        },
-        danger: {
-          DEFAULT: "var(--fx-danger)",
-          soft: "var(--fx-danger-soft)",
-          fg: "var(--fx-danger)",
-        },
-        card: {
-          DEFAULT: "var(--fx-panel-elevated)",
-          foreground: "var(--fx-text)",
-        },
-        popover: {
-          DEFAULT: "var(--fx-panel-elevated)",
-          foreground: "var(--fx-text)",
-        },
-      },
-      borderRadius: {
-        DEFAULT: "var(--fx-radius-sm)",
-        lg: "var(--fx-radius)",
-        xl: "var(--fx-radius-lg)",
       },
       fontFamily: {
         sans: ["Inter", "Segoe UI Variable", "Segoe UI", "sans-serif"],
         mono: ["JetBrains Mono", "Cascadia Code", "SFMono-Regular", "Consolas", "monospace"],
-      },
-      fontSize: {
-        micro: ["var(--fx-text-2xs)", { lineHeight: "14px" }],
-        caption: ["var(--fx-text-xs)", { lineHeight: "16px" }],
-        body: ["var(--fx-text-sm)", { lineHeight: "20px" }],
-        lead: ["var(--fx-text-lg)", { lineHeight: "24px" }],
-      },
-      boxShadow: {
-        "fx-2xs": "var(--fx-shadow-2xs)",
-        "fx-xs": "var(--fx-shadow-xs)",
-        "fx-sm": "var(--fx-shadow-sm)",
-        "fx-md": "var(--fx-shadow-md)",
-        "fx-lg": "var(--fx-shadow-lg)",
-        "fx-xl": "var(--fx-shadow-xl)",
-        "fx-2xl": "var(--fx-shadow-2xl)",
       },
       keyframes: {
         pulseBar: {

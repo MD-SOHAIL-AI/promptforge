@@ -5,9 +5,13 @@ from collections import deque
 from pathlib import Path
 
 from backend.api.progress import ExecutionProgressHub
+from backend.api.local_security import LOCAL_SESSION_COOKIE
 from backend.services.terminal_service import TerminalService, TerminalSession
 
 from .test_api_routes import make_client
+
+
+_WS_HEADERS = {"Host": "127.0.0.1:8000", "Cookie": f"{LOCAL_SESSION_COOKIE}={'t' * 43}"}
 
 
 class DummyProcess:
@@ -29,7 +33,7 @@ class DummyProcess:
 def test_websocket_live_events_and_terminal_close(tmp_path: Path) -> None:
     client, _, _ = make_client(tmp_path)
     with client:
-        with client.websocket_connect("/ws/execution/task-ws-test") as websocket:
+        with client.websocket_connect("/ws/execution/task-ws-test", headers=_WS_HEADERS) as websocket:
             response = client.post(
                 "/execute",
                 json={"prompt": "Blink", "task_id": "task-ws-test"},
@@ -54,7 +58,7 @@ def test_websocket_replay_and_invalid_task_id(tmp_path: Path) -> None:
         )
         assert response.status_code == 200
         with client.websocket_connect(
-            "/ws/execution/task-replay-test?after=1"
+            "/ws/execution/task-replay-test?after=1", headers=_WS_HEADERS
         ) as websocket:
             assert websocket.receive_json()["event"] == "PLAN_GENERATED"
             assert websocket.receive_json()["event"] == "WORKFLOW_COMPLETED"
@@ -69,7 +73,7 @@ def test_websocket_replay_and_invalid_task_id(tmp_path: Path) -> None:
 def test_websocket_client_disconnect_is_clean(tmp_path: Path) -> None:
     client, _, _ = make_client(tmp_path)
     with client:
-        with client.websocket_connect("/ws/execution/task-disconnect-test"):
+        with client.websocket_connect("/ws/execution/task-disconnect-test", headers=_WS_HEADERS):
             pass
 
         response = client.get("/health")
@@ -90,7 +94,7 @@ def test_terminal_websocket_replays_output_and_resizes(tmp_path: Path) -> None:
     service._append(session, "stdout", "ready\r\n")  # noqa: SLF001
     client, _, _ = make_client(tmp_path, terminal_service=service)
     with client:
-        with client.websocket_connect("/terminal/sessions/term-ws-test/stream") as websocket:
+        with client.websocket_connect("/terminal/sessions/term-ws-test/stream", headers=_WS_HEADERS) as websocket:
             output = websocket.receive_json()
             assert output["type"] == "output"
             assert output["event"]["data"] == "ready\r\n"

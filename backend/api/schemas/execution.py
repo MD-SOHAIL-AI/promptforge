@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
@@ -54,7 +55,16 @@ class ExecuteRequest(APIModel):
         value = value.strip()
         if not value or "\x00" in value:
             raise ValueError("workspace_root must be non-empty and NUL-free")
-        return value
+        root = Path(value).expanduser()
+        if not root.is_absolute():
+            raise ValueError("workspace_root must be an absolute path")
+        try:
+            resolved = root.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError("workspace_root must exist") from exc
+        if not resolved.is_dir():
+            raise ValueError("workspace_root must be a directory")
+        return str(resolved)
 
     model_config = ConfigDict(
         extra="forbid",

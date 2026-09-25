@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ImageIcon, Monitor, Moon, Palette, Sparkles, Sun, Trash2, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SettingNumber, SettingSelect, SettingSlider, SettingsCard, SettingToggle } from "@/components/settings/setting-controls";
 import type { SettingsSectionProps } from "@/components/settings/types";
@@ -15,11 +15,6 @@ export function AppearanceSettings({ settings, saving, onUpdate }: SettingsSecti
   const desktopBackgrounds = Boolean(typeof window !== "undefined" && window.forgexDesktop?.selectBackgroundImage);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [backgroundBusy, setBackgroundBusy] = useState(false);
-  const systemPreview = useMemo<[string, string, string]>(() => {
-    const dark = (FORGEX_THEMES.find((theme) => theme.id === "forgex-dark") ?? FORGEX_THEMES[0]).preview;
-    const light = (FORGEX_THEMES.find((theme) => theme.id === "porcelain") ?? FORGEX_THEMES.find((theme) => theme.mode === "light") ?? FORGEX_THEMES[0]).preview;
-    return [dark[0], light[0], dark[2]];
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -93,8 +88,8 @@ export function AppearanceSettings({ settings, saving, onUpdate }: SettingsSecti
       </SettingsCard>
 
       <SettingsCard title="Theme gallery" description="Choose a complete color system. Changes preview and save immediately." icon={<Palette className="h-4 w-4" />}>
-        <div className="grid gap-2 py-4 sm:grid-cols-2 xl:grid-cols-3">
-          <ThemeButton selected={selectedTheme === "system"} label="System" description="Follow your operating system" preview={systemPreview} icon={<Monitor className="h-3 w-3" />} onClick={() => void onUpdate("appearance.theme", "system")} disabled={saving} />
+        <div className="grid grid-cols-2 gap-2 py-4 xl:grid-cols-3">
+          <ThemeButton selected={selectedTheme === "system"} label="System" description="Follow your operating system" preview={["#090d12", "#f4f6f8", "#7c5cff"]} icon={<Monitor className="h-3 w-3" />} onClick={() => void onUpdate("appearance.theme", "system")} disabled={saving} />
           {FORGEX_THEMES.map((theme) => (
             <ThemeButton key={theme.id} selected={selectedTheme === theme.id} label={theme.label} description={theme.description} preview={theme.preview} icon={theme.mode === "dark" ? <Moon className="h-3 w-3" /> : <Sun className="h-3 w-3" />} onClick={() => void onUpdate("appearance.theme", theme.id)} disabled={saving} />
           ))}

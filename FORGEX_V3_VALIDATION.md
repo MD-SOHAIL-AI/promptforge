@@ -1,5 +1,8 @@
 # Forge Agent V3 Validation
 
+> **Historical validation snapshot.** For the final hardened package, use `FORGEX_RELEASE_HARDENING_VALIDATION.md`.
+
+
 Validation performed on the merged source tree before packaging.
 
 ## Passed

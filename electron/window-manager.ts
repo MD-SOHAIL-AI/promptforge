@@ -1,10 +1,10 @@
-import { BrowserWindow, app, screen } from "electron";
-import fs from "node:fs";
+import { BrowserWindow, app } from "electron";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { emitDiagnosticEvent, serializeError } from "./diagnostics";
 import { resolveFrontendStaticIndex, resolveFrontendUrl } from "./paths";
 
 interface MainWindowOptions {
@@ -18,102 +18,14 @@ interface BackendErrorWindowOptions {
   port: number;
 }
 
-interface PersistedWindowState {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  maximized: boolean;
-}
-
-const DEFAULT_WINDOW_WIDTH = 1440;
-const DEFAULT_WINDOW_HEIGHT = 920;
-const MIN_WINDOW_WIDTH = 960;
-const MIN_WINDOW_HEIGHT = 640;
-const DEV_FRONTEND_READY_TIMEOUT_MS = 180_000;
-
-function windowStatePath(): string {
-  return path.join(app.getPath("userData"), "window-state.json");
-}
-
-function loadPersistedWindowState(): PersistedWindowState | null {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(windowStatePath(), "utf8")) as Partial<PersistedWindowState>;
-    const { x, y, width, height } = parsed;
-    if (![x, y, width, height].every((value) => Number.isFinite(value))) return null;
-    if ((width as number) < 1 || (height as number) < 1) return null;
-    return {
-      x: x as number,
-      y: y as number,
-      width: width as number,
-      height: height as number,
-      maximized: Boolean(parsed.maximized),
-    };
-  } catch {
-    return null;
-  }
-}
-
-// Clamps restored bounds onto the closest visible display work area; returns null when off-screen.
-function resolveRestoredWindowState(): PersistedWindowState | null {
-  const saved = loadPersistedWindowState();
-  if (!saved) return null;
-
-  let bestOverlap = 0;
-  let bestWorkArea: Electron.Rectangle | null = null;
-  for (const display of screen.getAllDisplays()) {
-    const workArea = display.workArea;
-    const overlapWidth = Math.min(saved.x + saved.width, workArea.x + workArea.width) - Math.max(saved.x, workArea.x);
-    const overlapHeight = Math.min(saved.y + saved.height, workArea.y + workArea.height) - Math.max(saved.y, workArea.y);
-    const overlap = Math.max(overlapWidth, 0) * Math.max(overlapHeight, 0);
-    if (overlap > bestOverlap) {
-      bestOverlap = overlap;
-      bestWorkArea = workArea;
-    }
-  }
-  if (!bestWorkArea || bestOverlap <= 0) return null;
-
-  const width = Math.min(Math.max(saved.width, MIN_WINDOW_WIDTH), bestWorkArea.width);
-  const height = Math.min(Math.max(saved.height, MIN_WINDOW_HEIGHT), bestWorkArea.height);
-  return {
-    x: Math.min(Math.max(saved.x, bestWorkArea.x), bestWorkArea.x + bestWorkArea.width - width),
-    y: Math.min(Math.max(saved.y, bestWorkArea.y), bestWorkArea.y + bestWorkArea.height - height),
-    width,
-    height,
-    maximized: saved.maximized,
-  };
-}
-
-function persistWindowBounds(window: BrowserWindow): void {
-  window.on("close", () => {
-    try {
-      const bounds = window.getNormalBounds();
-      const state: PersistedWindowState = {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        maximized: window.isMaximized(),
-      };
-      fs.mkdirSync(app.getPath("userData"), { recursive: true });
-      fs.writeFileSync(windowStatePath(), JSON.stringify(state));
-    } catch (error) {
-      console.error("[forgex-desktop] failed to persist window state", error);
-    }
-  });
-}
-
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
-  const restored = resolveRestoredWindowState();
   const window = new BrowserWindow({
-    x: restored?.x,
-    y: restored?.y,
-    width: restored?.width ?? DEFAULT_WINDOW_WIDTH,
-    height: restored?.height ?? DEFAULT_WINDOW_HEIGHT,
-    minWidth: MIN_WINDOW_WIDTH,
-    minHeight: MIN_WINDOW_HEIGHT,
+    width: 1440,
+    height: 920,
+    minWidth: 960,
+    minHeight: 640,
     title: "ForgeX",
-    backgroundColor: "#07090d",
+    backgroundColor: "#0d1117",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -122,13 +34,9 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     },
   });
 
-  if (restored?.maximized) window.maximize();
-  persistWindowBounds(window);
   attachRendererDiagnostics(window);
   installNavigationGuards(window, options.frontendUrl ?? resolveFrontendUrl());
-  void loadFrontend(window, options.frontendUrl).catch((error) => {
-    console.error("[forgex-desktop] failed to load frontend", safeErrorMessage(error));
-  });
+  void loadFrontend(window, options.frontendUrl);
   if (!app.isPackaged && shouldOpenDevTools()) {
     window.webContents.once("did-finish-load", () => {
       window.webContents.openDevTools({ mode: "detach" });
@@ -144,7 +52,7 @@ export function createBackendErrorWindow(options: BackendErrorWindowOptions): Br
     minWidth: 720,
     minHeight: 480,
     title: "ForgeX Backend Startup Error",
-    backgroundColor: "#07090d",
+    backgroundColor: "#0d1117",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -185,12 +93,20 @@ function shouldOpenDevTools(): boolean {
 
 async function loadFrontend(window: BrowserWindow, requestedFrontendUrl?: string): Promise<void> {
   const frontendUrl = requestedFrontendUrl ?? resolveFrontendUrl();
-  if (!app.isPackaged || requestedFrontendUrl || process.env.FORGEX_FRONTEND_URL) {
+  if (!app.isPackaged || requestedFrontendUrl) {
     console.log(`[forgex-desktop] Loading frontend URL: ${sanitizeUrl(frontendUrl)}`);
-    await waitForUrl(frontendUrl, DEV_FRONTEND_READY_TIMEOUT_MS).catch((error) => {
+    await waitForUrl(frontendUrl, 15_000).catch((error) => {
       console.error("[forgex-desktop] frontend readiness check failed", error);
+      emitDiagnosticEvent({
+        component: "desktop",
+        event: "desktop.frontend.readiness_failed",
+        level: "ERROR",
+        message: "frontend readiness check failed",
+        operation: "loadFrontend",
+        error: serializeError(error),
+      });
     });
-    await loadWindowUrl(window, frontendUrl);
+    await window.loadURL(frontendUrl);
     return;
   }
 
@@ -198,36 +114,13 @@ async function loadFrontend(window: BrowserWindow, requestedFrontendUrl?: string
   if (staticIndex) {
     const staticUrl = pathToFileURL(staticIndex).toString();
     console.log(`[forgex-desktop] Loading frontend URL: ${staticUrl}`);
-    await loadWindowUrl(window, staticUrl);
+    await window.loadURL(staticUrl);
     return;
   }
 
   const fallback = pathToFileURL(path.join(__dirname, "missing-frontend.html")).toString();
   console.log(`[forgex-desktop] Loading frontend URL: ${fallback}`);
-  await loadWindowUrl(window, fallback).catch(async () => {
-    console.log(`[forgex-desktop] Loading frontend URL: ${frontendUrl}`);
-    await loadWindowUrl(window, frontendUrl);
-  });
-}
-
-async function loadWindowUrl(window: BrowserWindow, url: string): Promise<void> {
-  try {
-    await window.loadURL(url);
-  } catch (error) {
-    if (isNavigationAbort(error)) {
-      console.warn("[forgex-desktop] frontend navigation aborted; continuing");
-      return;
-    }
-    throw error;
-  }
-}
-
-function isNavigationAbort(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("ERR_ABORTED");
-}
-
-function safeErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  await window.loadURL(fallback);
 }
 
 function sanitizeUrl(value: string): string {
@@ -242,21 +135,53 @@ function sanitizeUrl(value: string): string {
 function attachRendererDiagnostics(window: BrowserWindow): void {
   window.webContents.on("did-finish-load", () => {
     console.log("[forgex-desktop] Renderer did-finish-load");
+    emitDiagnosticEvent({
+      component: "desktop",
+      event: "desktop.renderer.loaded",
+      level: "INFO",
+      message: "renderer loaded",
+    });
   });
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
     console.error(
       `[forgex-desktop] Renderer did-fail-load code=${errorCode} description=${errorDescription} url=${validatedURL}`,
     );
+    emitDiagnosticEvent({
+      component: "desktop",
+      event: "desktop.renderer.load_failed",
+      level: "ERROR",
+      message: errorDescription,
+      error_code: errorCode,
+      operation: "loadRenderer",
+      url: sanitizeUrl(validatedURL),
+    });
   });
   window.webContents.on("console-message", (_event, level, message, line, sourceId) => {
     console.log(
       `[forgex-renderer] level=${level} source=${sourceId}:${line} ${message}`,
     );
+    emitDiagnosticEvent({
+      component: "renderer",
+      event: level >= 2 ? "renderer.error" : "renderer.console",
+      level: level >= 2 ? "ERROR" : "DEBUG",
+      message,
+      source: sourceId,
+      line,
+      operation: "rendererConsole",
+    });
   });
   window.webContents.on("render-process-gone", (_event, details) => {
     console.error(
       `[forgex-desktop] Renderer render-process-gone reason=${details.reason} exitCode=${details.exitCode}`,
     );
+    emitDiagnosticEvent({
+      component: "desktop",
+      event: "desktop.renderer.process_gone",
+      level: "ERROR",
+      message: details.reason,
+      error_code: details.exitCode,
+      operation: "rendererProcess",
+    });
   });
 }
 

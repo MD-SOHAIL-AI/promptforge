@@ -39,23 +39,6 @@ class FakeWebSocket {
 
 globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 
-test("uses the Electron backend URL for WebSockets", () => {
-  const previousWindow = globalThis.window;
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: {
-      forgexDesktop: { getBackendUrl: () => "http://127.0.0.1:43127/" },
-      location: { protocol: "http:", hostname: "127.0.0.1" },
-    },
-  });
-  try {
-    assert.equal(websocketBaseUrl(), "ws://127.0.0.1:43127");
-  } finally {
-    if (previousWindow === undefined) delete (globalThis as { window?: unknown }).window;
-    else Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
-  }
-});
-
 const event = (sequence: number, name = "PLAN_GENERATED") => JSON.stringify({
   sequence,
   event: name,
@@ -94,4 +77,19 @@ test("detects a sequence gap and requests replay", async () => {
   assert.deepEqual(received, [1]);
   assert.match(FakeWebSocket.instances[1].url, /after=1$/);
   stop();
+});
+
+
+test("desktop websocket base uses the runtime ForgeX backend URL", () => {
+  const previousWindow = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = {
+    forgexDesktop: { backendUrl: "http://127.0.0.1:8765" },
+    location: { protocol: "http:", hostname: "127.0.0.1" },
+  };
+  try {
+    assert.equal(websocketBaseUrl(), "ws://127.0.0.1:8765");
+  } finally {
+    if (previousWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = previousWindow;
+  }
 });

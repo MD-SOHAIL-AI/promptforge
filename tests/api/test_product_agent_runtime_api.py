@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -8,8 +9,6 @@ from pathlib import Path
 import pytest
 
 from tests.api.test_api_routes import completed_outcome, make_client
-from backend.agent_runtime.product_agent_service import ProductAgentRun
-from backend.api.routes.agent_runtime import _inspect_response
 from backend.runtime.subprocess_mgr import SubprocessManager
 from backend.tools.board_detector import BoardInfo, BoardType
 
@@ -72,28 +71,6 @@ def activity_names(payload: dict[str, object]) -> list[str]:
     return [str(event.get("activity")) for event in events if isinstance(event, dict) and event.get("event_type") != "activity.completed"]
 
 
-def test_inspect_latest_forge_failure_reports_saved_provider_diagnostics(tmp_path: Path) -> None:
-    run = ProductAgentRun(
-        run_id="run-failed",
-        project_id="project-test",
-        provider_id="openrouter",
-        status="failed",
-        classification="API_TOOLPLAN_INVALID",
-        model_id="nvidia/incompatible:free",
-        outbound_request_count=2,
-        request_reached_provider=True,
-        fallback_reason="API_RESPONSE_INVALID",
-    )
-    metadata = type("Metadata", (), {"project_path": str(tmp_path)})()
-
-    response = _inspect_response("Diagnose the latest Forge run failure", metadata, run)
-
-    assert "API_TOOLPLAN_INVALID" in response
-    assert "nvidia/incompatible:free" in response
-    assert "Provider requests: 2; reached provider: yes." in response
-    assert "Workspace files:" not in response
-
-
 def test_product_agent_route_disabled_without_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     setup_env(monkeypatch, tmp_path, enabled=False)
     api, project_id, _ = make_client(tmp_path)
@@ -107,6 +84,25 @@ def test_product_agent_route_disabled_without_flag(tmp_path: Path, monkeypatch: 
     assert response.json()["code"] == "AGENT_RUNTIME_DISABLED"
     assert providers.status_code == 200
     assert providers.json()["enabled"] is False
+
+
+def test_agent_api_forwards_explicit_model_instead_of_provider_default(tmp_path, monkeypatch):
+    from backend.agent_runtime.product_agent_service import ProductAgentRun
+    setup_env(monkeypatch, tmp_path, enabled=True)
+    api, project_id, _ = make_client(tmp_path)
+    with api:
+        service = api.app.state.services.product_agent_service
+        models = api.app.state.services.model_router_service.registry
+        models.configure_provider("ollama", {"enabled": True, "default_model": "default-model"})
+        captured = []
+        async def capture(**kwargs):
+            captured.append(kwargs)
+            return ProductAgentRun("captured", project_id, kwargs["provider_id"], model_id=kwargs["model_id"])
+        monkeypatch.setattr(service, "start_run", capture)
+        reply = api.post("/agent-runtime/runs", json={"project_id": project_id, "instruction": "Inspect project", "provider_id": "ollama", "model_id": "explicit-model"})
+        assert reply.status_code == 202, reply.text
+        assert captured[0]["model_id"] == "explicit-model"
+        assert captured[0]["active_workspace"]["model_id"] == "explicit-model"
 
 
 def test_agent_session_create_list_and_local_reply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -138,19 +134,19 @@ def test_v2_orchestrator_keeps_chat_run_free_and_exposes_action_graph(tmp_path: 
     monkeypatch.setenv("FORGEX_ENABLE_AGENT_ORCHESTRATOR_V2", "1")
     api, project_id, _ = make_client(tmp_path)
     with api:
-        created = api.post("/api/v2/agents/sessions", json={"project_id": project_id})
+        created = api.post("/agent-runtime/sessions", json={"project_id": project_id})
         assert created.status_code == 201, created.text
         session_id = created.json()["session"]["session_id"]
 
         chat = api.post(
-            f"/api/v2/agents/sessions/{session_id}/messages",
+            f"/agent-runtime/sessions/{session_id}/messages",
             json={"content": "hello", "provider_id": "fake_planner"},
         )
         assert chat.status_code == 202, chat.text
         assert chat.json()["run"] is None
 
         action = api.post(
-            f"/api/v2/agents/sessions/{session_id}/messages",
+            f"/agent-runtime/sessions/{session_id}/messages",
             json={
                 "content": "Edit the project and create the safe test file",
                 "provider_id": "fake_planner",
@@ -162,7 +158,7 @@ def test_v2_orchestrator_keeps_chat_run_free_and_exposes_action_graph(tmp_path: 
         completed = wait_run(api, run_id)
         assert completed["status"] == "completed"
 
-        graph = api.get(f"/api/v2/agents/runs/{run_id}/graph")
+        graph = api.get(f"/agent-runtime/runs/{run_id}/graph")
         assert graph.status_code == 200, graph.text
         nodes = graph.json()["graph"]["nodes"]
         assert [node["role"] for node in nodes[:3]] == [
@@ -170,11 +166,34 @@ def test_v2_orchestrator_keeps_chat_run_free_and_exposes_action_graph(tmp_path: 
             "firmware_implementer",
             "validation_services",
         ]
+        observations = [{"call_id": "read-1", "tool": "read_file", "status": "completed"}]
+        observation_digest = hashlib.sha256(
+            json.dumps(
+                observations,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        orchestrator = api.app.state.services.agent_orchestrator
+        artifact = orchestrator.store.save_context_artifact(
+            run_id,
+            session_id,
+            observation_count=1,
+            content_sha256=observation_digest,
+            observation_delta=observations,
+        )
+        retrieved = api.get(
+            f"/agent-runtime/runs/{run_id}/context-artifacts/{artifact['artifact_id']}"
+        )
+        assert retrieved.status_code == 200, retrieved.text
+        assert retrieved.json()["artifact"]["verified"] is True
+        assert retrieved.json()["artifact"]["observations"] == observations
         change_set = api.get(f"/agent-runtime/runs/{run_id}/changes")
         assert change_set.status_code == 200, change_set.text
         assert change_set.json()["change_set"]["status"] == "applied"
 
-        remembered = api.get(f"/api/v2/agents/projects/{project_id}/memory")
+        remembered = api.get(f"/agent-runtime/projects/{project_id}/memory")
         assert remembered.status_code == 200, remembered.text
         assert remembered.json()["memories"][0]["source_type"] == "changeset"
         assert remembered.json()["memories"][0]["source_hash"]
@@ -182,7 +201,7 @@ def test_v2_orchestrator_keeps_chat_run_free_and_exposes_action_graph(tmp_path: 
         project = api.get(f"/projects/{project_id}").json()
         workspace = Path(project["project_path"])
         (workspace / "FORGEX_AGENT_RUNTIME_SMOKE.txt").write_text("externally changed\n", encoding="utf-8")
-        stale = api.get(f"/api/v2/agents/projects/{project_id}/memory")
+        stale = api.get(f"/agent-runtime/projects/{project_id}/memory")
         assert stale.status_code == 200, stale.text
         assert stale.json()["memories"] == []
 
@@ -210,10 +229,10 @@ def test_v2_compound_project_request_uses_generate_and_build_workflow(tmp_path: 
 
     api, project_id, _ = make_client(tmp_path, execute_prompt_fn=observing_execute)
     with api:
-        created = api.post("/api/v2/agents/sessions", json={"project_id": project_id})
+        created = api.post("/agent-runtime/sessions", json={"project_id": project_id})
         session_id = created.json()["session"]["session_id"]
         started = api.post(
-            f"/api/v2/agents/sessions/{session_id}/messages",
+            f"/agent-runtime/sessions/{session_id}/messages",
             json={
                 "content": (
                     "Build a complete ESP32 smart room monitor project. When the ESP32 starts, initialize sensors. "
@@ -268,12 +287,12 @@ def test_agent_session_model_question_does_not_start_run(tmp_path: Path, monkeyp
     assert payload["intent"] == "chat"
     assert payload["run"] is None
     assert prompts == []
-    assert "checking" in activity_names(payload)
+    assert payload["activity_events"] == []
     assert "Selected provider:" in payload["session"]["messages"][-1]["content"]
     assert "forgex-verified-templates-v1" in payload["session"]["messages"][-1]["content"]
 
 
-def test_agent_session_inspect_reads_workspace_without_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agent_session_inspect_uses_read_only_model_tool_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     setup_env(monkeypatch, tmp_path, enabled=True)
     api, project_id, _ = make_client(tmp_path)
     with api:
@@ -287,15 +306,40 @@ def test_agent_session_inspect_reads_workspace_without_run(tmp_path: Path, monke
         )
         assert replied.status_code == 202, replied.text
         payload = replied.json()
+        assert payload["intent"] == "inspect"
+        assert payload["run"] is not None
+        assert payload["run"]["autonomy"] == "read_only"
+        completed = wait_run(api, payload["run"]["run_id"])
+        session = wait_session_message_count(api, session_id, 2)
 
-    assert payload["intent"] == "inspect"
-    assert payload["run"] is None
+    assert completed["status"] == "completed"
+    assert completed["change_set_id"] is None
+    assert completed["tool_execution_count"] >= 1
     names = activity_names(payload)
     assert names[:3] == ["inspecting", "reading", "analyzing"]
-    content = payload["session"]["messages"][-1]["content"]
-    assert "No files were modified, built, or flashed." in content
-    assert "src/main.cpp" in content
+    content = session["messages"][-1]["content"]
+    assert "Read-only inspection result:" in content
     assert "void setup()" in content
+
+
+def test_read_only_create_request_explains_mode_without_starting_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    setup_env(monkeypatch, tmp_path, enabled=True)
+    api, project_id, _ = make_client(tmp_path)
+    with api:
+        session_id = api.post("/agent-runtime/sessions", json={"project_id": project_id}).json()["session"]["session_id"]
+        reply = api.post(
+            f"/agent-runtime/sessions/{session_id}/messages",
+            json={"content": "Create an ESP32 multi-file PlatformIO project.", "autonomy": "read_only", "provider_id": "verified_template"},
+        )
+        assert reply.status_code == 202, reply.text
+        payload = reply.json()
+        assert payload["run"] is None
+        assert "Ask mode is read-only" in payload["session"]["messages"][-1]["content"]
+        direct = api.post(
+            "/agent-runtime/runs",
+            json={"project_id": project_id, "instruction": "Create an ESP32 project.", "autonomy": "read_only", "provider_id": "verified_template"},
+        )
+        assert direct.status_code == 422
 
 
 def test_agent_session_auto_generate_builds_without_flash_confirmation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -337,6 +381,10 @@ def test_agent_session_auto_generate_builds_without_flash_confirmation(tmp_path:
     assert run["flash_confirmation_required"] is False
     assert run["stage_statuses"]["build"] == "completed"
     assert "building" in {str(event.get("activity")) for event in events}
+    builds = [event["activity_record"] for event in events if event.get("activity_record", {}).get("kind") == "build"]
+    assert builds
+    assert builds[0]["id"] == builds[-1]["id"]
+    assert builds[-1]["status"] == "completed"
     assert "Confirm flash" not in session["messages"][-1]["content"]
     assert len(prompts) == 1
 
@@ -467,7 +515,13 @@ def test_agent_session_second_message_includes_conversation_context(tmp_path: Pa
         task_id = str(kwargs["task_id"])
         await callback("PLAN_GENERATED", {"task_id": task_id})
         await callback("WORKFLOW_COMPLETED", {"task_id": task_id, "status": "COMPLETED"})
-        return completed_outcome(task_id)
+        active_workspace = kwargs["active_workspace"]
+        workspace_root = Path(str(active_workspace.get("root_path") or active_workspace.get("rootPath") or active_workspace["workspace_root"]))  # type: ignore[index]
+        from tests.api.test_api_routes import successful_build
+        return completed_outcome(
+            task_id,
+            build_result=successful_build(workspace_root / ".pio" / "build" / "esp32dev" / "firmware.bin"),
+        )
 
     api, project_id, _ = make_client(tmp_path, execute_prompt_fn=observing_execute)
     with api:
@@ -506,56 +560,6 @@ def test_agent_session_second_message_includes_conversation_context(tmp_path: Pa
     assert "Continue the existing conversation" in prompts[-1]
     assert "Create an ESP32 blink LED project using PlatformIO." in prompts[-1]
     assert "Change the blink delay to 250ms." in prompts[-1]
-
-
-def test_agent_session_structured_context_reaches_workflow_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    setup_env(monkeypatch, tmp_path, enabled=True)
-    prompts: list[str] = []
-
-    async def observing_execute(prompt: str, **kwargs: object):
-        prompts.append(prompt)
-        callback = kwargs["progress_callback"]
-        task_id = str(kwargs["task_id"])
-        await callback("PLAN_GENERATED", {"task_id": task_id})
-        await callback("WORKFLOW_COMPLETED", {"task_id": task_id, "status": "COMPLETED"})
-        return completed_outcome(task_id)
-
-    api, project_id, _ = make_client(tmp_path, execute_prompt_fn=observing_execute)
-    with api:
-        created = api.post("/agent-runtime/sessions", json={"project_id": project_id})
-        assert created.status_code == 201, created.text
-        session_id = created.json()["session"]["session_id"]
-
-        started = api.post(
-            f"/agent-runtime/sessions/{session_id}/messages",
-            json={
-                "content": "Create an ESP32 blink LED project using PlatformIO.",
-                "provider_id": "verified_template",
-                "board_port": "COM9",
-                "board_type": "ESP32",
-                "context": {
-                    "references": ["board", "project", "latest-build"],
-                    "attachments": [{
-                        "name": "pin-notes.txt",
-                        "size": 21,
-                        "type": "text/plain",
-                        "content": "Use GPIO2 for the LED.",
-                    }],
-                },
-            },
-        )
-        assert started.status_code == 202, started.text
-        wait_run(api, started.json()["run"]["run_id"])
-        session = api.get(f"/agent-runtime/sessions/{session_id}").json()["session"]
-
-    assert prompts
-    assert "Explicit UI context:" in prompts[-1]
-    assert "Selected board: ESP32" in prompts[-1]
-    assert "Selected port: COM9" in prompts[-1]
-    assert "[attachment:pin-notes.txt]" in prompts[-1]
-    assert "Use GPIO2 for the LED." in prompts[-1]
-    assert session["messages"][0]["metadata"]["context_references"] == "board,project,latest-build"
-    assert session["messages"][0]["metadata"]["attachment_names"] == "pin-notes.txt"
 
 
 def test_fake_agent_changeset_apply_and_undo_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -640,7 +644,13 @@ def test_autonomous_agent_passes_selected_provider_to_workflow_context(tmp_path:
         task_id = str(kwargs["task_id"])
         await callback("PLAN_GENERATED", {"task_id": task_id})
         await callback("WORKFLOW_COMPLETED", {"task_id": task_id, "status": "COMPLETED"})
-        return completed_outcome(task_id)
+        active_workspace = kwargs["active_workspace"]
+        workspace_root = Path(str(active_workspace.get("root_path") or active_workspace.get("rootPath") or active_workspace["workspace_root"]))  # type: ignore[index]
+        from tests.api.test_api_routes import successful_build
+        return completed_outcome(
+            task_id,
+            build_result=successful_build(workspace_root / ".pio" / "build" / "esp32dev" / "firmware.bin"),
+        )
 
     api, project_id, _ = make_client(tmp_path, execute_prompt_fn=observing_execute)
     with api:

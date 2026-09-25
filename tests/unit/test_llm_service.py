@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,6 +23,7 @@ from backend.services.llm_service import (
     LLMService,
     LLMTimeoutError,
     OpenAIService,
+    OpenAIResponsesService,
     OpenRouterService,
 )
 
@@ -285,6 +287,37 @@ def test_openrouter_headers_and_openai_compatible_response() -> None:
     run(client.aclose())
 
 
+def test_openai_responses_builds_request_and_normalizes_response() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["request"] = request
+        seen["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "model": "response-model-2026",
+                "output_text": "Responses answer",
+                "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
+            },
+        )
+
+    client = mock_client(handler)
+    service = OpenAIResponsesService(api_key="secret", model="response-model", client=client)
+    response = run(service.generate(LLMRequest(prompt="Question", system_prompt="Be concise", max_tokens=50)))
+
+    assert seen["request"].url.path == "/v1/responses"
+    assert seen["payload"]["input"] == [
+        {"role": "system", "content": "Be concise"},
+        {"role": "user", "content": "Question"},
+    ]
+    assert seen["payload"]["max_output_tokens"] == 50
+    assert response.content == "Responses answer"
+    assert response.model == "response-model-2026"
+    assert response.token_usage == {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5}
+    run(client.aclose())
+
+
 def test_openrouter_response_accepts_openai_content_parts() -> None:
     client = mock_client(
         lambda request: httpx.Response(
@@ -363,6 +396,65 @@ def test_openai_compatible_embedded_error_raises_provider_error() -> None:
 
     assert exc_info.value.code == "model_unavailable"
     assert exc_info.value.retryable is True
+    run(client.aclose())
+
+
+def test_openai_payload_uses_canonical_json_schema_metadata() -> None:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
+    service = OpenAIService(api_key="key", model="model", client=client)
+    request = LLMRequest(prompt="Plan", metadata={
+        "forgex_structured_output": {
+            "mode": "json_schema",
+            "name": "submit_tool_plan",
+            "json_schema": {
+                "type": "object",
+                "properties": {"summary": {"type": "string"}},
+            },
+            "strict": True,
+        }
+    })
+
+    payload = service._payload(request, stream=False)
+
+    assert payload["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "submit_tool_plan",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"summary": {"type": "string"}},
+            },
+        },
+    }
+    json.dumps(payload)
+    run(client.aclose())
+
+
+def test_gemini_payload_uses_native_function_declaration_metadata() -> None:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
+    service = GeminiService(api_key="key", model="model", client=client)
+    request = LLMRequest(prompt="Plan", metadata={
+        "forgex_structured_output": {
+            "mode": "native_tools",
+            "name": "submit_tool_plan",
+            "json_schema": {
+                "type": "object",
+                "properties": {"summary": {"type": "string"}},
+            },
+            "strict": True,
+        }
+    })
+
+    payload = service._payload(request, stream=False)
+
+    declaration = payload["tools"][0]["functionDeclarations"][0]
+    assert declaration["name"] == "submit_tool_plan"
+    assert declaration["parameters"] == {
+        "type": "object",
+        "properties": {"summary": {"type": "string"}},
+    }
+    json.dumps(payload)
     run(client.aclose())
 
 
@@ -520,6 +612,140 @@ def test_invalid_stream_json_raises_structured_response_error() -> None:
     run(client.aclose())
 
 
+@pytest.mark.parametrize(
+    ("status", "error_type", "expected_code"),
+    [
+        (401, LLMAuthenticationError, "PROVIDER_AUTH_ERROR"),
+        (429, LLMRateLimitError, "PROVIDER_RATE_LIMITED"),
+        (503, LLMProviderError, "PROVIDER_UNAVAILABLE"),
+    ],
+)
+def test_streaming_http_errors_are_read_and_classified(
+    status: int,
+    error_type: type[Exception],
+    expected_code: str,
+) -> None:
+    client = mock_client(
+        lambda request: httpx.Response(
+            status,
+            json={"error": {"message": "stream provider failed"}},
+        )
+    )
+    service = OpenAIService(api_key="key", model="model", client=client)
+
+    with pytest.raises(error_type, match="stream provider failed") as exc_info:
+        run(collect(service, LLMRequest(prompt="Question")))
+
+    assert exc_info.value.code == expected_code
+    assert exc_info.value.status_code == status
+    run(client.aclose())
+
+
+def test_openrouter_stream_embedded_error_is_not_reported_as_empty() -> None:
+    client = mock_client(
+        lambda request: httpx.Response(
+            200,
+            text=(
+                'data: {"error":{"message":"Upstream provider unavailable",'
+                '"code":"provider_unavailable"}}\n\n'
+                "data: [DONE]\n\n"
+            ),
+        )
+    )
+    service = OpenRouterService(api_key="key", model="model", client=client)
+
+    with pytest.raises(LLMProviderError, match="Upstream provider unavailable") as exc_info:
+        run(collect(service, LLMRequest(prompt="Question")))
+
+    assert exc_info.value.code == "PROVIDER_UNAVAILABLE"
+    run(client.aclose())
+
+
+OPENROUTER_FIXTURES = Path(__file__).parents[1] / "fixtures" / "openrouter"
+EMBEDDED_ERROR_CASES = json.loads(
+    (OPENROUTER_FIXTURES / "embedded_provider_errors.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "case", EMBEDDED_ERROR_CASES, ids=[case["name"] for case in EMBEDDED_ERROR_CASES]
+)
+def test_openrouter_embedded_error_fixtures_are_classified(case: dict[str, Any]) -> None:
+    client = mock_client(
+        lambda request: httpx.Response(
+            200,
+            text=f"data: {json.dumps(case['event'])}\n\ndata: [DONE]\n\n",
+        )
+    )
+    service = OpenRouterService(api_key="key", model="model", client=client)
+    error_types = {
+        "LLMProviderError": LLMProviderError,
+        "LLMRateLimitError": LLMRateLimitError,
+        "LLMAuthenticationError": LLMAuthenticationError,
+    }
+
+    with pytest.raises(error_types[case["expected_type"]]) as exc_info:
+        run(collect(service, LLMRequest(prompt="Question")))
+
+    assert exc_info.value.code == case["expected_code"]
+    assert exc_info.value.status_code == case["status"]
+    assert exc_info.value.retryable is case["retryable"]
+    run(client.aclose())
+
+
+def test_openrouter_agent_payload_matches_production_template() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            text=(
+                'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+        )
+
+    template = json.loads(
+        (OPENROUTER_FIXTURES / "agent_tool_request.template.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    replacements = {
+        "{{model_id}}": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "{{system_prompt}}": "Use ForgeX tools to complete the task.",
+        "{{user_prompt}}": "Create an ESP32 smart-light project.",
+    }
+
+    def render(value: Any) -> Any:
+        if isinstance(value, str):
+            return replacements.get(value, value)
+        if isinstance(value, list):
+            return [render(item) for item in value]
+        if isinstance(value, dict):
+            return {key: render(item) for key, item in value.items()}
+        return value
+
+    expected = render(template)
+    client = mock_client(handler)
+    service = OpenRouterService(
+        api_key="key", model=expected["model"], client=client
+    )
+    request = LLMRequest(
+        prompt=expected["messages"][1]["content"],
+        system_prompt=expected["messages"][0]["content"],
+        temperature=expected["temperature"],
+        max_tokens=expected["max_tokens"],
+        metadata={"forgex_native_tools": expected["tools"]},
+    )
+
+    assert run(collect(service, request)) == "ok"
+    assert captured == expected
+    run(client.aclose())
+
+
 class SlowTransport(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0.05)
@@ -543,6 +769,21 @@ def test_generation_timeout_is_structured_and_retryable() -> None:
 
     assert exc_info.value.retryable is True
     assert exc_info.value.details["operation"] == "generation"
+    run(client.aclose())
+
+
+def test_internal_no_deadline_request_remains_user_cancellable() -> None:
+    client = httpx.AsyncClient(transport=SlowTransport())
+    service = OpenAIService(
+        api_key="key", model="model", client=client, timeout_s=0.001
+    )
+
+    response = run(service.generate(LLMRequest(
+        prompt="Question",
+        metadata={"forgex_disable_generation_timeout": True},
+    )))
+
+    assert response.content == "late"
     run(client.aclose())
 
 

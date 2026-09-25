@@ -4,9 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { promptForgeApi } from "@/lib/api";
 import { toErrorMessage } from "@/lib/errors";
-import { notify } from "@/lib/notify";
 import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
-import { useSerialMonitor } from "@/hooks/use-serial-monitor";
+import {
+  EMPTY_FILE,
+  LAST_PROJECT_KEY,
+  LAST_WORKSPACE_PATH_KEY,
+  activeEnvironmentName,
+  baudFromProject,
+  hasPlatformIO,
+  initialStages,
+  languageFor,
+  latestProject,
+  normalizeWorkspaceRelativePath,
+  projectBoardId,
+  tabStorageKey,
+  toFile,
+  validateWorkspaceRelativePath,
+} from "@/lib/workspace-helpers";
 import {
   applyStageEvent,
   cancelActiveStages,
@@ -24,62 +38,18 @@ import type {
   DetectedBoard,
   EditorTab,
   ExecuteResponse,
-  FlashResponse,
   ExecutionEvent,
   GenerationFileProgress,
   GenerationProgress,
   HealthResponse,
   MonitorStatusResponse,
-  PlatformIOEnvironment,
-  ProjectListResponse,
   ProjectResponse,
+  ProjectImportResponse,
   WorkspaceEntry,
   WorkspaceFile,
   WorkspaceLog,
   WorkflowStage,
 } from "@/types";
-
-const EMPTY_FILE: WorkspaceFile = {
-  path: "workspace",
-  language: "text",
-  content: "",
-};
-
-const LAST_PROJECT_KEY = "forgex.workspace.lastProjectId";
-const LAST_WORKSPACE_PATH_KEY = "forgex.workspace.lastPath";
-
-const initialStages: WorkflowStage[] = [
-  {
-    key: "planning",
-    label: "Planning",
-    description: "Planner translating the prompt into an executable firmware task.",
-    status: "pending",
-  },
-  {
-    key: "generation",
-    label: "Generation",
-    description: "Firmware sources and PlatformIO metadata are produced.",
-    status: "pending",
-  },
-  {
-    key: "build",
-    label: "Build",
-    description: "PlatformIO compilation, dependency resolution, and artifact capture.",
-    status: "pending",
-  },
-  {
-    key: "flash",
-    label: "Flash",
-    description: "Board detection, validation, and firmware upload.",
-    status: "pending",
-  },
-  {
-    key: "monitor",
-    label: "Monitor",
-    description: "Serial monitor session for runtime telemetry.",
-    status: "pending",
-  },
-];
 
 export type WorkspaceView = "workspace" | "projects" | "builds" | "logs";
 export type GenerationMode = "new_project" | "modify_existing_project" | "generate_into_open_folder";
@@ -90,22 +60,7 @@ export interface ExecuteOptions {
   generationMode?: GenerationMode;
 }
 
-function languageFor(path: string, fileType?: string | null) {
-  const type = fileType?.toLowerCase();
-  if (type === "cpp" || type === "c" || type === "h" || type === "hpp" || path.endsWith(".ino")) {
-    return "cpp";
-  }
-  if (type === "ini" || path.endsWith(".ini")) {
-    return "ini";
-  }
-  if (type === "md" || path.endsWith(".md")) {
-    return "markdown";
-  }
-  if (type === "json" || path.endsWith(".json")) {
-    return "json";
-  }
-  return "text";
-}
+export { validateWorkspaceRelativePath };
 
 function consoleChannel(event: ExecutionEvent): ConsoleEntry["channel"] {
   if (event.event.endsWith("_FAILED") || event.payload.success === false) return "error";
@@ -375,86 +330,8 @@ function generationProgressFromEvent(event: ExecutionEvent): GenerationProgress 
   };
 }
 
-function latestProject(projects: ProjectResponse[]) {
-  return [...projects].sort(
-    (left, right) =>
-      Date.parse(right.updated_at || right.created_at) - Date.parse(left.updated_at || left.created_at),
-  )[0] ?? null;
-}
-
-function tabStorageKey(projectId?: string) {
-  return projectId ? `promptforge.tabs.${projectId}` : "promptforge.tabs";
-}
-
-function toFile(projectId: string, path: string, content: string, fileType?: string | null): WorkspaceFile {
-  return {
-    projectId,
-    path,
-    content,
-    fileType: fileType ?? undefined,
-    language: languageFor(path, fileType),
-  };
-}
-
-function platformioEnvironments(project: ProjectResponse | null): PlatformIOEnvironment[] {
-  const platformio = project?.metadata?.platformio;
-  if (!platformio || typeof platformio !== "object" || !("environments" in platformio)) {
-    return [];
-  }
-  const environments = (platformio as { environments?: unknown }).environments;
-  return Array.isArray(environments) ? (environments as PlatformIOEnvironment[]) : [];
-}
-
-function activeEnvironment(project: ProjectResponse | null): PlatformIOEnvironment | null {
-  const environments = platformioEnvironments(project);
-  if (environments.length === 0) return null;
-  const selected = typeof project?.metadata?.active_environment === "string" ? project.metadata.active_environment : null;
-  return environments.find((environment) => environment.name === selected) ?? environments.find((environment) => environment.board) ?? environments[0] ?? null;
-}
-
-function activeEnvironmentName(project: ProjectResponse | null) {
-  return activeEnvironment(project)?.name ?? null;
-}
-
-function projectBoardId(project: ProjectResponse | null) {
-  const environmentBoard = activeEnvironment(project)?.board;
-  if (environmentBoard) return environmentBoard;
-  const metadataBoard = project?.metadata?.board;
-  if (typeof metadataBoard === "string" && metadataBoard && metadataBoard !== "UNKNOWN") return metadataBoard;
-  return project?.target_board && project.target_board !== "UNKNOWN" ? project.target_board : null;
-}
-
-function hasPlatformIO(project: ProjectResponse | null) {
-  if (!project) return false;
-  if (project.metadata?.has_platformio_ini === false) return false;
-  if (project.project_type === "generic") return false;
-  return true;
-}
-
-function baudFromProject(project: ProjectResponse | null, field: "monitor_speed" | "upload_speed", fallback: number) {
-  const environment = activeEnvironment(project);
-  const value = environment?.[field];
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-export function validateWorkspaceRelativePath(value: string) {
-  const path = value.trim().replaceAll("\\", "/");
-  if (!path) return "Enter a path.";
-  if (path.startsWith("/") || /^[a-zA-Z]:\//.test(path)) return "Use a path inside the active project.";
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length === 0) return "Enter a path.";
-  if (parts.some((part) => part === "..")) return "Parent directory segments are not allowed.";
-  if (parts.some((part) => part === ".")) return "Current directory segments are not allowed.";
-  return null;
-}
-
-function normalizeWorkspaceRelativePath(value: string) {
-  return value.trim().replaceAll("\\", "/").replace(/^\/+/, "");
-}
-
 export function usePromptForgeWorkspace() {
   const dialogs = useForgeXDialogs();
-  const serialMonitor = useSerialMonitor();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectResponse | null>(null);
@@ -471,7 +348,6 @@ export function usePromptForgeWorkspace() {
   const [toolAction, setToolAction] = useState<"build" | "flash" | "monitor" | null>(null);
   const [desktopWorkspacePath, setDesktopWorkspacePathState] = useState<string | null>(null);
   const [lastBuildResult, setLastBuildResult] = useState<BuildResponse | null>(null);
-  const [lastFlashResult, setLastFlashResult] = useState<FlashResponse | null>(null);
   const [activeView, setActiveView] = useState<WorkspaceView>("workspace");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [executionId, setExecutionId] = useState<string | null>(null);
@@ -487,6 +363,7 @@ export function usePromptForgeWorkspace() {
   const entriesProjectRef = useRef<string | null>(null);
   const activeProjectIdRef = useRef<string | null>(null);
   const projectLoadSequenceRef = useRef(0);
+  const importProjectInFlightRef = useRef<Map<string, Promise<ProjectImportResponse | null>>>(new Map());
 
   const selectedFile = useMemo(
     () => tabs.find((tab) => tab.path === activePath) ?? tabs[0] ?? EMPTY_FILE,
@@ -534,25 +411,19 @@ export function usePromptForgeWorkspace() {
 
   const loadProjectFiles = useCallback(async (projectId: string) => {
     const sequence = ++projectLoadSequenceRef.current;
-    try {
-      const response = await promptForgeApi.projectFiles(projectId);
-      if (sequence !== projectLoadSequenceRef.current) return [];
-      if (activeProjectIdRef.current && activeProjectIdRef.current !== projectId) return [];
-      const previousPaths = new Set(entriesRef.current.map((entry) => entry.path));
-      const addedPaths = entriesProjectRef.current === projectId
-        ? response.entries.filter((entry) => !previousPaths.has(entry.path)).map((entry) => entry.path)
-        : [];
-      entriesRef.current = response.entries;
-      entriesProjectRef.current = projectId;
-      setEntries(response.entries);
-      if (addedPaths.length > 0) setRecentlyAddedPaths(addedPaths);
-      return response.entries;
-    } catch (err) {
-      if (sequence !== projectLoadSequenceRef.current) return [];
-      reportError(err, "Project files could not be loaded");
-      return [];
-    }
-  }, [reportError]);
+    const response = await promptForgeApi.projectFiles(projectId);
+    if (sequence !== projectLoadSequenceRef.current) return [];
+    if (activeProjectIdRef.current && activeProjectIdRef.current !== projectId) return [];
+    const previousPaths = new Set(entriesRef.current.map((entry) => entry.path));
+    const addedPaths = entriesProjectRef.current === projectId
+      ? response.entries.filter((entry) => !previousPaths.has(entry.path)).map((entry) => entry.path)
+      : [];
+    entriesRef.current = response.entries;
+    entriesProjectRef.current = projectId;
+    setEntries(response.entries);
+    if (addedPaths.length > 0) setRecentlyAddedPaths(addedPaths);
+    return response.entries;
+  }, []);
 
   useEffect(() => {
     if (recentlyAddedPaths.length === 0) return;
@@ -561,76 +432,46 @@ export function usePromptForgeWorkspace() {
   }, [recentlyAddedPaths]);
 
   const refreshBuildHistory = useCallback(async () => {
-    try {
-      const response = await promptForgeApi.buildHistory();
-      setBuildHistory(response.builds);
-    } catch (err) {
-      reportError(err, "Build history could not be loaded");
-    }
-  }, [reportError]);
+    const response = await promptForgeApi.buildHistory();
+    setBuildHistory(response.builds);
+  }, []);
 
   const refreshWorkspaceLogs = useCallback(async (selectedExecutionId?: string) => {
-    try {
-      const response = await promptForgeApi.logs(selectedExecutionId);
-      setWorkspaceLogs(response.logs);
-      setLogs((current) => {
-        const retained = current.filter((entry) => !entry.id.startsWith("workspace-log-"));
-        const loaded = response.logs.map<ConsoleEntry>((item) => ({
-          id: `workspace-log-${item.execution_id}-${item.log_type}-${item.path}`,
-          timestamp: new Date().toISOString(),
-          channel:
-            item.log_type === "build"
-              ? "build"
-              : item.log_type === "monitor"
-                ? "serial"
-                : item.log_type === "flash"
-                  ? "system"
-                  : "workflow",
-          message: `[${item.execution_id}] ${item.content.trim() || `${item.log_type} log`}`,
-        }));
-        return [...retained, ...loaded];
-      });
-    } catch (err) {
-      reportError(err, "Workspace logs could not be loaded");
-    }
-  }, [reportError]);
+    const response = await promptForgeApi.logs(selectedExecutionId);
+    setWorkspaceLogs(response.logs);
+    setLogs((current) => {
+      const retained = current.filter((entry) => !entry.id.startsWith("workspace-log-"));
+      const loaded = response.logs.map<ConsoleEntry>((item) => ({
+        id: `workspace-log-${item.execution_id}-${item.log_type}-${item.path}`,
+        timestamp: new Date().toISOString(),
+        channel:
+          item.log_type === "build"
+            ? "build"
+            : item.log_type === "monitor"
+              ? "serial"
+              : item.log_type === "flash"
+                ? "system"
+                : "workflow",
+        message: `[${item.execution_id}] ${item.content.trim() || `${item.log_type} log`}`,
+      }));
+      return [...retained, ...loaded];
+    });
+  }, []);
 
   const refreshDetectedBoards = useCallback(async () => {
-    try {
-      const response = await promptForgeApi.detectedBoards();
-      setDetectedBoards(response.boards);
-      return response.boards;
-    } catch (err) {
-      reportError(err, "Board detection failed");
-      return [];
-    }
-  }, [reportError]);
+    const response = await promptForgeApi.detectedBoards();
+    setDetectedBoards(response.boards);
+    return response.boards;
+  }, []);
 
   const refreshMonitorStatus = useCallback(async () => {
-    try {
-      const response = await promptForgeApi.monitorStatus();
-      setMonitorStatus(response);
-      return response;
-    } catch (err) {
-      reportError(err, "Monitor status is unavailable");
-      return null;
-    }
-  }, [reportError]);
-
-  useEffect(() => {
-    const latest = serialMonitor.events.at(-1);
-    if (!latest || (latest.source !== "RECONNECT" && latest.source !== "RUNTIME")) return;
-    void refreshMonitorStatus();
-  }, [refreshMonitorStatus, serialMonitor.events]);
+    const response = await promptForgeApi.monitorStatus();
+    setMonitorStatus(response);
+    return response;
+  }, []);
 
   const refreshProjects = useCallback(async (preferredProjectId?: string | null) => {
-    let response: ProjectListResponse;
-    try {
-      response = await promptForgeApi.projects();
-    } catch (err) {
-      reportError(err, "Projects could not be loaded");
-      return [];
-    }
+    const response = await promptForgeApi.projects();
     setProjects(response.projects);
     setActiveProject((current) => {
       const rememberedProjectId =
@@ -652,7 +493,7 @@ export function usePromptForgeWorkspace() {
       return selected;
     });
     return response.projects;
-  }, [reportError]);
+  }, []);
 
   const openFile = useCallback(
     async (entryOrPath: WorkspaceEntry | string) => {
@@ -698,47 +539,7 @@ export function usePromptForgeWorkspace() {
     [activeProject, reportError, tabs],
   );
 
-  const updateTabContent = useCallback((path: string, content: string) => {
-    setTabs((current) =>
-      current.map((tab) => (tab.path === path ? { ...tab, content, dirty: true } : tab)),
-    );
-  }, []);
-
-  const saveFile = useCallback(
-    async (path: string) => {
-      if (!activeProject) return false;
-      const tab = tabs.find((item) => item.path === path);
-      if (!tab) return false;
-      try {
-        const response = await promptForgeApi.updateFile({
-          project_id: activeProject.project_id,
-          path,
-          content: tab.content,
-          file_type: tab.fileType,
-        });
-        if ("content" in response) {
-          setTabs((current) =>
-            current.map((item) =>
-              item.path === path
-                ? { ...toFile(response.project_id, response.path, response.content, response.file_type), dirty: false }
-                : item,
-            ),
-          );
-          setActivePath(response.path);
-        }
-        await loadProjectFiles(activeProject.project_id);
-        await refreshProjects(activeProject.project_id);
-        return true;
-      } catch (err) {
-        const message = reportError(err, `File could not be saved: ${path}`);
-        notify.error(message);
-        return false;
-      }
-    },
-    [activeProject, loadProjectFiles, refreshProjects, reportError, tabs],
-  );
-
-  const removeTab = useCallback((path: string) => {
+  const closeTab = useCallback((path: string) => {
     setTabs((current) => {
       const next = current.filter((tab) => tab.path !== path);
       setActivePath((selected) => {
@@ -749,39 +550,41 @@ export function usePromptForgeWorkspace() {
     });
   }, []);
 
-  const closeTab = useCallback(
-    (path: string) => {
+  const updateTabContent = useCallback((path: string, content: string) => {
+    setTabs((current) =>
+      current.map((tab) => (tab.path === path ? { ...tab, content, dirty: true } : tab)),
+    );
+  }, []);
+
+  const saveFile = useCallback(
+    async (path: string) => {
+      if (!activeProject) return;
       const tab = tabs.find((item) => item.path === path);
-      if (!tab?.dirty) {
-        removeTab(path);
-        return;
-      }
-      void (async () => {
-        const wantsSave = await dialogs.confirmAction({
-          title: "Save changes before closing?",
-          description: `"${path}" has unsaved changes.`,
-          confirmText: "Save",
-          cancelText: "Don't save",
+      if (!tab) return;
+      try {
+        const response = await promptForgeApi.updateFile({
+          project_id: activeProject.project_id,
+          path,
+          content: tab.content,
+          file_type: tab.fileType,
         });
-        if (wantsSave) {
-          const saved = await saveFile(path);
-          if (!saved) {
-            notify.error(`Kept "${path}" open because saving failed.`);
-            return;
-          }
-          removeTab(path);
-          return;
+        if (activeProjectIdRef.current !== activeProject.project_id) return;
+        if ("content" in response) {
+          setTabs((current) =>
+            current.map((item) =>
+              item === tab
+                ? { ...toFile(response.project_id, response.path, response.content, response.file_type), dirty: false }
+                : item,
+            ),
+          );
         }
-        const discardApproved = await dialogs.confirmAction({
-          title: "Discard unsaved changes?",
-          description: `Closing "${path}" now will discard its unsaved changes.`,
-          confirmText: "Close without saving",
-          variant: "danger",
-        });
-        if (discardApproved) removeTab(path);
-      })();
+        await loadProjectFiles(activeProject.project_id);
+        await refreshProjects(activeProject.project_id);
+      } catch (err) {
+        reportError(err, `File could not be saved: ${path}`);
+      }
     },
-    [dialogs, removeTab, saveFile, tabs],
+    [activeProject, loadProjectFiles, refreshProjects, reportError, tabs],
   );
 
   const createEntry = useCallback(
@@ -919,18 +722,12 @@ export function usePromptForgeWorkspace() {
       variant: "danger",
     });
     if (!approved) return;
-    try {
-      await promptForgeApi.deleteProject(activeProject.project_id);
-    } catch (err) {
-      const message = reportError(err, "Project could not be deleted");
-      notify.error(message);
-      return;
-    }
+    await promptForgeApi.deleteProject(activeProject.project_id);
     setTabs([]);
     setActivePath(null);
     setEntries([]);
     await refreshProjects();
-  }, [activeProject, dialogs, refreshProjects, reportError]);
+  }, [activeProject, dialogs, refreshProjects]);
 
   const selectProject = useCallback((project: ProjectResponse) => {
     activeProjectIdRef.current = project.project_id;
@@ -968,10 +765,13 @@ export function usePromptForgeWorkspace() {
 
   const importProjectPath = useCallback(
     async (path: string) => {
+      const importKey = path.replaceAll("\\", "/").toLowerCase();
+      const inFlight = importProjectInFlightRef.current.get(importKey);
+      if (inFlight) return inFlight;
       setError(null);
       rememberDesktopWorkspacePath(path);
       addLog({ channel: "system", message: "Inspecting folder..." });
-      try {
+      const operation = (async () => {
         const imported = await promptForgeApi.importProject({ path });
         const platformioDetected = imported.has_platformio_ini;
         addLog({
@@ -990,6 +790,10 @@ export function usePromptForgeWorkspace() {
         }
         setActiveView("workspace");
         return imported;
+      })();
+      importProjectInFlightRef.current.set(importKey, operation);
+      try {
+        return await operation;
       } catch (err) {
         const message = reportError(
           err,
@@ -1001,6 +805,8 @@ export function usePromptForgeWorkspace() {
             : "This folder is not a supported ForgeX project yet. No platformio.ini was found.",
         );
         return null;
+      } finally {
+        importProjectInFlightRef.current.delete(importKey);
       }
     },
     [addLog, loadProjectFiles, refreshProjects, rememberDesktopWorkspacePath, reportError, selectProject],
@@ -1053,46 +859,13 @@ export function usePromptForgeWorkspace() {
         addLog({ channel: "error", message });
         return null;
       }
-      const artifact = lastBuildResult?.result?.firmware_path ?? "Latest build artifact will be used if available.";
-      const approved = await dialogs.confirmAction({
-        title: "Flash firmware to device?",
-        description: `Project: ${activeProject.project_name}\nBoard: ${board.board_type}\nPort: ${board.port}\nFirmware/build artifact: ${artifact}\n\nThis can modify connected hardware.`,
-        confirmText: "Flash",
-        variant: "hardware",
+      await dialogs.message({
+        title: "Flash through Forge",
+        description: `Open a Forge task for ${activeProject.project_name} and ask it to flash the verified firmware to ${board.port}. Forge will prepare the flash and request one-time confirmation.`,
       });
-      if (!approved) return null;
-      setToolAction("flash");
-      setError(null);
-      addLog({ channel: "system", message: `Flash started for ${activeProject.project_name} on ${board.port}` });
-      try {
-        const response = await promptForgeApi.flashProject({
-          project_id: activeProject.project_id,
-          board_type: board.board_type,
-          port: board.port,
-          environment: activeEnvironmentName(activeProject),
-          baudrate: baudFromProject(activeProject, "upload_speed", 115_200),
-          verify: true,
-        });
-        setLastFlashResult(response);
-        const flash = response.flash;
-        addLog({
-          channel: flash?.success ? "system" : response.build.success ? "error" : "build",
-          message: flash?.message ?? response.build.message ?? "Flash did not run because build failed",
-        });
-        await Promise.allSettled([refreshBuildHistory(), refreshWorkspaceLogs()]);
-        return response;
-      } catch (err) {
-        const message = reportError(err, "Flash request failed");
-        await dialogs.message({
-          title: "Flash failed",
-          description: `Flash failed: ${message}`,
-        });
-        return null;
-      } finally {
-        setToolAction(null);
-      }
+      return null;
     },
-    [activeProject, addLog, dialogs, lastBuildResult, refreshBuildHistory, refreshWorkspaceLogs, reportError, toolAction],
+    [activeProject, addLog, dialogs, toolAction],
   );
 
   const startSerialMonitor = useCallback(
@@ -1179,8 +952,7 @@ export function usePromptForgeWorkspace() {
       paths = [];
     }
     paths.slice(0, 8).forEach((path) => {
-      void openFile(path).catch((err: unknown) => {
-        console.warn(`ForgeX: could not restore open tab "${path}"`, err);
+      void openFile(path).catch(() => {
         window.localStorage.removeItem(tabStorageKey(activeProject.project_id));
       });
     });
@@ -1192,17 +964,6 @@ export function usePromptForgeWorkspace() {
     window.localStorage.setItem(tabStorageKey(activeProject.project_id), JSON.stringify(paths));
   }, [activeProject, tabs]);
 
-  useEffect(() => {
-    const dirtyCount = tabs.filter((tab) => tab.dirty).length;
-    if (dirtyCount === 0) return;
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = `${dirtyCount} unsaved ${dirtyCount === 1 ? "file" : "files"} will be lost if you leave ForgeX.`;
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [tabs]);
-
   useEffect(
     () => () => {
       closeExecutionSocketRef.current?.();
@@ -1213,12 +974,7 @@ export function usePromptForgeWorkspace() {
 
   const refreshAfterWorkflow = useCallback(async () => {
     if (activeProject?.external) {
-      await promptForgeApi
-        .importProject({ path: activeProject.project_path })
-        .catch((err: unknown) => {
-          console.warn("ForgeX: project re-import failed during refresh", err);
-          return null;
-        });
+      await promptForgeApi.refreshProject(activeProject.project_id).catch(() => null);
     }
     const refreshedProjects = await refreshProjects(activeProject?.project_id);
     const project =
@@ -1252,12 +1008,7 @@ export function usePromptForgeWorkspace() {
   const refreshProjectFiles = useCallback(async () => {
     if (!activeProject) return [];
     if (activeProject.external) {
-      await promptForgeApi
-        .importProject({ path: activeProject.project_path })
-        .catch((err: unknown) => {
-          console.warn("ForgeX: project re-import failed during refresh", err);
-          return null;
-        });
+      await promptForgeApi.refreshProject(activeProject.project_id).catch(() => null);
     }
     return loadProjectFiles(activeProject.project_id);
   }, [activeProject, loadProjectFiles]);
@@ -1431,7 +1182,6 @@ export function usePromptForgeWorkspace() {
     detectedBoards,
     refreshDetectedBoards,
     monitorStatus,
-    serialMonitor,
     refreshMonitorStatus,
     toolAction,
     buildActiveProject,
@@ -1453,7 +1203,7 @@ export function usePromptForgeWorkspace() {
     result,
     generatedProject: activeProject as unknown as Record<string, unknown> | null,
     buildResult: (lastBuildResult?.result as unknown as Record<string, unknown>) ?? null,
-    flashResult: lastFlashResult,
+    flashResult: null,
     isExecuting,
     isCancelling,
     error,

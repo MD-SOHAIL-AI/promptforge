@@ -21,8 +21,7 @@ from typing import Any, Literal, Protocol, cast
 
 TerminalStream = Literal["stdout", "stderr", "system"]
 TerminalLifecycle = Literal["running", "stopping", "exited", "closed"]
-TerminalCapability = Literal["conpty", "pty", "pipe"]
-MAX_TERMINAL_INPUT_LENGTH = 20_000
+TerminalCapability = Literal["conpty", "pipe"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +49,6 @@ class TerminalOutputEvent:
     stream: TerminalStream
     data: str
     timestamp: float
-    dropped: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -58,7 +56,6 @@ class TerminalOutputEvent:
             "stream": self.stream,
             "data": self.data,
             "timestamp": self.timestamp,
-            "dropped": self.dropped,
         }
 
 
@@ -103,7 +100,6 @@ class TerminalSession:
     exit_code: int | None = None
     driver: TerminalDriver | None = field(default=None, repr=False)
     subscribers: set[asyncio.Queue[TerminalOutputEvent]] = field(default_factory=set, repr=False)
-    subscriber_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     tasks: set[asyncio.Task[object]] = field(default_factory=set, repr=False)
     exit_notified: bool = field(default=False, repr=False)
 
@@ -230,7 +226,7 @@ class _ConPtyTerminalDriver:
                 continue
             # pywinpty can emit an internal keepalive marker that its wrapper
             # translates to an empty string. Empty is not EOF while alive.
-            time.sleep(0.05)
+            time.sleep(0.01)
 
     def _publish(self, data: str | None) -> None:
         try:
@@ -279,31 +275,6 @@ class _ConPtyTerminalDriver:
         await asyncio.to_thread(getattr(self.process, "terminate"), True)
 
 
-class _PosixPtyTerminalDriver(_ConPtyTerminalDriver):
-    """POSIX pseudoterminal backed by ptyprocess."""
-
-    capability: TerminalCapability = "pty"
-
-    @classmethod
-    async def spawn(
-        cls,
-        command: tuple[str, ...],
-        *,
-        cwd: Path,
-        cols: int,
-        rows: int,
-    ) -> _PosixPtyTerminalDriver:
-        from ptyprocess import PtyProcessUnicode
-
-        process = PtyProcessUnicode.spawn(
-            list(command),
-            cwd=str(cwd),
-            env=os.environ.copy(),
-            dimensions=(rows, cols),
-        )
-        return cls(process)
-
-
 class TerminalService:
     """Manage bounded, interactive shell sessions."""
 
@@ -321,9 +292,7 @@ class TerminalService:
 
     @property
     def default_process_capability(self) -> TerminalCapability:
-        if _conpty_available():
-            return "conpty"
-        return "pty" if _posix_pty_available() else "pipe"
+        return "conpty" if _conpty_available() else "pipe"
 
     async def start(
         self,
@@ -384,16 +353,6 @@ class TerminalService:
             except ImportError:
                 # Minimal source installs can intentionally omit the wheel.
                 pass
-        else:
-            try:
-                return await _PosixPtyTerminalDriver.spawn(
-                    profile.command,
-                    cwd=cwd,
-                    cols=cols,
-                    rows=rows,
-                )
-            except ImportError:
-                pass
         return await _PipeTerminalDriver.spawn(profile.command, cwd=cwd)
 
     async def get(self, session_id: str) -> TerminalSession | None:
@@ -407,10 +366,6 @@ class TerminalService:
             raise ValueError("terminal session is closed")
         if "\x00" in data:
             raise ValueError("terminal input cannot contain NUL characters")
-        if len(data) > MAX_TERMINAL_INPUT_LENGTH:
-            raise ValueError(
-                f"terminal input cannot exceed {MAX_TERMINAL_INPUT_LENGTH} characters"
-            )
         await driver.write(data)
         return session
 
@@ -461,17 +416,15 @@ class TerminalService:
     ) -> tuple[TerminalSession, list[TerminalOutputEvent], asyncio.Queue[TerminalOutputEvent]]:
         session = await self._required(session_id)
         queue: asyncio.Queue[TerminalOutputEvent] = asyncio.Queue(maxsize=500)
-        with session.subscriber_lock:
-            replay = [event for event in session.events if event.sequence > after]
-            session.subscribers.add(queue)
+        replay = [event for event in session.events if event.sequence > after]
+        session.subscribers.add(queue)
         return session, replay, queue
 
     async def unsubscribe(self, session_id: str, queue: asyncio.Queue[TerminalOutputEvent]) -> None:
         async with self._lock:
             session = self._sessions.get(session_id)
             if session is not None:
-                with session.subscriber_lock:
-                    session.subscribers.discard(queue)
+                session.subscribers.discard(queue)
 
     async def _required(self, session_id: str) -> TerminalSession:
         async with self._lock:
@@ -557,9 +510,7 @@ class TerminalService:
             timestamp=time.time(),
         )
         session.events.append(event)
-        with session.subscriber_lock:
-            subscribers = tuple(session.subscribers)
-        for queue in subscribers:
+        for queue in tuple(session.subscribers):
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
@@ -568,13 +519,7 @@ class TerminalService:
                 except asyncio.QueueEmpty:
                     pass
                 try:
-                    queue.put_nowait(TerminalOutputEvent(
-                        sequence=event.sequence,
-                        stream=event.stream,
-                        data=event.data,
-                        timestamp=event.timestamp,
-                        dropped=event.dropped + 1,
-                    ))
+                    queue.put_nowait(event)
                 except asyncio.QueueFull:
                     pass
 
@@ -586,16 +531,6 @@ def _validated_cwd(cwd: str | Path) -> Path:
     if not path.is_dir():
         raise ValueError(f"terminal cwd is not a directory: {path}")
     return path
-
-
-def _posix_pty_available() -> bool:
-    if sys.platform == "win32":
-        return False
-    try:
-        import ptyprocess  # noqa: F401
-    except ImportError:
-        return False
-    return True
 
 
 def _validated_title(title: str) -> str:

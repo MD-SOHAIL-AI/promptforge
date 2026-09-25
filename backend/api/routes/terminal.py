@@ -12,6 +12,7 @@ from starlette.websockets import WebSocketState
 
 from ..dependencies import required_state, resolve_project_from_request
 from ..errors import APIError, error_responses
+from ..local_security import websocket_is_authorized
 from ..schemas.common import APIModel, ErrorResponse
 from ...services.terminal_service import TerminalService
 
@@ -173,7 +174,11 @@ async def stop_terminal(session_id: str, request: Request) -> dict[str, object]:
 
 @router.websocket("/sessions/{session_id}/stream")
 async def terminal_stream(websocket: WebSocket, session_id: str) -> None:
-    service = getattr(websocket.app.state, "terminal_service", None)
+    authorized, reason = websocket_is_authorized(websocket)
+    if not authorized:
+        await websocket.close(code=1008, reason=reason)
+        return
+    service = getattr(websocket.app.state.services, "terminal_service", None)
     if not isinstance(service, TerminalService):
         await websocket.close(code=1011, reason="Terminal service is unavailable")
         return
@@ -254,10 +259,14 @@ async def terminal_stream(websocket: WebSocket, session_id: str) -> None:
         for task in done:
             try:
                 task.result()
+            except asyncio.CancelledError:
+                if websocket.client_state is not WebSocketState.DISCONNECTED:
+                    raise
             except RuntimeError:
                 if websocket.client_state is not WebSocketState.DISCONNECTED:
                     raise
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        # Disconnect/cancellation is a normal WebSocket teardown signal.
         pass
     finally:
         sender_task.cancel()

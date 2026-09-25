@@ -39,9 +39,10 @@ interface BackendManagerOptions {
   resolvePython?: (repoRoot: string) => PythonResolution;
   expectedRuntimeContract?: string;
   expectedSourceFingerprint?: string | null;
+  localToken?: string;
 }
 
-export const BACKEND_RUNTIME_CONTRACT = "forgex-agent-runtime-v2";
+export const BACKEND_RUNTIME_CONTRACT = "forgex-agent-runtime-v3";
 
 export class BackendManager {
   private process: ChildProcessWithoutNullStreams | null = null;
@@ -57,12 +58,13 @@ export class BackendManager {
   private readonly resolvePython: (repoRoot: string) => PythonResolution;
   private readonly expectedRuntimeContract: string;
   private readonly expectedSourceFingerprint: string | null;
+  private readonly localToken: string | undefined;
   private ownsProcess = false;
 
   constructor(options: BackendManagerOptions = {}) {
     this.port = options.port ?? resolveBackendPort();
     this.cwd = options.cwd ?? resolveBackendCwd();
-    this.readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000;
+    this.readinessTimeoutMs = options.readinessTimeoutMs ?? 60_000;
     this.readinessIntervalMs = options.readinessIntervalMs ?? 500;
     this.healthProbe = options.healthProbe ?? fetchForgeXHealth;
     this.spawnBackend = options.spawnBackend ?? spawn;
@@ -71,6 +73,7 @@ export class BackendManager {
     this.expectedSourceFingerprint = options.expectedSourceFingerprint === undefined
       ? computeBackendSourceFingerprint(this.cwd)
       : options.expectedSourceFingerprint;
+    this.localToken = options.localToken?.trim() || undefined;
   }
 
   get url(): string {
@@ -142,30 +145,40 @@ export class BackendManager {
     const pythonExecutable = python.executable;
     console.log(`[forgex-backend] Using Python: ${pythonExecutable}`);
     console.log("[forgex-backend] Starting FastAPI backend...");
-    this.process = this.spawnBackend(
-      pythonExecutable,
-      [
-        "-m",
-        "uvicorn",
-        "backend.api.app:create_app",
-        "--factory",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        String(this.port),
-      ],
-      {
-        cwd: this.cwd,
-        env: {
-          ...process.env,
-          FORGEX_BACKEND_PORT: String(this.port),
-          FORGEX_DESKTOP: "1",
-          FORGEX_BACKEND_URL: this.url,
-          FORGEX_SETTINGS_PATH: process.env.FORGEX_SETTINGS_PATH ?? path.join(this.cwd, ".promptforge", "settings", "settings.json"),
+    try {
+      this.process = this.spawnBackend(
+        pythonExecutable,
+        [
+          "-m",
+          "uvicorn",
+          "backend.api.app:create_app",
+          "--factory",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(this.port),
+          "--no-access-log",
+        ],
+        {
+          cwd: this.cwd,
+          env: {
+            ...process.env,
+            FORGEX_BACKEND_PORT: String(this.port),
+            FORGEX_DESKTOP: "1",
+            FORGEX_BACKEND_URL: this.url,
+            ...(this.localToken ? { FORGEX_LOCAL_TOKEN: this.localToken } : {}),
+          },
+          windowsHide: true,
         },
-        windowsHide: true,
-      },
-    );
+      );
+    } catch (error) {
+      this.state = "crashed";
+      this.lastError = `Failed to start ForgeX backend process: ${error instanceof Error ? error.message : String(error)}`;
+      this.process = null;
+      this.ownsProcess = false;
+      console.error(`[forgex-backend] ${this.lastError}`);
+      throw new Error(this.lastError);
+    }
 
     this.ownsProcess = true;
     console.log(`[forgex-backend] Spawned backend pid=${this.process.pid ?? "unknown"} port=${this.port}`);
@@ -182,47 +195,61 @@ export class BackendManager {
         console.error(`[forgex-backend] ${this.lastError}`);
       }
       this.process = null;
+      this.ownsProcess = false;
     });
     this.process.on("error", (error) => {
       this.state = "crashed";
       this.lastError = error.message;
       console.error(`[forgex-backend] ${this.lastError}`);
       this.process = null;
+      this.ownsProcess = false;
     });
 
-    await this.waitForReady();
-    return this.getStatus();
+    try {
+      await this.waitForReady();
+      return this.getStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.terminateOwnedProcess();
+      this.state = "crashed";
+      this.lastError = message;
+      throw error;
+    }
   }
 
   async stop(): Promise<void> {
+    this.state = "stopped";
+    await this.terminateOwnedProcess();
+    this.lastError = undefined;
+    this.health = undefined;
+  }
+
+  private async terminateOwnedProcess(): Promise<void> {
     if (!this.process || !this.ownsProcess) {
-      this.state = "stopped";
+      this.process = null;
       this.ownsProcess = false;
       return;
     }
 
     const child = this.process;
-    this.state = "stopped";
     this.process = null;
     this.ownsProcess = false;
 
     await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        if (!child.killed) {
-          child.kill("SIGKILL");
-        }
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
         resolve();
+      };
+      const timeout = setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+        finish();
       }, 5_000);
 
-      child.once("exit", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-
-      if (!child.kill("SIGTERM")) {
-        clearTimeout(timeout);
-        resolve();
-      }
+      child.once("exit", finish);
+      if (!child.kill("SIGTERM")) finish();
     });
   }
 
@@ -288,13 +315,19 @@ export class BackendManager {
     ) {
       return `The ForgeX backend on port ${this.port} was started from older source code. Fully stop it (or run npm run dev:cleanup) and relaunch ForgeX.`;
     }
+    if (this.localToken) {
+      const expectedAuthFingerprint = createHash("sha256").update(this.localToken, "utf8").digest("hex").slice(0, 24);
+      if (body.local_auth_fingerprint !== expectedAuthFingerprint) {
+        return `A ForgeX backend from another desktop session is already running on port ${this.port}. Fully stop it (or run npm run dev:cleanup) and relaunch ForgeX.`;
+      }
+    }
     return undefined;
   }
 }
 
 export function fetchForgeXHealth(url: string): Promise<BackendHealthProbeResult> {
   return new Promise((resolve) => {
-    const request = http.get(`${url}/health`, { timeout: 2_000 }, (response) => {
+    const request = http.get(`${url}/health`, { timeout: 12_000 }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
       response.on("end", () => {
@@ -348,6 +381,7 @@ function isForgeXHealth(body: unknown): body is {
   status: string;
   runtime_contract?: unknown;
   source_fingerprint?: unknown;
+  local_auth_fingerprint?: unknown;
 } {
   return typeof body === "object" && body !== null && "service" in body && (body as { service?: unknown }).service === "forgex-backend";
 }
@@ -365,6 +399,10 @@ export function computeBackendSourceFingerprint(repoRoot: string): string | null
     }
   };
   visit(backendRoot);
+  for (const releaseInput of ["requirements.txt", "requirements.in", "requirements.lock", "pyproject.toml"]) {
+    const candidate = path.join(repoRoot, releaseInput);
+    if (existsSync(candidate)) files.push(candidate);
+  }
   files.sort((left, right) => {
     const leftRelative = normalizeRelative(repoRoot, left);
     const rightRelative = normalizeRelative(repoRoot, right);

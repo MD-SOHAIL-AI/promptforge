@@ -10,22 +10,17 @@ export interface ExecutionSocketOptions {
 }
 
 export function websocketBaseUrl() {
-  const configured = process.env.NEXT_PUBLIC_PROMPTFORGE_WS_URL;
+  const configured = process.env.NEXT_PUBLIC_FORGEX_WS_URL ?? process.env.NEXT_PUBLIC_PROMPTFORGE_WS_URL;
   if (configured) return configured.replace(/\/$/, "");
   if (typeof window !== "undefined") {
-    const desktopUrl = window.forgexDesktop?.getBackendUrl?.();
-    if (desktopUrl) return httpToWebSocketUrl(desktopUrl);
+    const desktopBackend = window.forgexDesktop?.backendUrl;
+    if (desktopBackend) {
+      return desktopBackend.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:").replace(/\/$/, "");
+    }
   }
-  const backendUrl = process.env.NEXT_PUBLIC_PROMPTFORGE_BACKEND_URL;
-  if (backendUrl) return httpToWebSocketUrl(backendUrl);
-  if (typeof window === "undefined") return "ws://127.0.0.1:8000";
-  return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8000`;
-}
-
-function httpToWebSocketUrl(value: string): string {
-  const url = new URL(value);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  return url.toString().replace(/\/$/, "");
+  const configuredPort = process.env.NEXT_PUBLIC_FORGEX_BACKEND_PORT ?? process.env.NEXT_PUBLIC_PROMPTFORGE_BACKEND_PORT ?? "8000";
+  if (typeof window === "undefined") return `ws://127.0.0.1:${configuredPort}`;
+  return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${configuredPort}`;
 }
 
 function terminal(event: ExecutionEvent) {

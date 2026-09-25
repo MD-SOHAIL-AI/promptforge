@@ -328,18 +328,15 @@ def test_missing_file_content_triggers_file_repair() -> None:
     assert any(item["attempt_type"] == "file_repair" and item["success"] for item in attempts)
 
 
-def test_file_fallback_is_used_without_restarting_whole_project() -> None:
+def test_file_fallback_is_not_used_after_same_model_repair_fails() -> None:
     primary = SequentialLLM([summary_json(), manifest_json(), platformio_ini(), config_h(), "void setup(){}\nvoid loop(){}\n", "void setup(){}\nvoid loop(){}\n", readme_md()])
     fallback = SequentialLLM([main_cpp()], provider=LLMProvider.OPENROUTER, model="strong-model")
     service = CodeGenerationService(primary, fallback_llm_service=fallback)
 
-    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+    with pytest.raises(ProjectValidationError):
+        run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
 
-    assert project.get_file("src/main.cpp") is not None
-    assert len(fallback.requests) == 1
-    statuses = project.metadata["generation_report"]["chunked_generation"]["file_statuses"]
-    src_status = next(item for item in statuses if item["path"] == "src/main.cpp")
-    assert src_status["fallback_used"] is True
+    assert fallback.requests == []
 
 
 def test_truncated_main_cpp_triggers_repair() -> None:
@@ -479,26 +476,23 @@ def test_failed_chunked_generation_restores_existing_workspace_files(tmp_path: P
     assert (workspace / "include" / "config.h").read_text(encoding="utf-8") == "original config\n"
 
 
-def test_provider_failure_uses_complete_wifi_monitor_fallback(tmp_path: Path) -> None:
+def test_provider_failure_does_not_substitute_wifi_monitor_template(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     events: list[dict[str, Any]] = []
     service = CodeGenerationService(UnavailableLLM(), retry_backoff_s=0)
 
-    project = run(service.generate_project(CodeGenerationRequest(
-        plan=plan(),
-        context=context_at(workspace),
-        generation_event_callback=lambda event: events.append(dict(event)),
-    )))
+    with pytest.raises(LLMProviderError, match="OpenRouter connection failed"):
+        run(service.generate_project(CodeGenerationRequest(
+            plan=plan(),
+            context=context_at(workspace),
+            generation_event_callback=lambda event: events.append(dict(event)),
+        )))
 
-    paths = {item.path for item in project.files}
-    assert paths == {"platformio.ini", "include/config.h", "src/main.cpp", "README.md"}
-    assert "WebServer server(80)" in project.get_file("src/main.cpp").content
-    assert project.metadata["generation_report"]["fallback_used"] is True
-    assert [event["event_type"] for event in events][-3:] == [
-        "workspace_rolled_back", "fallback_started", "fallback_completed",
-    ]
-    
+    event_types = [event["event_type"] for event in events]
+    assert "fallback_started" not in event_types
+    assert "fallback_completed" not in event_types
+
 
 def test_incomplete_generation_emits_live_incomplete_event(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"

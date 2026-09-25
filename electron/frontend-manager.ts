@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 
@@ -43,6 +44,7 @@ export class FrontendManager {
   private readonly probe: (url: string) => Promise<FrontendProbeResult>;
   private readonly spawnFrontend: typeof spawn;
   private readonly executable: string;
+  private readonly identityKey = randomBytes(32).toString("base64url");
   private ownsProcess = false;
 
   constructor(options: FrontendManagerOptions = {}) {
@@ -50,26 +52,21 @@ export class FrontendManager {
     this.serverEntry = options.serverEntry ?? resolveFrontendServerEntry();
     this.readinessTimeoutMs = options.readinessTimeoutMs ?? 30_000;
     this.readinessIntervalMs = options.readinessIntervalMs ?? 300;
-    this.probe = options.probe ?? probeForgeXFrontend;
+    this.probe = options.probe ?? ((url) => probeForgeXFrontend(url, this.identityKey));
     this.spawnFrontend = options.spawnFrontend ?? spawn;
     this.executable = options.executable ?? process.execPath;
   }
 
   get url(): string {
-    return (process.env.FORGEX_FRONTEND_URL ?? `http://127.0.0.1:${this.port}`).replace(/\/$/, "");
+    return `http://127.0.0.1:${this.port}`;
   }
 
   async start(): Promise<FrontendStatus> {
     const existing = await this.probe(this.url);
     if (existing.reachable) {
-      if (!existing.forgeX) {
-        this.state = "crashed";
-        this.lastError = `Frontend port ${this.port} is already in use by another service.`;
-        throw new Error(this.lastError);
-      }
-      this.state = "ready";
-      this.ownsProcess = false;
-      return this.getStatus();
+      this.state = "crashed";
+      this.lastError = `Frontend port ${this.port} is already in use. Restart ForgeX after clearing the port.`;
+      throw new Error(this.lastError);
     }
 
     this.state = "starting";
@@ -83,6 +80,7 @@ export class FrontendManager {
         HOSTNAME: "127.0.0.1",
         PORT: String(this.port),
         NEXT_TELEMETRY_DISABLED: "1",
+        FORGEX_FRONTEND_IDENTITY_KEY: this.identityKey,
       },
       windowsHide: true,
     });
@@ -149,6 +147,12 @@ export class FrontendManager {
         throw new Error(this.lastError ?? "Frontend exited before it became ready.");
       }
       const result = await this.probe(this.url);
+      if (result.reachable && !result.forgeX) {
+        this.state = "crashed";
+        this.lastError = `Frontend port ${this.port} is serving an unverified process.`;
+        this.process?.kill("SIGTERM");
+        throw new Error(this.lastError);
+      }
       if (result.reachable && result.forgeX) {
         this.state = "ready";
         this.lastError = undefined;
@@ -162,19 +166,24 @@ export class FrontendManager {
   }
 }
 
-export function probeForgeXFrontend(url: string): Promise<FrontendProbeResult> {
+export function probeForgeXFrontend(url: string, identityKey: string): Promise<FrontendProbeResult> {
   return new Promise((resolve) => {
-    const request = http.get(url, { timeout: 2_000 }, (response) => {
-      const chunks: Buffer[] = [];
-      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+    const challenge = randomBytes(24).toString("base64url");
+    const endpoint = new URL("/desktop-identity", url);
+    const request = http.get(endpoint, { timeout: 2_000, headers: { "x-forgex-challenge": challenge } }, (response) => {
       response.on("end", () => {
-        const body = Buffer.concat(chunks).toString("utf8");
+        const expected = createHmac("sha256", identityKey).update(challenge).digest("hex");
+        const proof = response.headers["x-forgex-proof"];
+        const candidate = typeof proof === "string" ? proof : "";
+        const valid = candidate.length === expected.length &&
+          timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
         resolve({
           reachable: true,
-          forgeX: body.includes("ForgeX Embedded Engineering Environment"),
+          forgeX: response.statusCode === 204 && valid,
           statusCode: response.statusCode,
         });
       });
+      response.resume();
     });
     request.on("timeout", () => {
       request.destroy();

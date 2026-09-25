@@ -17,6 +17,8 @@ import type {
   HealthResponse,
   ModelProviderResponse,
   ModelProvidersResponse,
+  ModelRole,
+  ModelRoleBindingsResponse,
   ModelRoutesResponse,
   ModelSelectionResponse,
   MonitorStatusResponse,
@@ -25,59 +27,110 @@ import type {
   ProjectFilesResponse,
   ProjectImportResponse,
   ProjectListResponse,
+  ProjectResponse,
   ProviderHealthResponse,
   ProviderModelsResponse,
   TerminalOutputResponse,
   TerminalProfilesResponse,
   TerminalSessionResponse,
   WorkspaceLogsResponse,
+  WorkspaceSearchResponse,
 } from "@/types";
-import type { ForgeComposerContext } from "@/components/nexus/universal-composer";
 import { toErrorMessage } from "@/lib/errors";
+import { emitRuntimeDiagnostic, newRequestId, serializeError } from "@/lib/diagnostics";
 
-const API_BASE = "/api/promptforge";
+const API_BASE = "/api/forgex";
 
-export class PromptForgeApiError extends Error {
+export class ForgeXApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
     public readonly code?: string,
+    public readonly body?: unknown,
+    public readonly requestId?: string,
   ) {
     super(message);
-    this.name = "PromptForgeApiError";
+    this.name = "ForgeXApiError";
   }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (init?.body != null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
+  const requestId = newRequestId("renderer-http");
+  const started = performance.now();
+  const method = init?.method ?? "GET";
+  const url = `${API_BASE}${path}`;
+  emitRuntimeDiagnostic({
+    component: "renderer",
+    event: "renderer.http.started",
+    level: "DEBUG",
+    request_id: requestId,
+    method,
+    path,
   });
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: withRequestHeaders(init?.headers, requestId),
+      cache: "no-store",
+    });
 
-  if (!response.ok) {
-    let body: ApiErrorBody | unknown = {};
-    try {
-      body = await response.json();
-    } catch {
-      // Offline/proxy responses may not be JSON.
+    if (!response.ok) {
+      let body: ApiErrorBody | unknown = {};
+      try {
+        body = await response.json();
+      } catch {
+        // Offline/proxy responses may not be JSON.
+      }
+      const record = body && typeof body === "object" ? (body as ApiErrorBody & { detail?: unknown; error?: unknown }) : {};
+      const apiError = new ForgeXApiError(
+        errorBodyMessage(record) ?? `ForgeX API request failed (${response.status})`,
+        response.status,
+        record.code,
+        record,
+        requestId,
+      );
+      emitRuntimeDiagnostic({
+        component: "renderer",
+        event: "renderer.http.failed",
+        level: "ERROR",
+        request_id: requestId,
+        method,
+        path,
+        status: response.status,
+        duration_ms: Math.max(0, Math.round(performance.now() - started)),
+        error: serializeError(apiError),
+      });
+      throw apiError;
     }
-    const record = body && typeof body === "object" ? (body as ApiErrorBody & { detail?: unknown; error?: unknown }) : {};
-    throw new PromptForgeApiError(
-      errorBodyMessage(record) ?? `ForgeX API request failed (${response.status})`,
-      response.status,
-      record.code,
-    );
-  }
 
-  return (await response.json()) as T;
+    emitRuntimeDiagnostic({
+      component: "renderer",
+      event: "renderer.http.completed",
+      level: "DEBUG",
+      request_id: requestId,
+      method,
+      path,
+      status: response.status,
+      duration_ms: Math.max(0, Math.round(performance.now() - started)),
+    });
+    return (await response.json()) as T;
+  } catch (cause) {
+    if (cause instanceof ForgeXApiError) throw cause;
+    emitRuntimeDiagnostic({
+      component: "renderer",
+      event: "renderer.http.failed",
+      level: "ERROR",
+      request_id: requestId,
+      method,
+      path,
+      duration_ms: Math.max(0, Math.round(performance.now() - started)),
+      error: serializeError(cause),
+    });
+    throw cause;
+  }
 }
 
-export const promptForgeApi = {
+export const forgeXApi = {
   health: () => request<HealthResponse>("/health"),
 
   settings: () => request<ForgeXSettingsResponse>("/settings"),
@@ -104,8 +157,17 @@ export const promptForgeApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  refreshProject: (projectId: string) =>
+    request<ProjectResponse>(`/projects/${encodeURIComponent(projectId)}/refresh`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   projectFiles: (projectId: string) =>
     request<ProjectFilesResponse>(`/projects/${encodeURIComponent(projectId)}/files`),
+  searchProjectFileContents: (projectId: string, query: string) =>
+    request<WorkspaceSearchResponse>(
+      `/projects/${encodeURIComponent(projectId)}/files/search?query=${encodeURIComponent(query)}`,
+    ),
   fileContent: (projectId: string, path: string) =>
     request<FileContentResponse>(`/files/content?project_id=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`),
   createFile: (body: {
@@ -186,17 +248,47 @@ export const promptForgeApi = {
     providerId: string,
     body: { api_key?: string | null; base_url?: string; default_model?: string; enabled?: boolean },
   ) => request<{ provider: ModelProviderResponse }>(`/models/providers/${encodeURIComponent(providerId)}/configure`, { method: "POST", body: JSON.stringify(body) }),
+  createModelProvider: (body: {
+    provider_id: string;
+    display_name: string;
+    protocol: "openai-completions" | "openai-responses" | "anthropic-messages";
+    base_url: string;
+    default_model: string;
+    models?: string[];
+    local?: boolean;
+    api_key?: string;
+  }) => request<{ provider: ModelProviderResponse }>("/models/providers", { method: "POST", body: JSON.stringify(body) }),
+  deleteModelProvider: (providerId: string) =>
+    request<{ provider_id: string; deleted: boolean }>(`/models/providers/${encodeURIComponent(providerId)}`, { method: "DELETE" }),
   testModelProvider: (providerId: string) =>
     request<ProviderHealthResponse>(`/models/providers/${encodeURIComponent(providerId)}/health`, { method: "POST" }),
   providerModels: (providerId: string) =>
     request<ProviderModelsResponse>(`/models/providers/${encodeURIComponent(providerId)}/models`),
+  modelRoleBindings: (sessionId?: string) =>
+    request<ModelRoleBindingsResponse>(
+      `/v2/models/role-bindings${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`,
+    ),
+  saveModelRoleBinding: (body: {
+    provider_id: string;
+    model_id: string;
+    role: ModelRole;
+    session_id?: string;
+  }) => request<{ provider_id: string; model_id: string; role: ModelRole; session_id: string | null }>(
+    "/v2/models/role-bindings",
+    { method: "PUT", body: JSON.stringify(body) },
+  ),
+  clearModelRoleBinding: (role: ModelRole, sessionId?: string) =>
+    request<{ removed: boolean }>(
+      `/v2/models/role-bindings/${encodeURIComponent(role)}${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`,
+      { method: "DELETE" },
+    ),
 
   agentRuntimeProviders: () => request<{ enabled: boolean; providers: ProductAgentProvider[] }>("/agent-runtime/providers"),
   startAgentRuntimeRun: (body: {
     project_id: string;
     instruction: string;
     provider_id: string;
-    autonomy?: "staged_changes" | "build_only" | "build_then_confirm_flash";
+    autonomy?: "staged_changes" | "build_only" | "simulate" | "build_then_confirm_flash";
     board_port?: string | null;
     board_type?: string | null;
     environment?: string | null;
@@ -207,6 +299,16 @@ export const promptForgeApi = {
     request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}`),
   cancelAgentRuntimeRun: (runId: string) =>
     request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", body: JSON.stringify({}) }),
+  retryAgentRuntimeRun: (runId: string) =>
+    request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/retry`, { method: "POST", body: JSON.stringify({}) }),
+  steerAgentRuntimeRun: (runId: string, content: string) =>
+    request<{ run: ProductAgentRun; steering_queued: boolean }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/steer`, { method: "POST", body: JSON.stringify({ content }) }),
+  agentRuntimeGuidanceQueue: (runId: string) =>
+    request<{ items: import("@/types").AgentGuidanceQueueItem[] }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/queue`),
+  editAgentRuntimeGuidance: (runId: string, itemId: string, content: string) =>
+    request<{ item: import("@/types").AgentGuidanceQueueItem }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/queue/${encodeURIComponent(itemId)}`, { method: "PATCH", body: JSON.stringify({ content }) }),
+  removeAgentRuntimeGuidance: (runId: string, itemId: string) =>
+    request<{ item: import("@/types").AgentGuidanceQueueItem }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/queue/${encodeURIComponent(itemId)}`, { method: "DELETE" }),
   applyAgentRuntimeChanges: (runId: string) =>
     request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/apply-changes`, { method: "POST", body: JSON.stringify({}) }),
   confirmAgentRuntimeFlash: (
@@ -223,6 +325,16 @@ export const promptForgeApi = {
     `${API_BASE}/agent-runtime/sessions/${encodeURIComponent(sessionId)}/events?after_sequence=${encodeURIComponent(String(Math.max(0, afterSequence)))}`,
   agentRuntimeChanges: (runId: string) =>
     request<{ change_set: ChangeSetResponse }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/changes`),
+  chatSessions: () => request<{ sessions: import("@/types").ForgeChatSession[] }>("/v1/chat/sessions"),
+  createChatSession: () => request<{ session: import("@/types").ForgeChatSession }>("/v1/chat/sessions", { method: "POST", body: JSON.stringify({}) }),
+  chatSession: (id: string) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}`),
+  sendChatMessage: (id: string, body: { content: string; provider_id?: string; model_id?: string; context_project_id?: string; context_paths?: string[]; retry?: boolean }) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}/messages`, { method: "POST", body: JSON.stringify(body) }),
+  chatSessionEventsUrl: (id: string) => `${API_BASE}/v1/chat/sessions/${encodeURIComponent(id)}/events`,
+  cancelChatSession: (id: string) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({}) }),
+  configureChat: (id: string, body: { title?: string; provider_id?: string; model_id?: string }) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteChat: (id: string) => request<{ deleted: boolean }>(`/v1/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  configureConversation: (id: string, body: { title?: string; provider_id?: string; model_id?: string }) => request<{ session: import("@/types").ForgeChatSession }>(`/agent-runtime/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteConversation: (id: string) => request<{ deleted: boolean }>(`/agent-runtime/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   agentRuntimeSessions: (projectId?: string | null) =>
     request<{ sessions: ForgeAgentSession[]; count: number }>(
       projectId ? `/agent-runtime/sessions?project_id=${encodeURIComponent(projectId)}` : "/agent-runtime/sessions",
@@ -236,12 +348,15 @@ export const promptForgeApi = {
     body: {
       content: string;
       provider_id?: string | null;
-      autonomy?: "auto" | "staged_changes" | "plan_only" | "build_only" | "build_then_confirm_flash";
+      model_id?: string | null;
+      autonomy?: "auto" | "read_only" | "staged_changes" | "plan_only" | "build_only_strict" | "build_only" | "simulate" | "build_then_confirm_flash";
       board_port?: string | null;
       board_type?: string | null;
       environment?: string | null;
       start_monitor_after_flash?: boolean;
-      context?: ForgeComposerContext;
+      approved_plan_id?: string | null;
+      approved_plan_revision?: number | null;
+      approved_plan_hash?: string | null;
     },
   ) =>
     request<{ intent?: string; decision?: Record<string, unknown>; activity_events?: ForgeAgentActivityEvent[]; session: ForgeAgentSession; run: ProductAgentRun | null }>(`/agent-runtime/sessions/${encodeURIComponent(sessionId)}/messages`, { method: "POST", body: JSON.stringify(body) }),
@@ -297,3 +412,14 @@ function errorBodyMessage(body: ApiErrorBody & { detail?: unknown; error?: unkno
 function stringField(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
 }
+
+function withRequestHeaders(headers: HeadersInit | undefined, requestId: string): Headers {
+  const next = new Headers(headers);
+  if (!next.has("Content-Type")) next.set("Content-Type", "application/json");
+  next.set("X-Request-ID", requestId);
+  return next;
+}
+
+// Backward-compatible exports while legacy workspace hooks are retired.
+export const promptForgeApi = forgeXApi;
+export { ForgeXApiError as PromptForgeApiError };

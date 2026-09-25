@@ -1,5 +1,10 @@
 node_modules/
 .next/
+.next-*/
+test-results/
+playwright-report/
+.activity-*.png
+.*-activity-results.txt
 dist/
 build/
 out/
@@ -9,9 +14,22 @@ __pycache__/
 .pytest_cache/
 .coverage
 .env
+.env.*
+!.env.example
 .venv/
 .promptforge/
+.forgex/
+.forgex-context-stage/
+.forgex-context-state/
+hardware-signoff-reports/
 *.log
+*.sqlite
+*.sqlite3
+*.db
+*.pem
+*.key
+*.p12
+*.pfx
 *.tsbuildinfo
 .pio/
 *.bin
@@ -26,3 +44,6 @@ workspace/**
 !workspace/builds/.gitkeep
 !workspace/logs/.gitkeep
 !workspace/projects/.gitkeep
+
+# Local verification screenshots at the repository root.
+/forgex-live-verification.png

@@ -13,6 +13,8 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from ..observability.diagnostics import emit_diagnostic_event
+
 request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_id",
     default="",
@@ -95,7 +97,14 @@ async def request_context_middleware(request: Request, call_next: Any) -> Any:
         duration_ms = round((time.monotonic() - started) * 1000)
         request_id_context.reset(token)
     response.headers["X-Request-ID"] = request_id
-    logger.info(
+    _emit_http_diagnostic(
+        request=request,
+        request_id=request_id,
+        response=response,
+        duration_ms=duration_ms,
+    )
+    log_method = logger.debug if _is_polling_request(request.method, request.url.path) and response.status_code < 400 else logger.info
+    log_method(
         "request_completed",
         extra={
             "request_id": request_id,
@@ -114,6 +123,46 @@ async def request_context_middleware(request: Request, call_next: Any) -> Any:
         },
     )
     return response
+
+
+def _emit_http_diagnostic(*, request: Request, request_id: str, response: Any, duration_ms: int) -> None:
+    path = request.url.path
+    status_code = int(getattr(response, "status_code", 0) or 0)
+    polling = _is_polling_request(request.method, path)
+    if polling and status_code < 400:
+        level = "DEBUG"
+    else:
+        level = "ERROR" if status_code >= 500 else "WARNING" if status_code >= 400 else "INFO"
+    if level == "DEBUG":
+        return
+    emit_diagnostic_event(
+        component="backend",
+        event="http.request.completed",
+        level=level,
+        request_id=request_id,
+        method=request.method,
+        path=path,
+        status=status_code,
+        status_code=status_code,
+        duration_ms=duration_ms,
+        session_id=request.path_params.get("session_id"),
+        run_id=request.path_params.get("run_id"),
+        project_id=request.query_params.get("project_id"),
+    )
+
+
+def _is_polling_request(method: str, path: str) -> bool:
+    if method.upper() != "GET":
+        return False
+    if path in {"/health", "/projects", "/build-history", "/logs", "/monitor/status", "/devices/boards", "/models/providers", "/models/routes", "/agent-runtime/providers"}:
+        return True
+    return (
+        path.startswith("/agent-runtime/runs/")
+        and (path.endswith("/events") or path.endswith("/graph"))
+    ) or (
+        path.startswith("/agent-runtime/sessions/")
+        and (path.endswith("/events") or path.endswith("/activity"))
+    )
 
 
 def new_correlation_id(prefix: str) -> str:

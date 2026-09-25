@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Request
 from pydantic import Field
 
@@ -26,11 +27,22 @@ class ConfigureProviderRequest(APIModel):
     enabled: bool | None = None
 
 
+class CreateCustomProviderRequest(APIModel):
+    provider_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]*$")
+    display_name: str = Field(min_length=1, max_length=128)
+    protocol: str = Field(pattern=r"^(openai-completions|openai-responses|anthropic-messages)$")
+    base_url: str = Field(min_length=8, max_length=2048)
+    default_model: str = Field(min_length=1, max_length=256)
+    models: list[str] = Field(default_factory=list, max_length=256)
+    local: bool = False
+    api_key: str | None = Field(default=None, min_length=1)
+
+
 class RouteRequest(APIModel):
     task_type: str
     provider_id: str
     model_id: str
-    fallback_enabled: bool = True
+    fallback_enabled: bool = False
     fallback_provider_id: str | None = None
     local_only: bool = False
 
@@ -55,6 +67,48 @@ class TestModelRequest(APIModel):
 async def list_providers(request: Request) -> dict[str, Any]:
     service = _router_service(request)
     return {"providers": [provider.to_dict() for provider in service.registry.list_providers()]}
+
+
+@router.post("/providers", status_code=201, responses={**error_responses(409, 422, 500), "default": {"model": ErrorResponse}})
+async def create_custom_provider(body: CreateCustomProviderRequest, request: Request) -> dict[str, Any]:
+    service = _router_service(request)
+    try:
+        provider = service.registry.register_custom_provider(
+            provider_id=body.provider_id,
+            display_name=body.display_name,
+            protocol=body.protocol,
+            base_url=body.base_url,
+            default_model=body.default_model,
+            models=tuple(body.models),
+            local=body.local,
+            api_key=body.api_key,
+        )
+        service.install_custom_provider(body.provider_id)
+    except ValueError as exc:
+        raise APIError(422, "MODEL_PROVIDER_INVALID", str(exc)) from exc
+    except CredentialStoreError as exc:
+        raise APIError(503, "SECURE_CREDENTIAL_STORE_UNAVAILABLE", "The operating-system credential store is unavailable.") from exc
+    return {"provider": provider.to_dict()}
+
+
+@router.delete(
+    "/providers/{provider_id}",
+    responses={**error_responses(404, 409, 500), "default": {"model": ErrorResponse}},
+)
+async def delete_custom_provider(provider_id: str, request: Request) -> dict[str, Any]:
+    service = _router_service(request)
+    try:
+        service.remove_custom_provider(provider_id)
+    except CredentialStoreError as exc:
+        raise APIError(503, "SECURE_CREDENTIAL_STORE_UNAVAILABLE", "The operating-system credential store is unavailable.") from exc
+    except ValueError as exc:
+        message = str(exc)
+        status = 409 if "referenced by routes" in message or "Built-in" in message else 404
+        code = "MODEL_PROVIDER_IN_USE" if status == 409 else "MODEL_PROVIDER_NOT_FOUND"
+        raise APIError(status, code, message, {"provider_id": provider_id}) from exc
+    except ModelRouterStorageError as exc:
+        raise APIError(500, "MODEL_SETTINGS_WRITE_FAILED", "Model settings could not be saved safely.") from exc
+    return {"provider_id": provider_id, "deleted": True}
 
 
 @router.post(
@@ -104,14 +158,21 @@ async def list_provider_models(provider_id: str, request: Request) -> dict[str, 
     try:
         discovered = await provider.list_models()
         service.registry.save_models(provider_id, discovered)
-        return {"models": [model.to_dict() for model in discovered], "count": len(discovered), "source": "provider", "error": None}
+        models = service.catalog.models(provider_id)
+        return {"models": [model.to_dict() for model in models], "count": len(models), "source": "provider", "error": None}
     except Exception as exc:
         fallback = service.registry.list_models(provider_id)
+        if isinstance(exc, httpx.HTTPStatusError):
+            reason = f"HTTP {exc.response.status_code}"
+        elif isinstance(exc, ValueError):
+            reason = str(exc)
+        else:
+            reason = type(exc).__name__
         return {
-            "models": [model.to_dict() for model in fallback],
+            "models": [model.to_dict() for model in service.catalog.models(provider_id)],
             "count": len(fallback),
             "source": "fallback",
-            "error": f"Could not fetch model list. Enter model ID manually. ({type(exc).__name__})",
+            "error": f"Could not fetch model list. Showing cached or starter models; enter a model ID manually if needed. ({reason})",
         }
 
 
@@ -130,25 +191,8 @@ async def save_selection(body: SelectionRequest, request: Request) -> dict[str, 
     current = service.registry.route_for_task("code_generation")
     try:
         definition = service.registry.definition(body.provider_id)
-        _validate_agent_model(service, body.provider_id, body.model_id)
-        fallback_enabled = current.fallback_enabled if body.fallback_enabled is None else body.fallback_enabled
-        fallback_provider_id = body.fallback_provider_id
-        if "fallback_provider_id" not in body.model_fields_set:
-            candidate = current.fallback_provider_id
-            if candidate:
-                try:
-                    same_category = service.registry.definition(candidate).local == definition.local
-                except ValueError:
-                    same_category = False
-                fallback_provider_id = candidate if same_category and candidate != body.provider_id else None
-            if fallback_enabled and not fallback_provider_id:
-                fallback_provider_id = next(
-                    (candidate_id for candidate_id in service.registry.fallback_provider_ids(local_only=definition.local)
-                     if candidate_id != body.provider_id),
-                    None,
-                )
-        if not fallback_enabled:
-            fallback_provider_id = None
+        fallback_enabled = False
+        fallback_provider_id = None
         route = ModelRoute(
             task_type="code_generation",
             provider_id=body.provider_id,
@@ -180,14 +224,12 @@ async def save_route(body: RouteRequest, request: Request) -> dict[str, Any]:
         raise APIError(422, "MODEL_TASK_TYPE_INVALID", "Unknown model task type.", {"task_type": body.task_type})
     service = _router_service(request)
     try:
-        if body.task_type == "code_generation":
-            _validate_agent_model(service, body.provider_id, body.model_id)
         route = ModelRoute(
             task_type=body.task_type,  # type: ignore[arg-type]
             provider_id=body.provider_id,
             model_id=body.model_id,
-            fallback_enabled=body.fallback_enabled,
-            fallback_provider_id=body.fallback_provider_id,
+            fallback_enabled=False,
+            fallback_provider_id=None,
             local_only=body.local_only,
         )
         service.registry.save_route(route)
@@ -196,17 +238,6 @@ async def save_route(body: RouteRequest, request: Request) -> dict[str, Any]:
     except ModelRouterStorageError as exc:
         raise APIError(500, "MODEL_SETTINGS_WRITE_FAILED", "Model route could not be saved safely.") from exc
     return {"route": route.to_dict()}
-
-
-def _validate_agent_model(service: ModelRouterService, provider_id: str, model_id: str) -> None:
-    model = service.registry.model_info(provider_id, model_id)
-    if model is not None and model.agent_compatible is False:
-        raise APIError(
-            422,
-            "MODEL_AGENT_CAPABILITY_UNSUPPORTED",
-            "This model does not advertise structured JSON or tool-calling support required by Forge Agent.",
-            {"provider_id": provider_id, "model_id": model_id},
-        )
 
 
 @router.post("/test", responses={**error_responses(422, 502, 500), "default": {"model": ErrorResponse}})

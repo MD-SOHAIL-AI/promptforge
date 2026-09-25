@@ -1,45 +1,71 @@
 "use client";
 
-import { CircuitBoard, ChevronDown, Code2, Command, Home, Radio, Search, Settings, Sparkles, TerminalSquare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import { CommandCenter } from "@/components/nexus/command-center";
-import { ForgeCore, type ForgeCoreState } from "@/components/nexus/forge-core";
-import { NexusHome } from "@/components/nexus/nexus-home";
+import {
+  CircuitBoard,
+  Code2,
+  FileDiff,
+  FolderGit2,
+  FolderOpen,
+  Hammer,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Sparkles,
+  SquareTerminal,
+  Trash2,
+  X,
+} from "lucide-react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { ChatCanvas } from "@/components/nexus/chat-canvas";
 import { TaskCanvas } from "@/components/nexus/task-canvas";
-import { TaskCenter } from "@/components/nexus/task-center";
-import { UniversalComposer, type ForgeMode } from "@/components/nexus/universal-composer";
-import { BuildCanvas, CodeCanvas, HardwareCanvas, ReviewCanvas, SerialCanvas, TerminalCanvas, type NexusCanvas } from "@/components/nexus/work-canvases";
-import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
-import { FxOverlay } from "@/components/ui/fx-overlay";
-import { LiveRegion, announce } from "@/components/ui/live-region";
+import {
+  BuildCanvas,
+  CodeCanvas,
+  HardwareCanvas,
+  ReviewCanvas,
+  SerialCanvas,
+  TerminalCanvas,
+  type NexusCanvas,
+} from "@/components/nexus/work-canvases";
 import { SettingsPage } from "@/components/settings/settings-page";
 import type { SettingsCategory } from "@/components/settings/types";
+import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
+import { useChatSession } from "@/hooks/use-chat-session";
 import { useForgeAgentSession } from "@/hooks/use-forge-agent-session";
 import { useForgeXSettings } from "@/hooks/use-forgex-settings";
 import { usePromptForgeWorkspace } from "@/hooks/use-promptforge-workspace";
+import { useModelRuntimeState } from "@/hooks/use-model-runtime-state";
 import { promptForgeApi } from "@/lib/api";
-import { formatCombo, useShortcuts, type ShortcutDefinition } from "@/lib/shortcuts";
-import type { DetectedBoard, HealthResponse, ModelProviderResponse, ModelRouteResponse, ProjectResponse, ProviderModelsResponse } from "@/types";
-
-type NexusView = "home" | "task" | "settings" | Exclude<NexusCanvas, "task">;
-
-const ALL_VIEWS = ["home", "task", "code", "build", "review", "hardware", "serial", "terminal", "settings"] as const satisfies readonly NexusView[];
-
-const NUMBERED_VIEWS = ["home", "task", "code", "hardware", "serial", "build", "review", "terminal"] as const satisfies readonly NexusView[];
-
-function viewFromHash(hash: string): NexusView | null {
-  const id = hash.replace(/^#/, "");
-  return (ALL_VIEWS as readonly string[]).includes(id) ? (id as NexusView) : null;
-}
+import type {
+  DetectedBoard,
+  ProjectResponse,
+} from "@/types";
 
 function boardIdFromProject(project: ProjectResponse | null) {
   if (!project) return null;
   const metadataBoard = project.metadata?.board;
-  if (typeof metadataBoard === "string" && metadataBoard && metadataBoard !== "UNKNOWN") return metadataBoard;
+  if (
+    typeof metadataBoard === "string" &&
+    metadataBoard &&
+    metadataBoard !== "UNKNOWN"
+  )
+    return metadataBoard;
   const platformio = project.metadata?.platformio;
-  if (platformio && typeof platformio === "object" && "environments" in platformio) {
-    const environments = (platformio as { environments?: Array<{ board?: string }> }).environments;
+  if (
+    platformio &&
+    typeof platformio === "object" &&
+    "environments" in platformio
+  ) {
+    const environments = (
+      platformio as { environments?: Array<{ board?: string }> }
+    ).environments;
     const board = environments?.find((environment) => environment.board)?.board;
     if (board) return board;
   }
@@ -52,265 +78,704 @@ function boardIdFromDetected(board: DetectedBoard | null) {
   if (normalized === "ESP32") return "esp32dev";
   if (normalized === "ESP32-S3") return "esp32-s3-devkitc-1";
   if (normalized === "ESP32-C3") return "esp32-c3-devkitm-1";
-  if (normalized === "ARDUINO_UNO" || normalized === "ARDUINO UNO") return "uno";
+  if (normalized === "ARDUINO_UNO" || normalized === "ARDUINO UNO")
+    return "uno";
   return board.board_type;
 }
 
-function coreState(enabled: boolean, runStatus?: string, active?: string | null): ForgeCoreState {
-  if (!enabled) return "offline";
-  if (["failed", "blocked", "timed_out"].includes(runStatus ?? "")) return "error";
-  if (runStatus === "awaiting_flash_confirmation") return "waiting";
-  if (runStatus === "completed") return "complete";
-  if (active?.toLowerCase().includes("build")) return "building";
-  if (["running", "queued", "cancelling"].includes(runStatus ?? "")) return "working";
-  return "idle";
-}
+type View = "chat" | "agent" | "projects" | "settings";
+type Detail = Exclude<NexusCanvas, "task">;
 
-const navItems = [
-  { id: "home" as const, label: "Home", icon: Home },
-  { id: "task" as const, label: "Forge", icon: Sparkles },
-  { id: "code" as const, label: "Workspace", icon: Code2 },
-  { id: "hardware" as const, label: "Hardware", icon: CircuitBoard },
-  { id: "serial" as const, label: "Live device", icon: Radio },
+const WORKSPACE_TABS: Array<{ id: Detail; label: string; icon: typeof Code2; shortcut?: string }> = [
+  { id: "code", label: "Files", icon: FolderOpen, shortcut: "Ctrl+Shift+E" },
+  { id: "review", label: "Changes", icon: FileDiff, shortcut: "Ctrl+Shift+G" },
+  { id: "build", label: "Build", icon: Hammer },
+  { id: "hardware", label: "Device", icon: CircuitBoard },
+  { id: "terminal", label: "Terminal", icon: SquareTerminal, shortcut: "Ctrl+`" },
 ];
-
 export function NexusShell() {
   const dialogs = useForgeXDialogs();
   const workspace = usePromptForgeWorkspace();
   const settingsState = useForgeXSettings();
-  const agent = useForgeAgentSession(workspace.activeProject?.project_id ?? null);
-  const [view, setView] = useState<NexusView>("home");
-  const [selectedBoardPort, setSelectedBoardPort] = useState<string | null>(null);
-  const [tasksOpen, setTasksOpen] = useState(false);
-  const [commandOpen, setCommandOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quickMode, setQuickMode] = useState<ForgeMode>("auto");
-  const [focusMode, setFocusMode] = useState(false);
-  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("general");
-  const [modelProviders, setModelProviders] = useState<ModelProviderResponse[]>([]);
-  const [modelRoutes, setModelRoutes] = useState<ModelRouteResponse[]>([]);
-  const [connection, setConnection] = useState<HealthResponse | null>(null);
-  const [checkingHealth, setCheckingHealth] = useState(false);
-
-  const selectedBoard = useMemo(() => workspace.detectedBoards.find((board) => board.port === selectedBoardPort) ?? workspace.detectedBoards[0] ?? null, [selectedBoardPort, workspace.detectedBoards]);
-  const selectedBoardId = boardIdFromProject(workspace.activeProject) ?? boardIdFromDetected(selectedBoard);
-  const selectedBoardLabel = selectedBoard ? `${selectedBoard.board_type} · ${selectedBoard.port}` : selectedBoardId ?? "No device";
-  const activeEnvironment = typeof workspace.activeProject?.metadata?.active_environment === "string" ? workspace.activeProject.metadata.active_environment : null;
-  const running = ["running", "queued", "cancelling"].includes(agent.run?.status ?? "");
-  const agentCore = coreState(agent.enabled, agent.run?.status, agent.currentActivity?.label);
-  const activeModelRoute = useMemo(() => modelRoutes.find((route) => route.task_type === "code_generation") ?? null, [modelRoutes]);
-
-  const refreshModelRouter = useCallback(async () => {
-    try {
-      const [providers, routes] = await Promise.all([promptForgeApi.modelProviders(), promptForgeApi.modelRoutes()]);
-      setModelProviders(Array.isArray(providers.providers) ? providers.providers : []);
-      setModelRoutes(Array.isArray(routes.routes) ? routes.routes : []);
-    } catch {
-      setModelProviders([]);
-      setModelRoutes([]);
-    }
-  }, []);
-
-  useEffect(() => { void refreshModelRouter(); }, [refreshModelRouter]);
-  useEffect(() => { if (!selectedBoardPort && workspace.detectedBoards[0]) setSelectedBoardPort(workspace.detectedBoards[0].port); }, [selectedBoardPort, workspace.detectedBoards]);
-
-  const loadProviderModels = useCallback((providerId: string): Promise<ProviderModelsResponse> => promptForgeApi.providerModels(providerId), []);
-
-  const changeChatModel = useCallback(async (providerId: string, modelId: string) => {
-    const current = modelRoutes.find((route) => route.task_type === "code_generation");
-    const result = await promptForgeApi.saveModelSelection({
-      provider_id: providerId,
-      model_id: modelId,
-      fallback_enabled: current?.fallback_enabled ?? true,
-    });
-    const nextRoute: ModelRouteResponse = {
-      task_type: "code_generation",
-      provider_id: result.selection.provider_id,
-      model_id: result.selection.model_id,
-      fallback_enabled: result.selection.fallback_enabled,
-      fallback_provider_id: result.selection.fallback_provider_id,
-      local_only: result.selection.local_only,
-    };
-    setModelRoutes((currentRoutes) => [nextRoute, ...currentRoutes.filter((route) => route.task_type !== "code_generation")]);
-    await refreshModelRouter();
-  }, [modelRoutes, refreshModelRouter]);
-
-  const viewRef = useRef<NexusView>("home");
-  useEffect(() => { viewRef.current = view; }, [view]);
-
+  const agent = useForgeAgentSession(
+    workspace.activeProject?.project_id ?? null,
+  );
+  const chat = useChatSession();
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const [view, setView] = useState<View>("chat");
+  const [sidebar, setSidebar] = useState(true);
+  const [narrow, setNarrow] = useState(false);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [draft, setDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedBoardPort, setSelectedBoardPort] = useState<string | null>(
+    null,
+  );
+  const [settingsCategory, setSettingsCategory] =
+    useState<SettingsCategory>("general");
+  const modelRuntime = useModelRuntimeState();
+  const modelProviders = modelRuntime.providers;
+  const modelRoutes = modelRuntime.routes;
+  const modelCatalog = modelRuntime.catalog;
+  const modelSelecting = modelRuntime.selecting;
+  const selectedBoard =
+    workspace.detectedBoards.find((b) => b.port === selectedBoardPort) ??
+    workspace.detectedBoards[0] ??
+    null;
+  const selectedBoardId =
+    boardIdFromProject(workspace.activeProject) ??
+    boardIdFromDetected(selectedBoard);
+  const activeEnvironment =
+    typeof workspace.activeProject?.metadata?.active_environment === "string"
+      ? workspace.activeProject.metadata.active_environment
+      : null;
+  const running = ["running", "queued", "cancelling"].includes(
+    agent.run?.status ?? "",
+  );
+  const workspaceFileCount = workspace.entries.length;
+  // A run exposes only the durable ChangeSet identifier. The file count is
+  // loaded by the review canvas; treating the identifier as an embedded
+  // ChangeSet caused the renderer contract to drift from the API.
+  const workspaceChangedCount = agent.run
+    ? agent.run.created_file_count + agent.run.modified_file_count + agent.run.deleted_file_count
+    : 0;
+  const openWorkspaceDock = useCallback((tab?: Detail) => {
+    const next = tab ?? detail ?? "code";
+    setDetail(next);
+    if (typeof window !== "undefined") localStorage.setItem("forgex-workspace-dock-tab", next);
+  }, [detail]);
+  const refreshModels = modelRuntime.refresh;
+  const loadModels = modelRuntime.loadModels;
   useEffect(() => {
-    const applyHash = () => {
-      const next = viewFromHash(window.location.hash);
-      if (next && next !== viewRef.current) setView(next);
-    };
-    applyHash();
-    window.addEventListener("hashchange", applyHash);
-    return () => window.removeEventListener("hashchange", applyHash);
-  }, []);
-
+    void refreshModels().catch(() => null);
+  }, [refreshModels]);
   useEffect(() => {
-    if (window.location.hash !== `#${view}`) window.history.replaceState(null, "", `#${view}`);
-  }, [view]);
-
-  const toggleQuickForge = useCallback(() => setQuickOpen((value) => !value), []);
-  const toggleFocusMode = useCallback(() => {
-    setFocusMode((value) => {
-      announce(value ? "Focus mode off" : "Focus mode on");
-      return !value;
-    });
+    const saved = localStorage.getItem("forgex-destination");
+    if (["chat", "agent", "projects", "settings"].includes(saved ?? ""))
+      setView(saved as View);
+    const media = matchMedia("(max-width: 1279px)");
+    const update = () => {
+      setNarrow(media.matches);
+      if (media.matches) setSidebar(false);
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
-
-  const shortcuts = useMemo<ShortcutDefinition[]>(() => [
-    { id: "command-palette", combo: "mod+k", allowInInput: true, description: "Open command palette", handler: () => setCommandOpen(true) },
-    { id: "quick-forge", combo: "alt+space", allowInInput: true, description: "Toggle Quick Forge HUD", handler: toggleQuickForge },
-    { id: "focus-mode", combo: "mod+shift+f", allowInInput: true, description: "Toggle focus mode (hide chrome)", handler: toggleFocusMode },
-    ...NUMBERED_VIEWS.map((target, index) => ({
-      id: `view-${target}`,
-      combo: `mod+${index + 1}`,
-      description: `Go to ${target} view`,
-      handler: () => setView(target),
-    })),
-    { id: "open-settings", combo: "mod+,", description: "Open settings", handler: () => setView("settings") },
-    {
-      id: "close-layer",
-      combo: "escape",
-      allowInInput: true,
-      description: "Close topmost layer or exit focus mode",
-      handler: () => {
-        if (commandOpen) setCommandOpen(false);
-        else if (quickOpen) setQuickOpen(false);
-        else if (tasksOpen) setTasksOpen(false);
-        else if (focusMode) setFocusMode(false);
-      },
-    },
-  ], [commandOpen, focusMode, quickOpen, tasksOpen, toggleFocusMode, toggleQuickForge]);
-  useShortcuts(shortcuts);
-
-  useEffect(() => { if (view !== "task") setFocusMode(false); }, [view]);
-
-  const recheckConnection = useCallback(async () => {
-    setCheckingHealth(true);
-    announce("Checking backend connection…");
+  useEffect(() => {
+    if (!detail || typeof window === "undefined") return;
+    localStorage.setItem("forgex-workspace-dock-tab", detail);
+  }, [detail]);
+  useEffect(() => {
+    if (!narrow || (!detail && !sidebar)) return;
+    const root =
+      detail && view === "agent" ? overlayRef.current : sidebarRef.current;
+    if (!root) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () =>
+      Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+        ),
+      ).filter((el) => el.getClientRects().length);
+    focusable()[0]?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      const first = items[0],
+        last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    root.addEventListener("keydown", trap);
+    return () => {
+      root.removeEventListener("keydown", trap);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [narrow, detail, sidebar, view]);
+  const navigate = (next: View) => {
+    setView(next);
+    localStorage.setItem("forgex-destination", next);
+    if (narrow) setSidebar(false);
+  };
+  const report = useCallback(
+    (error: unknown) =>
+      dialogs.message({
+        title: "Could not complete this action",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      }),
+    [dialogs],
+  );
+  const selectModel = async (provider: string, model: string) => {
     try {
-      const health = await promptForgeApi.health();
-      setConnection(health);
-      announce(`Backend online · ${health.status} · v${health.version}`);
-    } catch {
-      setConnection(null);
-      announce("Backend unreachable");
-    } finally {
-      setCheckingHealth(false);
+      if (agent.activeSession) {
+        await promptForgeApi.configureConversation(agent.activeSession.session_id, {
+          provider_id: provider,
+          model_id: model,
+        });
+        await agent.refreshSession(agent.activeSession.session_id);
+      }
+      await modelRuntime.saveDefaultSelection(provider, model);
+    } catch (error) {
+      await report(error);
     }
-  }, []);
-
-  const openProject = useCallback(async () => {
+  };
+  const openProject = async () => {
     if (!window.forgexDesktop?.openProject) {
-      await dialogs.message({ title: "Desktop app required", description: "Open Project is available in the ForgeX desktop app." });
+      await dialogs.message({
+        title: "Open a project in ForgeX Desktop",
+        description:
+          "The desktop folder picker connects a local project. Existing projects are available below.",
+      });
       return;
     }
     const result = await window.forgexDesktop.openProject();
     if (!result.canceled && result.path) {
       await workspace.importProjectPath(result.path);
-      setView("home");
+      navigate("agent");
     }
-  }, [dialogs, workspace]);
-
-  const setCanvas = (canvas: NexusCanvas) => {
-    if (canvas === "task") setView("task");
-    else setView(canvas);
   };
-
-  const backToTask = () => setView("task");
-  const openCanvas = (canvas: NexusCanvas) => setCanvas(canvas);
-
-  const sendForge = useCallback(async (prompt: string, mode: ForgeMode = "auto") => {
-    if (!workspace.activeProject) return;
-    setView("task");
-    await agent.sendMessage(prompt, undefined, {
-      autonomy: mode === "plan" ? "plan_only" : mode === "ask" ? "staged_changes" : "auto",
-      boardPort: selectedBoard?.port ?? null,
-      boardType: selectedBoardId,
-      environment: activeEnvironment,
+  const histories = view === "agent" ? agent.sessions : chat.sessions;
+  const selectedSession =
+    view === "agent"
+      ? agent.activeSession?.session_id
+      : chat.session?.session_id;
+  const visibleHistory = useMemo(
+    () =>
+      histories.filter((s) =>
+        s.title.toLowerCase().includes(search.toLowerCase()),
+      ),
+    [histories, search],
+  );
+  const newConversation = async () => {
+    try {
+      if (view === "agent") {
+        if (!workspace.activeProject) {
+          navigate("projects");
+          return;
+        }
+        setDraft("");
+        await agent.createSession();
+      } else {
+        await chat.create();
+        navigate("chat");
+      }
+    } catch (e) {
+      await report(e);
+    }
+  };
+  const rename = async (id: string, title: string) => {
+    const next = await dialogs.input({
+      title: "Rename conversation",
+      label: "Name",
+      defaultValue: title,
     });
-  }, [activeEnvironment, agent, selectedBoard, selectedBoardId, workspace.activeProject]);
-
-  const beginTask = (prompt?: string) => {
-    setView("task");
-    if (prompt) void sendForge(prompt);
+    if (!next) return;
+    try {
+      await (view === "agent" ? promptForgeApi.configureConversation : promptForgeApi.configureChat)(id, { title: next });
+      if (view === "agent") {
+        await agent.refreshSessions();
+        if (selectedSession === id) await agent.refreshSession(id);
+      } else {
+        await chat.refresh();
+        if (selectedSession === id) await chat.select(id);
+      }
+    } catch (e) {
+      await report(e);
+    }
   };
-
-  const navigate = (target: "home" | "task" | "settings") => setView(target);
-
-  const healthSnapshot = connection ?? workspace.health;
-  const healthy = Boolean(healthSnapshot);
-  const healthDetail = healthSnapshot
-    ? `${healthSnapshot.status} · v${healthSnapshot.version} · workflow ${healthSnapshot.services.workflow ? "ok" : "down"} · planner ${healthSnapshot.services.planner ? "ok" : "down"}`
-    : "Backend unreachable — click to retry";
-  const footerChip = "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]";
-
+  const remove = async (id: string) => {
+    if (
+      !(await dialogs.confirmAction({
+        title: "Delete conversation?",
+        description: "This removes its saved messages. Project files are kept.",
+        confirmText: "Delete",
+        variant: "danger",
+      }))
+    )
+      return;
+    try {
+      await (view === "agent" ? promptForgeApi.deleteConversation : promptForgeApi.deleteChat)(id);
+      if (view === "agent") {
+        const items = await agent.refreshSessions();
+        if (selectedSession === id) {
+          if (items[0]) await agent.resumeSession(items[0].session_id);
+          else await agent.createSession();
+        }
+      } else {
+        const items = await chat.refresh();
+        if (selectedSession === id) {
+          if (items[0]) await chat.select(items[0].session_id);
+          else await chat.create();
+        }
+      }
+    } catch (e) {
+      await report(e);
+    }
+  };
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSidebar(true);
+        window.setTimeout(
+          () => document.getElementById("conversation-search")?.focus(),
+          0,
+        );
+      }
+      if (view === "agent" && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        openWorkspaceDock("code");
+      }
+      if (view === "agent" && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        openWorkspaceDock("review");
+      }
+      if (view === "agent" && (e.ctrlKey || e.metaKey) && e.key === "`") {
+        e.preventDefault();
+        openWorkspaceDock("terminal");
+      }
+      if (e.key === "Escape") {
+        setDetail(null);
+        if (narrow) setSidebar(false);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [narrow, openWorkspaceDock, view]);
+  const openDetail = (canvas: NexusCanvas) =>
+    setDetail(canvas === "task" ? null : canvas);
+  const detailView =
+    detail === "code" ? (
+      <CodeCanvas
+        workspace={workspace}
+        run={agent.run}
+        applyingChanges={agent.applyingChanges}
+        onBack={() => setDetail(null)}
+        onOpenReview={() => setDetail("review")}
+        onApply={agent.applyChanges}
+        onApplied={workspace.refreshProjectFiles}
+      />
+    ) : detail === "review" ? (
+      <ReviewCanvas
+        run={agent.run}
+        applyingChanges={agent.applyingChanges}
+        onBack={() => setDetail(null)}
+        onApply={agent.applyChanges}
+        onApplied={workspace.refreshProjectFiles}
+      />
+    ) : detail === "build" ? (
+      <BuildCanvas
+        workspace={workspace}
+        run={agent.run}
+        onBack={() => setDetail(null)}
+        onOpenTerminal={() => setDetail("terminal")}
+        onFlash={() => {
+          if (agent.run?.status === "awaiting_flash_confirmation") {
+            navigate("agent");
+            setDetail(null);
+          } else {
+            void workspace.flashActiveProject(selectedBoard);
+          }
+        }}
+      />
+    ) : detail === "hardware" ? (
+      <HardwareCanvas
+        workspace={workspace}
+        selectedBoard={selectedBoard}
+        onSelectBoard={setSelectedBoardPort}
+        onBack={() => setDetail(null)}
+      />
+    ) : detail === "serial" ? (
+      <SerialCanvas
+        workspace={workspace}
+        selectedBoard={selectedBoard}
+        onBack={() => setDetail("hardware")}
+      />
+    ) : detail === "terminal" ? (
+      <TerminalCanvas workspace={workspace} onBack={() => setDetail(null)} />
+    ) : null;
+  const title =
+    view === "chat"
+      ? (chat.session?.title ?? "New chat")
+      : view === "agent"
+        ? (agent.activeSession?.title ?? "New task")
+        : view === "projects"
+          ? "Projects"
+          : "Settings";
   return (
-    <main className="fx-nexus-shell flex h-dvh min-w-0 flex-col overflow-hidden text-[var(--fx-text)]">
-      <header className={`fx-nexus-global-header ${focusMode ? "hidden" : "flex"} h-12 shrink-0 items-center gap-3 border-b border-[var(--fx-border-soft)] px-3 md:px-4`}>
-        <button onClick={() => setView("home")} aria-label="ForgeX home" className="flex shrink-0 items-center gap-2 rounded-xl pr-2 text-[var(--fx-text)]"><span className="grid h-7 w-7 place-items-center rounded-[10px] bg-[var(--fx-accent)] text-white shadow-[0_0_20px_var(--fx-glow)]"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /></span><span className="hidden text-[12px] font-bold tracking-[-.02em] sm:inline">ForgeX</span></button>
-
-        <div className="hidden h-5 w-px bg-[var(--fx-border-soft)] sm:block" />
-        <span className="relative inline-flex min-w-0 max-w-[190px] items-center">
-          <select aria-label="Active project" value={workspace.activeProject?.project_id ?? ""} onChange={(event) => { const project = workspace.projects.find((item) => item.project_id === event.target.value); if (project) workspace.setActiveProject(project); }} className="w-full min-w-0 cursor-pointer appearance-none truncate rounded-lg border border-[var(--fx-border-soft)] bg-[var(--fx-input)] py-1 pl-2 pr-6 text-[10px] font-medium text-[var(--fx-text)] outline-none transition-colors hover:border-[var(--fx-border)] hover:text-[var(--fx-text)] focus-visible:border-[var(--fx-accent)]">
-            {!workspace.activeProject ? <option value="">No project</option> : null}
-            {workspace.projects.map((project) => <option key={project.project_id} value={project.project_id}>{project.project_name}</option>)}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-1.5 h-3 w-3 text-[var(--fx-text-muted)]" aria-hidden="true" />
-        </span>
-
-        <button onClick={() => setCommandOpen(true)} className="mx-auto hidden h-8 w-full max-w-[460px] items-center gap-2 rounded-xl border border-[var(--fx-border-soft)] bg-[color-mix(in_srgb,var(--fx-panel)_64%,transparent)] px-3 text-[10px] text-[var(--fx-text-muted)] hover:border-[var(--fx-border)] hover:bg-[var(--fx-hover)] md:flex"><Search className="h-3.5 w-3.5" aria-hidden="true" /><span className="min-w-0 flex-1 text-left">Search, command or ask Forge…</span><span className="rounded border border-[var(--fx-border-soft)] px-1.5 py-0.5 font-mono text-[8px]">{formatCombo("mod+k")}</span></button>
-
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <button onClick={() => setView("hardware")} aria-label={`Device ${selectedBoardLabel} — open hardware view`} className={`hidden items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[9px] sm:flex ${selectedBoard ? "border-[color-mix(in_srgb,var(--fx-info)_28%,var(--fx-border))] bg-[color-mix(in_srgb,var(--fx-info)_6%,transparent)] text-[var(--fx-text)]" : "border-[var(--fx-border-soft)] text-[var(--fx-text-muted)]"}`}><span className={`h-1.5 w-1.5 rounded-full ${selectedBoard ? "bg-[var(--fx-success)] shadow-[0_0_8px_var(--fx-success)]" : "bg-[var(--fx-text-muted)]"}`} /><span className="max-w-[135px] truncate">{selectedBoardLabel}</span></button>
-          <button onClick={() => setView("task")} aria-label="Forge task view" className="grid h-8 w-8 place-items-center rounded-xl hover:bg-[var(--fx-hover)]" title="Forge"><ForgeCore state={agentCore} size="sm" label={false} /></button>
+    <main className="fx-product-shell">
+      {sidebar && narrow ? (
+        <button
+          className="fx-sidebar-scrim"
+          aria-label="Close navigation"
+          onClick={() => setSidebar(false)}
+        />
+      ) : null}
+      <aside
+        ref={sidebarRef}
+        inert={!sidebar}
+        role={narrow ? "dialog" : undefined}
+        aria-modal={narrow && sidebar ? true : undefined}
+        className={`fx-sidebar ${sidebar ? "is-open" : "is-closed"}`}
+        aria-label="Main navigation"
+      >
+        <div className="fx-sidebar-brand">
+          <Sparkles size={19} />
+          <strong>ForgeX</strong>
+          <button
+            className="fx-quiet-button ml-auto"
+            aria-label="Collapse navigation"
+            onClick={() => setSidebar(false)}
+          >
+            <PanelLeftClose size={17} />
+          </button>
         </div>
-      </header>
-
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <nav aria-label="Primary" className={`fx-nexus-nav ${focusMode ? "hidden" : "flex"} w-[54px] shrink-0 flex-col items-center border-r border-[var(--fx-border-soft)] py-2`}>
-          <div className="space-y-1">{navItems.map((item, index) => { const Icon = item.icon; const active = view === item.id; return <button key={item.id} onClick={() => setView(item.id)} aria-label={item.label} aria-current={active ? "page" : undefined} className={`fx-nexus-nav-button ${active ? "is-active" : ""}`} title={`${item.label} · ${formatCombo(`mod+${index + 1}`)}`}><Icon className="h-4 w-4" aria-hidden="true" /></button>; })}</div>
-          <div className="mt-auto space-y-1"><button onClick={() => setCommandOpen(true)} className="fx-nexus-nav-button md:hidden" title="Command center" aria-label="Command center"><Command className="h-4 w-4" aria-hidden="true" /></button><button onClick={() => setView("terminal")} aria-label="Console" aria-current={view === "terminal" ? "page" : undefined} className={`fx-nexus-nav-button ${view === "terminal" ? "is-active" : ""}`} title={`Console · ${formatCombo("mod+8")}`}><TerminalSquare className="h-4 w-4" aria-hidden="true" /></button><button onClick={() => setView("settings")} aria-label="Settings" aria-current={view === "settings" ? "page" : undefined} className={`fx-nexus-nav-button ${view === "settings" ? "is-active" : ""}`} title={`Settings · ${formatCombo("mod+,")}`}><Settings className="h-4 w-4" aria-hidden="true" /></button></div>
+        <nav>
+          {(
+            [
+              { id: "chat", label: "Chat", icon: MessageSquare },
+              { id: "agent", label: "Agent", icon: Sparkles },
+              { id: "projects", label: "Projects", icon: FolderOpen },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              className={`fx-nav-item ${view === item.id ? "is-selected" : ""}`}
+              aria-current={view === item.id ? "page" : undefined}
+              onClick={() => navigate(item.id)}
+            >
+              <item.icon size={17} />
+              <span>{item.label}</span>
+              {item.id === "agent" && running ? (
+                <span
+                  className="fx-working-dot ml-auto"
+                  aria-label="Agent is working"
+                />
+              ) : null}
+            </button>
+          ))}
         </nav>
-
-        <section className="fx-nexus-canvas relative min-h-0 min-w-0 flex-1 overflow-hidden">
-          {view === "home" ? <NexusHome agent={agent} workspace={workspace} selectedBoardLabel={selectedBoardLabel} modelProviders={modelProviders} modelRoute={activeModelRoute} loadProviderModels={loadProviderModels} onModelChange={changeChatModel} onBeginTask={beginTask} onOpenProject={() => void openProject()} onOpenCode={() => setView("code")} onOpenHardware={() => setView("hardware")} /> : null}
-          {view === "task" ? <TaskCanvas agent={agent} projectName={workspace.activeProject?.project_name ?? null} selectedBoard={selectedBoard} selectedBoardId={selectedBoardId} activeEnvironment={activeEnvironment} onOpenCanvas={openCanvas} onOpenSessions={() => setTasksOpen(true)} onWorkspaceChanged={() => void workspace.refreshProjectFiles()} modelProviders={modelProviders} modelRoute={activeModelRoute} loadProviderModels={loadProviderModels} onModelChange={changeChatModel} focused={focusMode} onFocusToggle={() => setFocusMode((value) => !value)} /> : null}
-          {view === "code" ? <CodeCanvas workspace={workspace} onBack={backToTask} /> : null}
-          {view === "build" ? <BuildCanvas workspace={workspace} run={agent.run} onBack={backToTask} onOpenTerminal={() => setView("terminal")} onFlash={() => agent.run?.status === "awaiting_flash_confirmation" ? void agent.confirmFlash({ port: selectedBoard?.port, boardType: selectedBoardId, environment: activeEnvironment }) : selectedBoard ? void workspace.flashActiveProject(selectedBoard) : undefined} /> : null}
-          {view === "review" ? <ReviewCanvas run={agent.run} onBack={backToTask} onApply={() => agent.applyChanges()} onApplied={() => { void workspace.refreshProjectFiles(); setView("task"); }} /> : null}
-          {view === "hardware" ? <HardwareCanvas workspace={workspace} selectedBoard={selectedBoard} onSelectBoard={setSelectedBoardPort} onBack={() => setView("home")} /> : null}
-          {view === "serial" ? <SerialCanvas workspace={workspace} selectedBoard={selectedBoard} onBack={() => setView("hardware")} /> : null}
-          {view === "terminal" ? <TerminalCanvas workspace={workspace} onBack={backToTask} /> : null}
-          {view === "settings" ? <SettingsPage selectedCategory={settingsCategory} providers={modelProviders} routes={modelRoutes} activeProject={workspace.activeProject} health={workspace.health} settingsState={settingsState} onSelectCategory={setSettingsCategory} onRefreshModelRouter={refreshModelRouter} onLog={workspace.addLog} onClose={() => setView("home")} /> : null}
-        </section>
-      </div>
-
-      <footer className={`fx-nexus-status ${focusMode ? "hidden" : "flex"} h-6 shrink-0 items-center gap-1 border-t border-[var(--fx-border-soft)] px-3 font-mono text-[11px] text-[var(--fx-text-muted)]`}>
-        <button type="button" onClick={() => void recheckConnection()} disabled={checkingHealth} title={healthDetail} aria-label={`Backend connection: ${healthy ? "ready" : "offline"} — re-check now`} className={footerChip}>
-          <span className={`h-1.5 w-1.5 rounded-full ${healthy ? "bg-[var(--fx-success)]" : "bg-[var(--fx-error)]"} ${checkingHealth ? "animate-pulse" : ""}`} aria-hidden="true" />
-          {checkingHealth ? "checking…" : healthy ? "ready" : "backend offline"}
+        {view === "agent" ? (
+          <div className="fx-sidebar-workspace">
+            <div className="fx-sidebar-section-label">Workspace</div>
+            {workspace.activeProject ? (
+              <button className="fx-workspace-card" onClick={() => openWorkspaceDock("code")}>
+                <span className="fx-workspace-card-icon"><FolderGit2 size={15} /></span>
+                <span className="fx-workspace-card-copy">
+                  <strong title={workspace.activeProject.project_name}>{workspace.activeProject.project_name}</strong>
+                  <small title={workspace.activeProject.project_path}>{workspace.activeProject.project_path}</small>
+                  <span>
+                    <em>{selectedBoardId ?? workspace.activeProject.target_board ?? "Target unset"}</em>
+                    <em>{workspaceFileCount} files</em>
+                    {workspaceChangedCount ? <em>{workspaceChangedCount} changed</em> : null}
+                  </span>
+                </span>
+              </button>
+            ) : (
+              <button className="fx-workspace-card is-empty" onClick={() => void openProject().catch(report)}>
+                <span className="fx-workspace-card-icon"><FolderOpen size={15} /></span>
+                <span className="fx-workspace-card-copy"><strong>Choose workspace</strong><small>Open an embedded project folder</small></span>
+              </button>
+            )}
+          </div>
+        ) : null}
+        <button
+          className="fx-new-conversation"
+          onClick={() => void newConversation()}
+        >
+          <Plus size={16} />
+          New {view === "agent" ? "task" : "chat"}
         </button>
-        <button type="button" onClick={() => setView("hardware")} title={`Target board — open hardware · ${formatCombo("mod+4")}`} aria-label={`Target board ${workspace.activeProject?.target_board ?? "none"} — open hardware view`} className={footerChip}>{workspace.activeProject?.target_board ?? "no target"}</button>
-        {workspace.activeProject ? <button type="button" onClick={() => setView("build")} title="Framework — open build canvas" aria-label={`Framework ${workspace.activeProject.framework} — open build view`} className={`${footerChip} hidden sm:flex`}>{workspace.activeProject.framework}</button> : null}
-        <button type="button" onClick={() => setView("task")} title="Forge activity — open task view" aria-label={`Forge ${running ? "working" : "ready"} — open task view`} className={`${footerChip} ml-auto hidden sm:flex`}>{running ? agent.currentActivity?.label ?? "Forge working" : "Forge ready"}</button>
-        <button type="button" onClick={() => setView("serial")} title="Serial port — open live device" aria-label={`Serial port ${selectedBoard?.port ?? "none"} — open live device view`} className={footerChip}>{selectedBoard?.port ?? "no device"}</button>
-      </footer>
-
-      <TaskCenter agent={agent} open={tasksOpen} onClose={() => setTasksOpen(false)} onOpenTask={() => setView("task")} />
-      <CommandCenter open={commandOpen} onClose={() => setCommandOpen(false)} onNavigate={navigate} onCanvas={openCanvas} onOpenProject={() => void openProject()} onAskForge={(prompt) => void sendForge(prompt)} />
-
-      <FxOverlay open={quickOpen} onOpenChange={setQuickOpen} size="sm" title="Quick Forge">
-        <div className="space-y-3 p-3">
-          <div className="flex items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--fx-text-muted)]"><ForgeCore state={agentCore} size="sm" label={false} /> Ask without leaving your flow</div>
-          <UniversalComposer compact mode={quickMode} onModeChange={setQuickMode} onSubmit={(value) => { setQuickOpen(false); void sendForge(value, quickMode); }} running={running} onStop={() => void agent.cancel()} submitDisabled={!workspace.activeProject} placeholder="Ask Forge about the current project…" modelProviders={modelProviders} modelRoute={activeModelRoute} loadProviderModels={loadProviderModels} onModelChange={changeChatModel} />
+        <div className="fx-history-search">
+          <Search size={14} />
+          <input
+            id="conversation-search"
+            aria-label="Search conversations"
+            placeholder="Search conversations"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-      </FxOverlay>
-
-      <LiveRegion />
+        <div className="fx-history-label">
+          {view === "agent" ? "Project tasks" : "Recent chats"}
+        </div>
+        <div className="fx-history-list">
+          {visibleHistory.map((s) => (
+            <div
+              className={`fx-history-item ${selectedSession === s.session_id ? "is-selected" : ""}`}
+              key={s.session_id}
+            >
+              <button
+                title={s.title}
+                onClick={() => {
+                  void (
+                    view === "agent"
+                      ? agent.resumeSession(s.session_id)
+                      : chat.select(s.session_id)
+                  ).catch(report);
+                  if (narrow) setSidebar(false);
+                }}
+              >
+                {s.title}
+              </button>
+              <div className="fx-history-actions">
+                <button
+                  aria-label={`Rename ${s.title}`}
+                  onClick={() => void rename(s.session_id, s.title)}
+                >
+                  <Pencil size={12} />
+                </button>
+                <button
+                  aria-label={`Delete ${s.title}`}
+                  onClick={() => void remove(s.session_id)}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {!visibleHistory.length ? <p>No conversations yet.</p> : null}
+        </div>
+        <button
+          className={`fx-nav-item mt-auto ${view === "settings" ? "is-selected" : ""}`}
+          onClick={() => navigate("settings")}
+        >
+          <Settings size={17} />
+          Settings
+        </button>
+      </aside>
+      <section className="fx-main-workspace">
+        <header className="fx-product-header">
+          {!sidebar ? (
+            <button
+              className="fx-quiet-button"
+              aria-label="Open navigation"
+              onClick={() => setSidebar(true)}
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          ) : null}
+          <span className="min-w-0 flex-1 truncate" title={title}>
+            {title}
+          </span>
+          {view === "agent" ? (
+            <>
+              <select
+                aria-label="Active project"
+                value={workspace.activeProject?.project_id ?? ""}
+                onChange={(e) => {
+                  const p = workspace.projects.find(
+                    (item) => item.project_id === e.target.value,
+                  );
+                  if (p) workspace.setActiveProject(p);
+                }}
+              >
+                <option value="" disabled>
+                  Choose project
+                </option>
+                {workspace.projects.map((p) => (
+                  <option key={p.project_id} value={p.project_id}>
+                    {p.project_name}
+                  </option>
+                ))}
+              </select>
+              <span className="fx-header-context hidden lg:inline-flex" title="Configured target">
+                <CircuitBoard size={13} />
+                {selectedBoardId ?? "No target"}
+              </span>
+              {selectedBoard ? (
+                <span className="fx-header-context hidden xl:inline-flex" title="Connected device">
+                  <span className="fx-device-dot" />
+                  {selectedBoard.port}
+                </span>
+              ) : null}
+              <button
+                className={`fx-workspace-toggle ${detail ? "is-open" : ""}`}
+                aria-label={detail ? "Close workspace" : "Open workspace"}
+                aria-expanded={Boolean(detail)}
+                onClick={() => {
+                  if (detail) setDetail(null);
+                  else {
+                    const saved = typeof window !== "undefined" ? localStorage.getItem("forgex-workspace-dock-tab") : null;
+                    openWorkspaceDock(WORKSPACE_TABS.some((item) => item.id === saved) ? (saved as Detail) : "code");
+                  }
+                }}
+              >
+                {detail ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+                <span className="hidden sm:inline">Workspace</span>
+                {workspaceChangedCount ? <span className="fx-workspace-count">{workspaceChangedCount}</span> : null}
+              </button>
+            </>
+          ) : null}
+        </header>
+        <div className="fx-product-content">
+          <PanelGroup
+            direction="horizontal"
+            autoSaveId="forgex-conversation-panels"
+          >
+            <Panel defaultSize={52} minSize={30}>
+              <div className={view === "chat" ? "h-full" : "hidden"}>
+                <ChatCanvas
+                  chat={chat}
+                  projects={workspace.projects}
+                  providers={modelProviders}
+                  routes={modelRoutes}
+                  catalog={modelCatalog}
+                  onLoadModels={loadModels}
+                  onHandoff={(text, projectId) => {
+                    const project = workspace.projects.find(
+                      (p) => p.project_id === projectId,
+                    );
+                    if (project) workspace.setActiveProject(project);
+                    setDraft(text);
+                    navigate("agent");
+                  }}
+                />
+              </div>
+              <div className={view === "agent" ? "h-full" : "hidden"}>
+                <TaskCanvas
+                  agent={agent}
+                  projectName={workspace.activeProject?.project_name ?? null}
+                  selectedBoard={selectedBoard}
+                  selectedBoardId={selectedBoardId}
+                  activeEnvironment={activeEnvironment}
+                  modelProviders={modelProviders}
+                  modelRoutes={modelRoutes}
+                  modelCatalog={modelCatalog}
+                  modelSelecting={modelSelecting}
+                  onProviderModelsRequest={loadModels}
+                  onModelSelectionChange={selectModel}
+                  onOpenCanvas={openDetail}
+                  onViewFile={(path) => {
+                    void workspace.openFile(path);
+                    openDetail("code");
+                  }}
+                  onWorkspaceChanged={() =>
+                    void workspace.refreshProjectFiles()
+                  }
+                  initialDraft={draft}
+                  onDraftConsumed={() => setDraft("")}
+                />
+              </div>
+              {view === "projects" ? (
+                <div className="fx-project-page">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h1>Your projects</h1>
+                      <p>Open a workspace and bring an idea to life.</p>
+                    </div>
+                    <button
+                      className="fx-primary-action"
+                      onClick={() => void openProject().catch(report)}
+                    >
+                      <FolderOpen size={16} />
+                      Open folder
+                    </button>
+                  </div>
+                  <div className="fx-project-list">
+                    {workspace.projects.map((p) => (
+                      <button
+                        key={p.project_id}
+                        onClick={() => {
+                          workspace.setActiveProject(p);
+                          navigate("agent");
+                        }}
+                      >
+                        <FolderOpen size={20} />
+                        <span>
+                          <strong>{p.project_name}</strong>
+                          <small>{p.project_path}</small>
+                        </span>
+                        <span className="text-xs text-[var(--fx-text-muted)]">
+                          {p.target_board}
+                        </span>
+                      </button>
+                    ))}
+                    {!workspace.projects.length ? (
+                      <p className="py-16 text-center">
+                        Open a local folder to start your first project.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              {view === "settings" ? (
+                <SettingsPage
+                  selectedCategory={settingsCategory}
+                  providers={modelProviders}
+                  routes={modelRoutes}
+                  activeProject={workspace.activeProject}
+                  health={workspace.health}
+                  settingsState={settingsState}
+                  onSelectCategory={setSettingsCategory}
+                  onRefreshModelRouter={async () => {
+                    await refreshModels();
+                  }}
+                  onLog={workspace.addLog}
+                  onClose={() => navigate("chat")}
+                />
+              ) : null}
+            </Panel>
+            {view === "agent" && detail && !narrow ? (
+              <>
+                <PanelResizeHandle className="fx-detail-handle" />
+                <Panel defaultSize={38} minSize={28} maxSize={55}>
+                  <div className="fx-detail-pane fx-workspace-dock">
+                    <div className="fx-workspace-tabs" role="tablist" aria-label="Workspace tools">
+                      {WORKSPACE_TABS.map((item) => {
+                        const Icon = item.icon;
+                        const selected = detail === item.id || (item.id === "hardware" && detail === "serial");
+                        return (
+                          <button key={item.id} role="tab" aria-selected={selected} aria-keyshortcuts={item.shortcut} title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label} className={selected ? "is-selected" : ""} onClick={() => openWorkspaceDock(item.id)}>
+                            <Icon size={14} />
+                            <span>{item.label}</span>
+                            {item.id === "review" && workspaceChangedCount ? <em>{workspaceChangedCount}</em> : null}
+                          </button>
+                        );
+                      })}
+                      <button className="fx-workspace-tab-close" aria-label="Close workspace" onClick={() => setDetail(null)}><X size={14} /></button>
+                    </div>
+                    <div className="fx-workspace-dock-body">{detailView}</div>
+                  </div>
+                </Panel>
+              </>
+            ) : null}
+          </PanelGroup>
+        </div>
+        {view === "agent" && detail && narrow ? (
+          <div
+            ref={overlayRef}
+            className="fx-detail-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Workspace details"
+          >
+            <button
+              className="fx-detail-close"
+              aria-label="Close details"
+              onClick={() => setDetail(null)}
+            >
+              <X size={18} />
+            </button>
+            <div className="fx-workspace-tabs" role="tablist" aria-label="Workspace tools">
+              {WORKSPACE_TABS.map((item) => {
+                const Icon = item.icon;
+                const selected = detail === item.id || (item.id === "hardware" && detail === "serial");
+                return <button key={item.id} role="tab" aria-selected={selected} aria-keyshortcuts={item.shortcut} title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label} className={selected ? "is-selected" : ""} onClick={() => openWorkspaceDock(item.id)}><Icon size={14} /><span>{item.label}</span></button>;
+              })}
+            </div>
+            <div className="fx-workspace-dock-body">{detailView}</div>
+          </div>
+        ) : null}
+      </section>
     </main>
   );
 }

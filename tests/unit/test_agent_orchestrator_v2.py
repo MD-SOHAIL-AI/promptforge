@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -15,7 +17,7 @@ from backend.agent_runtime.memory import ProjectMemoryService
 from backend.agent_runtime.product_agent_service import ProductAgentRun, ProductAgentService
 from backend.agent_runtime.product_provider_registry import ProductProviderRegistry
 from backend.agent_runtime.risk import RiskAssessmentService
-from backend.agent_runtime.tool_contracts import ToolCall, ToolName
+from backend.agent_runtime.tool_contracts import RuntimeClassification, ToolCall, ToolName
 from backend.agent_runtime.tool_policy import ToolPolicyError, product_agent_policy
 from backend.changes import ChangeSetService
 from backend.model_router.credentials import MemoryCredentialStore
@@ -98,6 +100,86 @@ def test_store_unifies_chat_and_graph_event_sequence(tmp_path: Path) -> None:
     second = store.append_event("session-1", {"event_type": "node.started", "run_id": "run-1", "node_id": "planning"})
     assert (first["sequence"], second["sequence"]) == (1, 2)
     assert [item["event_type"] for item in store.events("session-1")] == ["activity.updated", "node.started"]
+
+
+def test_context_artifacts_are_incremental_verified_chains(tmp_path: Path) -> None:
+    store = AgentOrchestrationStore(tmp_path / "agent.sqlite3")
+
+    def digest(items: list[dict[str, object]]) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                items,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+
+    first_items = [
+        {"call_id": "one", "tool": "read_file", "status": "completed"},
+        {"call_id": "two", "tool": "grep_search", "status": "completed"},
+    ]
+    first = store.save_context_artifact(
+        "run-1",
+        "session-1",
+        observation_count=2,
+        content_sha256=digest(first_items),
+        observation_delta=first_items,
+    )
+    all_items = [
+        *first_items,
+        {"call_id": "three", "tool": "read_file", "status": "failed"},
+    ]
+    second = store.save_context_artifact(
+        "run-1",
+        "session-1",
+        observation_count=3,
+        content_sha256=digest(all_items),
+        observation_delta=all_items[-1:],
+    )
+
+    assert second["parent_artifact_id"] == first["artifact_id"]
+    loaded = store.context_artifact("run-1", str(second["artifact_id"]))
+    assert loaded["verified"] is True
+    assert loaded["observations"] == all_items
+
+    with pytest.raises(ValueError, match="DIGEST_MISMATCH"):
+        store.save_context_artifact(
+            "run-1",
+            "session-1",
+            observation_count=4,
+            content_sha256="0" * 64,
+            observation_delta=[{"call_id": "four"}],
+        )
+
+    with store._transaction() as connection:
+        connection.execute(
+            "UPDATE agent_context_artifacts SET payload_json='[]' WHERE artifact_id=?",
+            (first["artifact_id"],),
+        )
+    with pytest.raises(ValueError, match="SEGMENT_CORRUPT"):
+        store.context_artifact("run-1", str(second["artifact_id"]))
+
+
+def test_store_renews_only_a_live_unfenced_lease(tmp_path: Path) -> None:
+    store = AgentOrchestrationStore(tmp_path / "agent.sqlite3")
+    grant = store.acquire_lease("session-1", "run-1")
+    renewed = store.renew_lease(grant)
+    assert renewed.lease_epoch == grant.lease_epoch
+    assert renewed.owner_id == grant.owner_id
+
+    with store._transaction() as connection:
+        connection.execute(
+            "UPDATE agent_session_leases SET expires_at=? WHERE session_id=?",
+            ("2000-01-01T00:00:00Z", "session-1"),
+        )
+    with pytest.raises(ValueError, match="AGENT_SESSION_LEASE_EXPIRED"):
+        store.renew_lease(grant)
+
+    replacement = store.acquire_lease("session-1", "run-2")
+    assert replacement.lease_epoch > grant.lease_epoch
+    with pytest.raises(ValueError, match="AGENT_SESSION_LEASE_FENCED"):
+        store.renew_lease(grant)
 
 
 def test_memory_provenance_is_invalidated_when_workspace_revision_changes(tmp_path: Path) -> None:
@@ -213,16 +295,6 @@ def test_autonomous_progress_updates_stages_and_preserves_failure_message(tmp_pa
             "success": False,
             "classification": "BUILD_ERROR",
             "message": "Compiler rejected main.cpp",
-            "actual_provider_id": "openrouter",
-            "model_id": "openrouter/free",
-            "fallback_reason": "API_TOOLPLAN_INVALID",
-            "provider_diagnostics": {
-                "model_id": "openrouter/free",
-                "outbound_request_count": 3,
-                "request_reached_provider": True,
-                "http_status": 429,
-                "provider_request_id": "req-safe",
-            },
         }
 
     async def scenario() -> None:
@@ -255,15 +327,322 @@ def test_autonomous_progress_updates_stages_and_preserves_failure_message(tmp_pa
             assert current.stage_statuses["generation"] == "completed"
             assert current.stage_statuses["build"] == "failed"
             assert current.classification == "BUILD_ERROR"
-            assert current.actual_provider_id == "openrouter"
-            assert current.model_id == "openrouter/free"
-            assert current.fallback_reason == "API_TOOLPLAN_INVALID"
-            assert current.outbound_request_count == 3
-            assert current.request_reached_provider is True
-            assert current.http_status == 429
-            assert current.provider_request_id == "req-safe"
+            assert current.change_set_id is None
             assert current.to_safe_dict()["assistant_message"] == "Compiler rejected main.cpp"
             assert orchestrator.graph(run.run_id)["nodes"][1]["message"] == "Compiler rejected main.cpp"
+        finally:
+            await orchestrator.close()
+
+    asyncio.run(scenario())
+
+
+def test_failed_verified_autonomous_run_saves_draft_and_retries_from_it(tmp_path: Path) -> None:
+    attempts = 0
+
+    async def executor(request: object) -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        stage = Path(getattr(request, "active_workspace_root"))
+        if attempts == 1:
+            (stage / "main.cpp").write_text("repaired", encoding="utf-8")
+            return {
+                "success": False, "classification": "TOOLPLAN_SCHEMA_INVALID",
+                "message": "Agent response invalid", "build_verified": True,
+                "build_result": {"success": True, "message": "Build passed"},
+                "provider_diagnostics": {
+                    "outbound_request_count": 3, "physical_request_count": 4,
+                    "request_reached_provider": True, "last_turn": 8,
+                    "response_mode": "native_tools",
+                    "last_failure_code": "TOOLPLAN_SCHEMA_INVALID",
+                    "last_repair_outcome": "failed",
+                },
+            }
+        assert (stage / "main.cpp").read_text(encoding="utf-8") == "repaired"
+        return {
+            "success": True, "classification": "AGENT_V3_COMPLETED",
+            "message": "Revalidated", "build_verified": True,
+            "build_result": {"success": True, "message": "Build passed"},
+        }
+
+    async def scenario() -> None:
+        workspace = tmp_path / "autonomous-workspace"
+        workspace.mkdir()
+        (workspace / "main.cpp").write_text("before", encoding="utf-8")
+        changes = _changes(tmp_path)
+        orchestrator = AgentOrchestrator(
+            change_service=changes, provider_registry=_providers(tmp_path),
+            store=AgentOrchestrationStore(tmp_path / "draft.sqlite3"),
+            run_factory=ProductAgentRun, autonomous_executor=executor,
+        )
+        try:
+            first = await orchestrator.start_run(
+                project_id="project-autonomous", active_workspace_root=workspace,
+                instruction="repair and build firmware", provider_id="verified_template",
+                autonomy="build_only", session_id="session-draft",
+            )
+            for _ in range(200):
+                if orchestrator.get_run(first.run_id).status == "failed":
+                    break
+                await asyncio.sleep(0.01)
+            failed = orchestrator.get_run(first.run_id)
+            assert failed.change_set_id
+            assert failed.recoverable is True
+            assert failed.to_safe_dict()["provider_diagnostics"]["last_turn"] == 8
+            draft = changes.get(failed.change_set_id)
+            assert draft.status == "draft"
+            assert (Path(draft.staging_root) / "main.cpp").is_file()
+            assert not changes.staging_root.joinpath(f"workflow-{first.run_id}").exists()
+            assert (workspace / "main.cpp").read_text(encoding="utf-8") == "before"
+            replacement = await orchestrator.retry(first.run_id)
+            for _ in range(200):
+                if orchestrator.get_run(replacement.run_id).status in {"completed", "failed"}:
+                    break
+                await asyncio.sleep(0.01)
+            assert attempts == 2
+            assert orchestrator.get_run(replacement.run_id).status == "completed"
+        finally:
+            await orchestrator.close()
+
+    asyncio.run(scenario())
+
+
+def test_failed_build_saves_unverified_draft_and_retry_error_context(tmp_path: Path) -> None:
+    attempts = 0
+
+    async def executor(request: object) -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        stage = Path(getattr(request, "active_workspace_root"))
+        if attempts == 1:
+            (stage / "main.cpp").write_text("#include <DHT.h>\n", encoding="utf-8")
+            return {
+                "success": False, "classification": "BUILD_ERROR", "message": "Build failed",
+                "build_verified": False,
+                "build_result": {"success": False, "message": "DHT.h missing",
+                    "diagnostics": "fatal error: DHT.h: No such file or directory",
+                    "dependency_candidates": [{"query": "header:DHT.h", "package": "adafruit/DHT sensor library", "source": "platformio_registry"}]},
+            }
+        assert (stage / "main.cpp").read_text(encoding="utf-8") == "#include <DHT.h>\n"
+        retry = getattr(request, "active_workspace")["agent_retry_context"]
+        assert retry["classification"] == "BUILD_ERROR"
+        assert retry["dependency_candidates"][0]["package"] == "adafruit/DHT sensor library"
+        return {"success": True, "classification": "AGENT_V3_COMPLETED", "message": "Fixed", "build_verified": True,
+                "build_result": {"success": True, "message": "Build passed"}}
+
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "main.cpp").write_text("before", encoding="utf-8")
+        changes = _changes(tmp_path)
+        orchestrator = AgentOrchestrator(
+            change_service=changes, provider_registry=_providers(tmp_path),
+            store=AgentOrchestrationStore(tmp_path / "failed-build.sqlite3"),
+            run_factory=ProductAgentRun, autonomous_executor=executor,
+        )
+        try:
+            first = await orchestrator.start_run(
+                project_id="project", active_workspace_root=workspace,
+                instruction="build files", provider_id="verified_template",
+                autonomy="build_only", session_id="session-failed-build",
+            )
+            for _ in range(200):
+                if orchestrator.get_run(first.run_id).status == "failed":
+                    break
+                await asyncio.sleep(0.01)
+            failed = orchestrator.get_run(first.run_id)
+            assert failed.change_set_id and failed.recoverable
+            assert failed.stage_statuses["build"] == "failed"
+            assert changes.get(failed.change_set_id).status == "draft"
+            assert (workspace / "main.cpp").read_text(encoding="utf-8") == "before"
+            replacement = await orchestrator.retry(first.run_id)
+            for _ in range(200):
+                if orchestrator.get_run(replacement.run_id).status in {"completed", "failed"}:
+                    break
+                await asyncio.sleep(0.01)
+            assert attempts == 2
+            assert orchestrator.get_run(replacement.run_id).status == "completed"
+        finally:
+            await orchestrator.close()
+
+    asyncio.run(scenario())
+
+
+def test_unexpected_autonomous_failure_retains_safe_unverified_files(tmp_path: Path) -> None:
+    async def executor(request: object) -> dict[str, object]:
+        stage = Path(getattr(request, "active_workspace_root"))
+        (stage / "main.cpp").write_text("new source", encoding="utf-8")
+        raise RuntimeError("finalization failed")
+
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "main.cpp").write_text("old source", encoding="utf-8")
+        changes = _changes(tmp_path)
+        orchestrator = AgentOrchestrator(
+            change_service=changes, provider_registry=_providers(tmp_path),
+            store=AgentOrchestrationStore(tmp_path / "unexpected.sqlite3"),
+            run_factory=ProductAgentRun, autonomous_executor=executor,
+        )
+        try:
+            started = await orchestrator.start_run(
+                project_id="project", active_workspace_root=workspace,
+                instruction="edit source", provider_id="verified_template",
+                autonomy="build_only", session_id="session-unexpected",
+            )
+            for _ in range(200):
+                if orchestrator.get_run(started.run_id).status == "failed":
+                    break
+                await asyncio.sleep(0.01)
+            failed = orchestrator.get_run(started.run_id)
+            assert failed.classification == "AGENT_RUNTIME_FINALIZATION_FAILED"
+            assert failed.change_set_id and failed.recoverable
+            assert changes.get(failed.change_set_id).status == "draft"
+            assert (workspace / "main.cpp").read_text(encoding="utf-8") == "old source"
+        finally:
+            await orchestrator.close()
+
+    asyncio.run(scenario())
+
+
+def test_autonomous_context_checkpoint_is_durable_and_preserves_payload(tmp_path: Path) -> None:
+    artifact_observations = [
+        {
+            "call_id": "read-2",
+            "tool": "read_file",
+            "status": "failed",
+            "error": "stale read",
+        }
+    ]
+    observation_digest = hashlib.sha256(
+        json.dumps(
+            artifact_observations,
+            ensure_ascii=True,
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    checkpoint = {
+        "checkpoint_version": "forgex.context-checkpoint.v1",
+        "compacted_observations": 1,
+        "observation_digest": observation_digest,
+        "failure_count": 1,
+        "recent_failures": [
+            {
+                "call_id": "read-2",
+                "tool": "read_file",
+                "status": "failed",
+                "error": "stale read",
+            }
+        ],
+        "retrieval": "session_event_search",
+    }
+
+    async def checkpointing_executor(request: object) -> dict[str, object]:
+        callback = getattr(request, "progress_callback")
+        await callback(
+            "CONTEXT_CHECKPOINT_CREATED",
+            {
+                "message": "Older observations compacted",
+                "checkpoint": checkpoint,
+                "_context_artifact_delta": artifact_observations,
+            },
+        )
+        return {
+            "success": False,
+            "classification": "EXPECTED_TEST_FAILURE",
+            "message": "Stopped after checkpoint verification",
+        }
+
+    async def scenario() -> None:
+        workspace = tmp_path / "checkpoint-workspace"
+        workspace.mkdir()
+        orchestrator = AgentOrchestrator(
+            change_service=_changes(tmp_path),
+            provider_registry=_providers(tmp_path),
+            store=AgentOrchestrationStore(tmp_path / "checkpoint.sqlite3"),
+            run_factory=ProductAgentRun,
+            autonomous_executor=checkpointing_executor,
+        )
+        try:
+            run = await orchestrator.start_run(
+                project_id="project-checkpoint",
+                active_workspace_root=workspace,
+                instruction="exercise durable context compaction",
+                provider_id="verified_template",
+                autonomy="build_only",
+                session_id="session-checkpoint",
+            )
+            await orchestrator._tasks[run.run_id]
+            events = orchestrator.session_events("session-checkpoint")
+            persisted = next(
+                event
+                for event in events
+                if event["event_type"] == "context_checkpoint_created"
+            )
+            assert persisted["run_id"] == run.run_id
+            assert persisted["checkpoint"]["artifact_status"] == "ready"
+            assert persisted["checkpoint"]["observation_digest"] == observation_digest
+            assert persisted["checkpoint"]["recent_failures"][0]["call_id"] == "read-2"
+            assert isinstance(persisted["sequence"], int)
+            assert "_context_artifact_delta" not in persisted
+            artifact = orchestrator.context_artifact(
+                run.run_id,
+                persisted["checkpoint"]["artifact_id"],
+            )
+            assert artifact["verified"] is True
+            assert artifact["observations"] == artifact_observations
+        finally:
+            await orchestrator.close()
+
+    asyncio.run(scenario())
+
+
+def test_orchestrator_heartbeats_session_lease_during_long_workflow(tmp_path: Path) -> None:
+    async def slow_executor(request: object) -> dict[str, object]:
+        await asyncio.sleep(0.08)
+        return {
+            "success": False,
+            "classification": "EXPECTED_TEST_FAILURE",
+            "message": "Test workflow stopped after the heartbeat window",
+        }
+
+    async def scenario() -> None:
+        workspace = tmp_path / "heartbeat-workspace"
+        workspace.mkdir()
+        store = AgentOrchestrationStore(tmp_path / "heartbeat.sqlite3")
+        original_renew = store.renew_lease
+        renewals = 0
+
+        def tracking_renew(grant: object, *, ttl_seconds: int = 20):
+            nonlocal renewals
+            renewals += 1
+            return original_renew(grant, ttl_seconds=ttl_seconds)  # type: ignore[arg-type]
+
+        store.renew_lease = tracking_renew  # type: ignore[method-assign]
+        orchestrator = AgentOrchestrator(
+            change_service=_changes(tmp_path),
+            provider_registry=_providers(tmp_path),
+            store=store,
+            run_factory=ProductAgentRun,
+            autonomous_executor=slow_executor,
+            lease_heartbeat_interval_seconds=0.01,
+        )
+        try:
+            run = await orchestrator.start_run(
+                project_id="project-heartbeat",
+                active_workspace_root=workspace,
+                instruction="exercise a long provider turn",
+                provider_id="verified_template",
+                autonomy="build_only",
+                session_id="session-heartbeat",
+            )
+            await orchestrator._tasks[run.run_id]
+            assert renewals >= 2
+            assert orchestrator.get_run(run.run_id).classification == "EXPECTED_TEST_FAILURE"
+            assert any(
+                event["event_type"] == "runtime.failed"
+                for event in orchestrator.session_events("session-heartbeat")
+            )
         finally:
             await orchestrator.close()
 
@@ -391,3 +770,22 @@ def test_explicit_approval_applies_successfully_built_staged_project(tmp_path: P
             await orchestrator.close()
 
     asyncio.run(scenario())
+
+
+def test_tool_policy_engine_rejects_workspace_mismatch(tmp_path: Path) -> None:
+    root = tmp_path / "workspace-a"
+    other = tmp_path / "workspace-b"
+    root.mkdir()
+    other.mkdir()
+    engine = ToolPolicyEngine(default_ttl_seconds=60)
+    grant = engine.issue_grant(
+        run_id="run-workspace",
+        node_id="implementation",
+        workspace_root=root,
+        allowed_tools=(ToolName.READ_FILE,),
+        authorization_source="explicit_action_request",
+    )
+    call = ToolCall(ToolName.READ_FILE, {"path": "main.cpp"})
+    with pytest.raises(ToolPolicyError, match="capability_workspace_mismatch") as exc:
+        engine.validate_call(grant, call, other, policy=product_agent_policy())
+    assert exc.value.classification is RuntimeClassification.PATH_UNSAFE

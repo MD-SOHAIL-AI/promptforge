@@ -8,7 +8,7 @@ from ...services.project_import_service import (
     ProjectImportService,
 )
 from ...services.project_service import ProjectService, ProjectServiceError
-from ..dependencies import required_state, resolve_project, resolve_project_from_request
+from ..dependencies import required_state, resolve_project, resolve_project_from_request, services
 from ..errors import APIError, error_responses
 from ..schemas.project_import import ProjectImportRequest, ProjectImportResponse
 from ..schemas.projects import (
@@ -36,7 +36,7 @@ async def list_projects(request: Request) -> ProjectListResponse:
         ]
     except ProjectServiceError as exc:
         raise APIError(500, "PROJECT_SERVICE_ERROR", "Projects could not be listed") from exc
-    import_service = getattr(request.app.state, "project_import_service", None)
+    import_service = services(request).project_import_service
     if isinstance(import_service, ProjectImportService):
         try:
             projects.extend(_project(item.to_dict()) for item in await import_service.list_projects())
@@ -59,6 +59,24 @@ async def import_project(body: ProjectImportRequest, request: Request) -> Projec
     except ProjectImportError as exc:
         raise APIError(422, exc.code, str(exc), {"supported": exc.supported, **exc.details}) from exc
     return _import_response(record)
+
+
+@router.post(
+    "/{project_id}/refresh",
+    response_model=ProjectResponse,
+    responses=error_responses(404, 422, 500, 503),
+    summary="Refresh a registered external project",
+)
+async def refresh_project(project_id: str, request: Request) -> ProjectResponse:
+    service = required_state(request, "project_import_service", "project import service")
+    assert isinstance(service, ProjectImportService)
+    normalized = _identifier(project_id)
+    try:
+        record = await service.refresh_project(normalized)
+    except ProjectImportError as exc:
+        status = 404 if exc.code in {"PROJECT_NOT_FOUND", "PROJECT_PATH_MISSING"} else 422
+        raise APIError(status, exc.code, str(exc), {"supported": exc.supported, **exc.details}) from exc
+    return _project(record.to_dict())
 
 
 @router.get(

@@ -40,28 +40,12 @@ async def patch_settings(request: Request, payload: SettingsPatchRequest) -> Set
         settings = _service(request).patch_settings(payload.settings)
     except SettingsValidationError as exc:
         raise APIError(422, "INVALID_SETTING", str(exc), {}) from exc
-    except OSError as exc:
-        raise APIError(
-            500,
-            "SETTINGS_WRITE_FAILED",
-            "Settings could not be saved. Check that the ForgeX settings file is writable.",
-            {},
-        ) from exc
     return SettingsResponse(settings=settings)
 
 
 @router.post("/settings/reset", response_model=SettingsResponse)
 async def reset_settings(request: Request) -> SettingsResponse:
-    try:
-        settings = _service(request).reset()
-    except OSError as exc:
-        raise APIError(
-            500,
-            "SETTINGS_WRITE_FAILED",
-            "Settings could not be saved. Check that the ForgeX settings file is writable.",
-            {},
-        ) from exc
-    return SettingsResponse(settings=settings)
+    return SettingsResponse(settings=_service(request).reset())
 
 
 @router.post("/settings/export", response_model=SettingsExportResponse)

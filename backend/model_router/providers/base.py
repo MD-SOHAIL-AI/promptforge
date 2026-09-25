@@ -38,7 +38,7 @@ class BaseModelProvider(ABC):
             error_code="NOT_CONFIGURED",
             message=(
                 f"{provider.display_name} is not configured. "
-                "Add your API key in Models."
+                "Configure it in Models."
             ),
         )
 

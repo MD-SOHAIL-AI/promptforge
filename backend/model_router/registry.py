@@ -6,11 +6,94 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from .models import ModelInfo, ModelProvider, ModelRoute, TaskType
+from .models import ModelCapabilities, ModelInfo, ModelProvider, ModelRoute, TaskType
 from .storage import ProviderSettingsStorage, mask_secret
 
 
-DEFAULT_OPENROUTER_MODEL = "openai/gpt-oss-20b:free"
+DEFAULT_OPENROUTER_MODEL = "cohere/north-mini-code:free"
+RETIRED_OPENROUTER_MODELS = frozenset({"minimax/minimax-m3:free"})
+NVIDIA_NIM_MODELS = (
+    "01-ai/yi-large",
+    "adept/fuyu-8b",
+    "ai21labs/jamba-1.5-large-instruct",
+    "aisingapore/sea-lion-7b-instruct",
+    "bigcode/starcoder2-15b",
+    "databricks/dbrx-instruct",
+    "deepseek-ai/deepseek-coder-6.7b-instruct",
+    "deepseek-ai/deepseek-v4-flash-0731",
+    "deepseek-ai/deepseek-v4-pro-0813",
+    "google/codegemma-1.1-7b",
+    "google/codegemma-7b",
+    "google/deplot",
+    "google/diffusiongemma-26b-a4b-it",
+    "google/gemma-2b",
+    "google/gemma-3-12b-it",
+    "google/gemma-3-4b-it",
+    "google/gemma-4-31b-it",
+    "google/recurrentgemma-2b",
+    "ibm/granite-3.0-3b-a800m-instruct",
+    "ibm/granite-3.0-8b-instruct",
+    "ibm/granite-34b-code-instruct",
+    "ibm/granite-8b-code-instruct",
+    "meta/codellama-70b",
+    "meta/llama2-70b",
+    "meta/llama-3.2-11b-vision-instruct",
+    "meta/llama-3.2-90b-vision-instruct",
+    "meta/llama-guard-4-12b",
+    "meta/muse-glimmer-30b",
+    "microsoft/kosmos-2",
+    "microsoft/phi-3.5-moe-instruct",
+    "microsoft/phi-3-vision-128k-instruct",
+    "mistralai/codestral-22b-instruct-v0.1",
+    "mistralai/mistral-7b-instruct-v0.3",
+    "mistralai/mistral-large",
+    "mistralai/mistral-large-2-instruct",
+    "mistralai/mistral-nemotron",
+    "mistralai/mixtral-8x22b-v0.1",
+    "moonshotai/kimi-k2.6",
+    "moonshotai/kimi-k3",
+    "nvidia/ai-synthetic-video-detector",
+    "nvidia/cosmos-reason2-8b",
+    "nvidia/embed-qa-4",
+    "nvidia/ising-calibration-1.5-31b",
+    "nvidia/llama-3.1-nemoguard-8b-content-safety",
+    "nvidia/llama-3.1-nemoguard-8b-topic-control",
+    "nvidia/llama-3.1-nemotron-51b-instruct",
+    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+    "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+    "nvidia/llama-3.2-nv-embedqa-1b-v1",
+    "nvidia/llama3-chatqa-1.5-70b",
+    "nvidia/llama-nemotron-embed-vl-1b-v2",
+    "nvidia/mistral-nemo-minitron-8b-8k-instruct",
+    "nvidia/nemotron-3.5-content-safety",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "nvidia/nemotron-3-embed-1b",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    "nvidia/nemotron-4-340b-instruct",
+    "nvidia/nemotron-4-340b-reward",
+    "nvidia/nemotron-nano-3-30b-a3b",
+    "nvidia/nemotron-parse",
+    "nvidia/neva-22b",
+    "nvidia/nvclip",
+    "nvidia/nv-embedqa-mistral-7b-v2",
+    "nvidia/riva-translate-4b-instruct",
+    "nvidia/riva-translate-4b-instruct-v1.1",
+    "nvidia/riva-translate-4b-instruct-v2",
+    "nvidia/vila",
+    "nv-mistralai/mistral-nemo-12b-instruct",
+    "openai/gpt-oss-20b",
+    "poolside/laguna-xs-2.1",
+    "snowflake/arctic-embed-l",
+    "writer/palmyra-creative-122b",
+    "writer/palmyra-fin-70b-32k",
+    "writer/palmyra-med-70b",
+    "writer/palmyra-med-70b-32k",
+    "zyphra/zamba2-7b-instruct",
+)
 TASK_TYPES: tuple[TaskType, ...] = (
     "code_generation",
     "planning",
@@ -36,9 +119,34 @@ class ProviderDefinition:
     env_model: str | None = None
     models: tuple[str, ...] = ()
     available: bool = True
+    provider_type: str = "api_provider"
+    protocol: str = "openai-completions"
 
 
 PROVIDERS: dict[str, ProviderDefinition] = {
+    "deepseek": ProviderDefinition(
+        "deepseek",
+        "DeepSeek API",
+        "api_key",
+        False,
+        "deepseek-chat",
+        env_key="DEEPSEEK_API_KEY",
+        base_url="https://api.deepseek.com",
+        env_model="DEEPSEEK_MODEL",
+        models=("deepseek-chat", "deepseek-reasoner"),
+    ),
+    "anthropic": ProviderDefinition(
+        "anthropic",
+        "Anthropic API",
+        "api_key",
+        False,
+        "claude-sonnet-4-5",
+        env_key="ANTHROPIC_API_KEY",
+        base_url="https://api.anthropic.com/v1",
+        env_model="ANTHROPIC_MODEL",
+        models=("claude-sonnet-4-5", "claude-haiku-4-5"),
+        protocol="anthropic-messages",
+    ),
     "openrouter": ProviderDefinition(
         "openrouter",
         "OpenRouter API",
@@ -48,7 +156,7 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         env_key="OPENROUTER_API_KEY",
         base_url="https://openrouter.ai/api/v1",
         env_model="OPENROUTER_MODEL",
-        models=(DEFAULT_OPENROUTER_MODEL, "openai/gpt-oss-120b:free", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"),
+        models=(DEFAULT_OPENROUTER_MODEL, "cohere/north-mini-code:free", "opencode/union-alpha", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"),
     ),
     "openai": ProviderDefinition(
         "openai",
@@ -72,6 +180,28 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         env_model="GROQ_MODEL",
         models=("llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
     ),
+    "cerebras": ProviderDefinition(
+        "cerebras",
+        "Cerebras",
+        "api_key",
+        False,
+        "gpt-oss-120b",
+        env_key="CEREBRAS_API_KEY",
+        base_url="https://api.cerebras.ai/v1",
+        env_model="CEREBRAS_MODEL",
+        models=("gpt-oss-120b",),
+    ),
+    "nvidia_nim": ProviderDefinition(
+        "nvidia_nim",
+        "NVIDIA NIM",
+        "api_key",
+        False,
+        "nvidia/nemotron-3-super-120b-a12b",
+        env_key="NVIDIA_API_KEY",
+        base_url="https://integrate.api.nvidia.com/v1",
+        env_model="NVIDIA_MODEL",
+        models=NVIDIA_NIM_MODELS,
+    ),
     "gemini": ProviderDefinition(
         "gemini",
         "Gemini API",
@@ -82,6 +212,7 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         base_url="https://generativelanguage.googleapis.com/v1beta",
         env_model="GEMINI_MODEL",
         models=("gemini-1.5-flash", "gemini-1.5-pro"),
+        protocol="google-generate-content",
     ),
     "lmstudio": ProviderDefinition(
         "lmstudio",
@@ -106,8 +237,20 @@ PROVIDERS: dict[str, ProviderDefinition] = {
 
 }
 
-FALLBACK_ORDER = ("openrouter", "openai", "groq")
+FALLBACK_ORDER = ("deepseek", "openrouter", "openai", "anthropic", "groq", "cerebras", "nvidia_nim")
 LOCAL_FALLBACK_ORDER = ("lmstudio", "ollama")
+BUILTIN_PROVIDER_ORDER = (
+    "openrouter",
+    "openai",
+    "groq",
+    "cerebras",
+    "nvidia_nim",
+    "gemini",
+    "lmstudio",
+    "ollama",
+    "deepseek",
+    "anthropic",
+)
 
 
 class ProviderRegistry:
@@ -115,13 +258,24 @@ class ProviderRegistry:
         self.storage = storage or ProviderSettingsStorage()
 
     def provider_ids(self) -> tuple[str, ...]:
-        return tuple(PROVIDERS)
+        return BUILTIN_PROVIDER_ORDER + tuple(sorted(self.storage.custom_provider_definitions()))
 
     def definition(self, provider_id: str) -> ProviderDefinition:
-        try:
+        if provider_id in PROVIDERS:
             return PROVIDERS[provider_id]
-        except KeyError as exc:
-            raise ValueError(f"Unknown model provider: {provider_id}") from exc
+        value = self.storage.custom_provider_definitions().get(provider_id)
+        if value is None:
+            raise ValueError(f"Unknown model provider: {provider_id}")
+        return ProviderDefinition(
+            provider_id=provider_id,
+            display_name=str(value["display_name"]),
+            auth_type=str(value.get("auth_type") or "api_key"),
+            local=bool(value.get("local", False)),
+            default_model=str(value["default_model"]),
+            base_url=str(value["base_url"]),
+            models=tuple(str(item) for item in value.get("models", [])),
+            protocol=str(value["protocol"]),
+        )
 
     def provider(self, provider_id: str) -> ModelProvider:
         definition = self.definition(provider_id)
@@ -131,7 +285,7 @@ class ProviderRegistry:
         api_key = self.api_key(provider_id)
         default_model = self.default_model(provider_id)
         base_url = self.base_url(provider_id)
-        configured = definition.local or bool(api_key)
+        configured = bool(api_key) if definition.auth_type == "api_key" else definition.local or definition.auth_type == "none"
         enabled = bool(settings.get("enabled", configured)) and definition.available
         if not configured and not definition.local:
             enabled = False
@@ -147,12 +301,11 @@ class ProviderRegistry:
             last_error = "Adapter prepared for a later release."
         elif not enabled:
             health_status = "disabled"
-        provider_type = "api_provider"
         return ModelProvider(
             provider_id=definition.provider_id,
             display_name=definition.display_name,
             auth_type=definition.auth_type,  # type: ignore[arg-type]
-            provider_type=provider_type,
+            provider_type=definition.provider_type,  # type: ignore[arg-type]
             local=definition.local,
             default_model=default_model,
             base_url=base_url,
@@ -164,10 +317,68 @@ class ProviderRegistry:
             last_checked_at=last_checked_at,
             last_error=last_error,
             models_cached=len(cached_models),
+            custom=provider_id not in PROVIDERS,
+            protocol=definition.protocol,
         )
 
     def list_providers(self) -> list[ModelProvider]:
-        return [self.provider(provider_id) for provider_id in PROVIDERS]
+        return [self.provider(provider_id) for provider_id in self.provider_ids()]
+
+    def register_custom_provider(
+        self,
+        *,
+        provider_id: str,
+        display_name: str,
+        protocol: str,
+        base_url: str,
+        default_model: str,
+        models: tuple[str, ...] = (),
+        local: bool = False,
+        api_key: str | None = None,
+    ) -> ModelProvider:
+        provider_id = provider_id.strip().casefold()
+        if not provider_id or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for char in provider_id):
+            raise ValueError("Custom provider ID is invalid")
+        if provider_id in PROVIDERS or provider_id in self.storage.custom_provider_definitions():
+            raise ValueError("Custom provider ID already exists")
+        if protocol not in {"openai-completions", "openai-responses", "anthropic-messages"}:
+            raise ValueError("Custom provider protocol is invalid")
+        if not display_name.strip() or not default_model.strip() or not base_url.startswith(("http://", "https://")):
+            raise ValueError("Custom provider definition is invalid")
+        unique_models = tuple(dict.fromkeys((default_model.strip(), *(item.strip() for item in models if item.strip()))))
+        self.storage.save_custom_provider_definition(provider_id, {
+            "display_name": display_name.strip(),
+            "protocol": protocol,
+            "base_url": base_url.rstrip("/"),
+            "default_model": default_model.strip(),
+            "models": list(unique_models),
+            "local": bool(local),
+            "auth_type": "none" if local and not api_key else "api_key",
+        })
+        self.storage.save_provider_settings(provider_id, {
+            "base_url": base_url.rstrip("/"),
+            "default_model": default_model.strip(),
+            "enabled": True,
+            **({"api_key": api_key} if api_key else {}),
+        })
+        return self.provider(provider_id)
+
+    def delete_custom_provider(self, provider_id: str) -> None:
+        if provider_id in PROVIDERS:
+            raise ValueError("Built-in providers cannot be deleted")
+        self.definition(provider_id)
+        referenced_by = [
+            route.task_type
+            for route in self.list_routes()
+            if route.provider_id == provider_id or route.fallback_provider_id == provider_id
+        ]
+        if referenced_by:
+            raise ValueError(
+                "Custom provider is referenced by routes: "
+                + ", ".join(referenced_by)
+            )
+        self.storage.credential_store.delete(provider_id)
+        self.storage.delete_provider_state(provider_id)
 
     def list_models(self, provider_id: str) -> list[ModelInfo]:
         definition = self.definition(provider_id)
@@ -184,27 +395,114 @@ class ProviderRegistry:
                         model_id=model_id,
                         display_name=str(item.get("display_name") or model_id),
                         context_window=item.get("context_window") if isinstance(item.get("context_window"), int) else None,
-                        free=item.get("free") if isinstance(item.get("free"), bool) else None,
+                        free=(
+                            True
+                            if provider_id == "nvidia_nim"
+                            else item.get("free") if isinstance(item.get("free"), bool) else None
+                        ),
                         local=bool(item.get("local", definition.local)),
-                        supported_parameters=tuple(
-                            value
-                            for value in item.get("supported_parameters", [])
-                            if isinstance(value, str)
-                        ) if isinstance(item.get("supported_parameters"), list) else (),
+                        capabilities=self.model_capabilities(provider_id, model_id),
                     )
                 )
             if models:
+                if provider_id == "nvidia_nim":
+                    cached_ids = {model.model_id for model in models}
+                    models.extend(
+                        ModelInfo(
+                            provider_id=provider_id,
+                            model_id=model_id,
+                            display_name=model_id.split("/")[-1],
+                            free=True,
+                            local=False,
+                            capabilities=self.model_capabilities(provider_id, model_id),
+                        )
+                        for model_id in definition.models
+                        if model_id not in cached_ids
+                    )
                 return models
         return [
             ModelInfo(
                 provider_id=provider_id,
                 model_id=model,
                 display_name=model.split("/")[-1],
-                free=":free" in model,
+                free=True if provider_id == "nvidia_nim" else ":free" in model,
                 local=definition.local,
+                capabilities=self.model_capabilities(provider_id, model),
             )
             for model in definition.models
         ]
+
+    def model_capabilities(
+        self, provider_id: str, model_id: str
+    ) -> ModelCapabilities:
+        """Resolve capabilities for an exact provider/model pair.
+
+        OpenRouter metadata is authoritative when cached. Unknown routed
+        models remain conservative instead of inheriting provider-wide claims.
+        """
+
+        model = self.resolve_model_id(provider_id, model_id).casefold()
+        for item in self.storage.provider_models(provider_id):
+            if str(item.get("model_id", "")).casefold() != model:
+                continue
+            explicit = item.get("capabilities")
+            if isinstance(explicit, dict):
+                context_window = explicit.get("context_window")
+                return ModelCapabilities(**{
+                    key: (
+                        context_window
+                        if key == "context_window"
+                        and isinstance(context_window, int)
+                        and not isinstance(context_window, bool)
+                        and context_window > 0
+                        else None
+                        if key == "context_window"
+                        else bool(explicit.get(key, False))
+                    )
+                    for key in ModelCapabilities.__dataclass_fields__
+                })
+            supported = item.get("supported_parameters")
+            if isinstance(supported, list):
+                parameters = {str(value).casefold() for value in supported}
+                return ModelCapabilities(
+                    streaming=True,
+                    json_object="response_format" in parameters,
+                    json_schema="structured_outputs" in parameters,
+                    native_tools="tools" in parameters,
+                    reasoning=bool({"reasoning", "include_reasoning"} & parameters),
+                    system_prompt=True,
+                )
+        if provider_id == "openai":
+            modern = any(token in model for token in ("gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4"))
+            return ModelCapabilities(True, modern, modern, modern, any(token in model for token in ("gpt-5", "o1", "o3", "o4")), True)
+        if provider_id == "gemini":
+            modern = model.startswith(("gemini-2", "gemini-3"))
+            return ModelCapabilities(True, modern, modern, modern, "thinking" in model or modern, True)
+        if provider_id == "anthropic":
+            return ModelCapabilities(True, False, False, True, "claude" in model, True)
+        if provider_id == "deepseek":
+            return ModelCapabilities(True, True, False, True, "reasoner" in model, True)
+        if provider_id == "nvidia_nim" and model in {
+            "nvidia/nemotron-3-super-120b-a12b",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+        }:
+            return ModelCapabilities(
+                streaming=True,
+                json_object=False,
+                json_schema=False,
+                native_tools=True,
+                reasoning=True,
+                system_prompt=True,
+                context_window=1_000_000,
+            )
+        definition = self.definition(provider_id)
+        if definition.protocol == "openai-responses":
+            return ModelCapabilities(True, True, True, True, True, True)
+        if definition.protocol == "anthropic-messages":
+            return ModelCapabilities(True, False, False, True, True, True)
+        # OpenRouter, Groq and local OpenAI-compatible servers vary by model.
+        # Their discovered per-model metadata may opt into richer features.
+        return ModelCapabilities(streaming=True, system_prompt=True)
 
     def configure_provider(
         self,
@@ -226,16 +524,9 @@ class ProviderRegistry:
             [model.to_dict() for model in models],
         )
 
-    def model_info(self, provider_id: str, model_id: str) -> ModelInfo | None:
-        normalized = _clean_model_id(model_id)
-        return next(
-            (model for model in self.list_models(provider_id) if model.model_id == normalized),
-            None,
-        )
-
     def api_key(self, provider_id: str) -> str | None:
         definition = self.definition(provider_id)
-        if definition.local:
+        if definition.auth_type != "api_key":
             return None
         stored = self.storage.api_key(provider_id)
         if stored:
@@ -259,12 +550,24 @@ class ProviderRegistry:
         settings = self.storage.provider_settings(provider_id)
         raw = settings.get("default_model")
         if isinstance(raw, str) and raw.strip():
-            return _clean_model_id(raw)
+            return self.resolve_model_id(provider_id, raw)
         if definition.env_model:
             env_model = os.getenv(definition.env_model, "").strip()
             if env_model:
                 return _clean_model_id(env_model)
         return definition.default_model
+
+    def resolve_model_id(self, provider_id: str, model_id: str) -> str:
+        """Replace ForgeX defaults that a provider has retired.
+
+        User-entered model IDs remain authoritative. This migration is limited
+        to model IDs that ForgeX itself previously shipped as defaults.
+        """
+
+        cleaned = _clean_model_id(model_id)
+        if provider_id == "openrouter" and cleaned in RETIRED_OPENROUTER_MODELS:
+            return DEFAULT_OPENROUTER_MODEL
+        return cleaned
 
     def route_for_task(self, task_type: str) -> ModelRoute:
         routes = self.storage.routes()
@@ -274,17 +577,20 @@ class ProviderRegistry:
             return ModelRoute(
                 task_type=task_type,  # type: ignore[arg-type]
                 provider_id=provider_id,
-                model_id=str(saved.get("model_id") or self.default_model(provider_id)),
-                fallback_enabled=bool(saved.get("fallback_enabled", True)),
-                fallback_provider_id=(str(saved["fallback_provider_id"]) if saved.get("fallback_provider_id") else None),
+                model_id=self.resolve_model_id(
+                    provider_id,
+                    str(saved.get("model_id") or self.default_model(provider_id)),
+                ),
+                fallback_enabled=False,
+                fallback_provider_id=None,
                 local_only=bool(saved.get("local_only", False)),
             )
         return ModelRoute(
             task_type=task_type,  # type: ignore[arg-type]
             provider_id="openrouter",
             model_id=self.default_model("openrouter"),
-            fallback_enabled=True,
-            fallback_provider_id="openai",
+            fallback_enabled=False,
+            fallback_provider_id=None,
         )
 
     def list_routes(self) -> list[ModelRoute]:
@@ -292,13 +598,17 @@ class ProviderRegistry:
 
     def save_route(self, route: ModelRoute) -> None:
         self.definition(route.provider_id)
-        if route.fallback_provider_id:
-            self.definition(route.fallback_provider_id)
-            primary = self.definition(route.provider_id)
-            fallback = self.definition(route.fallback_provider_id)
-            if primary.local != fallback.local:
-                raise ValueError("Cross-category fallback must be configured through an explicit confirmed run policy")
-        self.storage.save_route(route.task_type, route.to_dict())
+        primary = self.definition(route.provider_id)
+        if route.local_only and not primary.local:
+            raise ValueError("local_only routes require a local provider")
+        if route.fallback_provider_id == route.provider_id:
+            raise ValueError("fallback provider cannot equal the primary provider")
+        # Fallback fields are accepted for persisted-schema compatibility only.
+        normalized = ModelRoute(
+            route.task_type, route.provider_id, self.resolve_model_id(route.provider_id, route.model_id),
+            fallback_enabled=False, fallback_provider_id=None, local_only=route.local_only,
+        )
+        self.storage.save_route(route.task_type, normalized.to_dict())
 
     def fallback_provider_ids(self, *, local_only: bool = False) -> tuple[str, ...]:
         return LOCAL_FALLBACK_ORDER if local_only else FALLBACK_ORDER

@@ -467,8 +467,8 @@ def test_generate_project_passes_context_model_route_metadata() -> None:
     sent = llm.requests[0]
     assert sent.metadata["provider_id"] == "openrouter"
     assert sent.metadata["model_id"] == "openai/gpt-oss-20b:free"
-    assert sent.metadata["fallback_provider_id"] == "openai"
-    assert sent.metadata["allow_fallback"] is True
+    assert "fallback_provider_id" not in sent.metadata
+    assert sent.metadata["allow_fallback"] is False
     assert sent.metadata["local_only"] is False
 
 
@@ -535,12 +535,12 @@ def test_repair_failure_returns_clear_generation_error() -> None:
     with pytest.raises(GeneratedOutputError) as exc_info:
         run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
 
-    assert "Try a stronger model or enable fallback" in str(exc_info.value)
+    assert "explicitly choose another model" in str(exc_info.value)
     assert len(llm.requests) == 2
     assert len(exc_info.value.details["generation_attempts"]) == 2
 
 
-def test_fallback_model_is_used_when_repair_fails() -> None:
+def test_fallback_model_is_never_used_when_repair_fails() -> None:
     primary = SequentialLLMService(["Explanation only.", "Still invalid."], provider=LLMProvider.OPENAI, model="weak")
     fallback = SequentialLLMService([manifest(platformio_files())], provider=LLMProvider.OPENROUTER, model="strong")
     service = CodeGenerationService(
@@ -549,13 +549,11 @@ def test_fallback_model_is_used_when_repair_fails() -> None:
         retry_backoff_s=0,
     )
 
-    project = run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
+    with pytest.raises(GeneratedOutputError):
+        run(service.generate_project(CodeGenerationRequest(plan=plan(), context=context())))
 
     assert len(primary.requests) == 2
-    assert len(fallback.requests) == 1
-    report = project.metadata["generation_report"]
-    assert report["fallback_used"] is True
-    assert report["model_id"] == "strong"
+    assert fallback.requests == []
 
 
 def test_fallback_is_not_used_when_disabled() -> None:

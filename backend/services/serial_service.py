@@ -7,8 +7,6 @@ connection lifecycle, monitoring, reconnect behavior, and buffers.
 
 from __future__ import annotations
 
-import asyncio
-import time
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -18,7 +16,6 @@ from ..runtime.serial_runtime import (
     SerialConnectionState,
     SerialObservation,
     SerialRuntime,
-    ObservationSource,
 )
 
 __all__ = [
@@ -157,8 +154,6 @@ class SerialService:
                 connect_timeout=configuration.timeout_s,
             )
         )
-        self._monitor_subscribers: set[asyncio.Queue[SerialObservation | None]] = set()
-        self._monitor_pump_task: asyncio.Task[None] | None = None
 
     @property
     def configuration(self) -> SerialConfiguration:
@@ -259,63 +254,9 @@ class SerialService:
         )
 
     def monitor(self) -> AsyncIterator[SerialObservation]:
-        """Subscribe to the service-owned runtime monitor fan-out."""
+        """Expose runtime monitoring for ``SerialMonitor`` integration."""
 
-        return self._monitor_subscription()
-
-    async def _monitor_subscription(self) -> AsyncIterator[SerialObservation]:
-        queue: asyncio.Queue[SerialObservation | None] = asyncio.Queue(maxsize=500)
-        self._monitor_subscribers.add(queue)
-        task = self._monitor_pump_task
-        if task is None or task.done():
-            self._monitor_pump_task = asyncio.create_task(
-                self._pump_monitor(),
-                name="forgex-serial-service-monitor",
-            )
-        try:
-            while True:
-                observation = await queue.get()
-                if observation is None:
-                    return
-                yield observation
-        finally:
-            self._monitor_subscribers.discard(queue)
-
-    async def _pump_monitor(self) -> None:
-        try:
-            async for observation in self._runtime.monitor():
-                for queue in tuple(self._monitor_subscribers):
-                    dropped = 0
-                    while queue.qsize() > queue.maxsize - 2:
-                        try:
-                            queue.get_nowait()
-                            dropped += 1
-                        except asyncio.QueueEmpty:
-                            break
-                    if dropped:
-                        queue.put_nowait(SerialObservation(
-                            timestamp=time.monotonic(),
-                            line=f"[OVERFLOW: {dropped} observations dropped for a slow serial subscriber]",
-                            source=ObservationSource.OVERFLOW,
-                            port=self.active_port or "",
-                            metadata={"dropped": dropped, "scope": "subscriber"},
-                        ))
-                    try:
-                        queue.put_nowait(observation)
-                    except asyncio.QueueFull:
-                        pass
-        finally:
-            if self._monitor_pump_task is asyncio.current_task():
-                self._monitor_pump_task = None
-            for queue in tuple(self._monitor_subscribers):
-                try:
-                    queue.put_nowait(None)
-                except asyncio.QueueFull:
-                    try:
-                        queue.get_nowait()
-                        queue.put_nowait(None)
-                    except (asyncio.QueueEmpty, asyncio.QueueFull):
-                        pass
+        return self._runtime.monitor()
 
     @staticmethod
     def is_port_available(

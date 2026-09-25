@@ -1,11 +1,13 @@
 import { EventEmitter } from "node:events";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { FrontendManager } from "../dist/electron/frontend-manager.js";
+import { FrontendManager, probeForgeXFrontend } from "../dist/electron/frontend-manager.js";
 import { resolveApplicationRoot, resolveFrontendServerEntryFromRoot } from "../dist/electron/paths.js";
 
 const ready = { reachable: true, forgeX: true, statusCode: 200 };
@@ -26,7 +28,7 @@ function fakeProcess(pid = 34567) {
   return child;
 }
 
-test("FrontendManager reuses a healthy ForgeX frontend", async () => {
+test("FrontendManager refuses to reuse an existing frontend process", async () => {
   let spawned = false;
   const manager = new FrontendManager({
     port: 3127,
@@ -37,10 +39,8 @@ test("FrontendManager reuses a healthy ForgeX frontend", async () => {
       return fakeProcess();
     },
   });
-  const status = await manager.start();
-  await manager.stop();
-  assert.equal(status.state, "ready");
-  assert.equal(status.ownsProcess, false);
+  await assert.rejects(manager.start(), /already in use/);
+  assert.equal(manager.getStatus().ownsProcess, false);
   assert.equal(spawned, false);
 });
 
@@ -68,8 +68,30 @@ test("FrontendManager rejects an unrelated service on the packaged frontend port
     probe: async () => ({ reachable: true, forgeX: false, statusCode: 200 }),
     spawnFrontend: () => fakeProcess(),
   });
-  await assert.rejects(manager.start(), /already in use by another service/);
+  await assert.rejects(manager.start(), /already in use/);
   assert.equal(manager.getStatus().ownsProcess, false);
+});
+
+test("frontend identity probe requires a fresh keyed proof", async () => {
+  const key = "test-frontend-key";
+  const server = http.createServer((request, response) => {
+    if (request.url !== "/desktop-identity") {
+      response.writeHead(404).end();
+      return;
+    }
+    const challenge = request.headers["x-forgex-challenge"];
+    const proof = createHmac("sha256", key).update(challenge).digest("hex");
+    response.writeHead(204, { "X-ForgeX-Proof": proof }).end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    const url = `http://127.0.0.1:${address.port}`;
+    assert.equal((await probeForgeXFrontend(url, key)).forgeX, true);
+    assert.equal((await probeForgeXFrontend(url, "wrong-key")).forgeX, false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("packaged application root is independent of process cwd", () => {

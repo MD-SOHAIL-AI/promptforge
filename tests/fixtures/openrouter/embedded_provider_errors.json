@@ -1,0 +1,67 @@
+[
+  {
+    "name": "numeric_502_upstream_failure",
+    "event": {
+      "error": {
+        "message": "Provider returned error",
+        "code": 502
+      }
+    },
+    "expected_type": "LLMProviderError",
+    "expected_code": "PROVIDER_UNAVAILABLE",
+    "status": 502,
+    "retryable": true
+  },
+  {
+    "name": "numeric_string_503_upstream_failure",
+    "event": {
+      "error": {
+        "message": "Upstream temporarily unavailable",
+        "code": "503"
+      }
+    },
+    "expected_type": "LLMProviderError",
+    "expected_code": "PROVIDER_UNAVAILABLE",
+    "status": 503,
+    "retryable": true
+  },
+  {
+    "name": "rate_limit_429",
+    "event": {
+      "error": {
+        "message": "Rate limit exceeded",
+        "code": 429
+      }
+    },
+    "expected_type": "LLMRateLimitError",
+    "expected_code": "PROVIDER_RATE_LIMITED",
+    "status": 429,
+    "retryable": true
+  },
+  {
+    "name": "tools_unsupported_404",
+    "event": {
+      "error": {
+        "message": "No endpoints found that support tool use",
+        "code": 404
+      }
+    },
+    "expected_type": "LLMProviderError",
+    "expected_code": "MODEL_CAPABILITY_UNSUPPORTED",
+    "status": 404,
+    "retryable": false
+  },
+  {
+    "name": "authentication_401",
+    "event": {
+      "error": {
+        "message": "Unauthorized",
+        "code": 401
+      }
+    },
+    "expected_type": "LLMAuthenticationError",
+    "expected_code": "PROVIDER_AUTH_ERROR",
+    "status": 401,
+    "retryable": false
+  }
+]

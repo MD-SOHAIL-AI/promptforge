@@ -7,6 +7,9 @@ from typing import Iterable, Mapping
 
 from backend.changes import WorkspaceSnapshot
 
+from .embedded_context import inspect_embedded_project
+from .workspace_index import WorkspaceIndex
+
 
 @dataclass(frozen=True, slots=True)
 class AgentContext:
@@ -15,18 +18,27 @@ class AgentContext:
     workspace_summary: str
     memories: tuple[str, ...] = ()
     skills: tuple[str, ...] = ()
+    embedded_summary: str = ""
+    candidate_hints: tuple[str, ...] = ()
 
     def render(self) -> str:
         sections = [
             "USER TASK:\n" + self.task.strip(),
             "WORKSPACE SUMMARY:\n" + self.workspace_summary,
         ]
+        if self.embedded_summary:
+            sections.append("EMBEDDED PROJECT GRAPH:\n" + self.embedded_summary)
         if self.project_instructions:
             sections.append("PROJECT INSTRUCTIONS:\n" + "\n\n".join(self.project_instructions))
         if self.memories:
             sections.append("VERIFIED PROJECT MEMORY:\n" + "\n".join(f"- {item}" for item in self.memories))
         if self.skills:
             sections.append("AVAILABLE SKILLS:\n" + "\n".join(f"- {item}" for item in self.skills))
+        if self.candidate_hints:
+            sections.append(
+                "LIKELY RELEVANT FILES (index hints only; verify with tools before editing):\n"
+                + "\n".join(f"- {item}" for item in self.candidate_hints)
+            )
         sections.append(
             "Use list/glob/grep/read tools to acquire only the context you need. "
             "Do not assume file contents from names. Keep edits minimal, build when verification is requested, "
@@ -74,10 +86,26 @@ class ContextAssembler:
             value = str(memory.get("value") or "").strip()
             if value:
                 verified.append(f"{kind}: {value[:700]}")
+        try:
+            embedded_summary = inspect_embedded_project(self.workspace_root).render()
+        except Exception:
+            embedded_summary = ""
+        candidate_hints: tuple[str, ...] = ()
+        try:
+            index = WorkspaceIndex(self.workspace_root)
+            candidates = index.query(task, limit=12)
+            candidate_hints = tuple(
+                f"{item.path} (score {item.score:.1f}; {', '.join(item.reasons[:3])})"
+                for item in candidates
+            )
+        except Exception:
+            candidate_hints = ()
         return AgentContext(
             task=task,
             project_instructions=tuple(instructions),
             workspace_summary=summary,
             memories=tuple(verified[:12]),
             skills=tuple(skills),
+            embedded_summary=embedded_summary,
+            candidate_hints=candidate_hints,
         )

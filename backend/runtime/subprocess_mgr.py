@@ -80,17 +80,17 @@ HARDENING CHANGES vs. ORIGINAL
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import os
 import signal
 import subprocess
 import sys
 import time
 from collections.abc import AsyncIterator
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional
+
+from .process_output import observer
 
 __all__ = [
     "DrainPolicy",
@@ -118,10 +118,6 @@ _TIMEOUT_GRACE_S: float = 3.0
 _KILL_GRACE_S: float = 2.0
 _SIGTERM = getattr(signal, "SIGTERM", 15)
 _SIGKILL = getattr(signal, "SIGKILL", -9)
-_PROCESS_OWNER: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "forgex_process_owner",
-    default=None,
-)
 
 
 class DrainPolicy(Enum):
@@ -275,18 +271,7 @@ class SubprocessManager:
         # pid → process — used by kill_all() during engine shutdown
         self._active: dict[int, asyncio.subprocess.Process] = {}
         self._owners: dict[int, str | None] = {}
-
-    @contextmanager
-    def process_scope(self, owner: str):
-        """Associate subprocesses created in this context with one agent run."""
-
-        if not owner:
-            raise ValueError("process owner must be non-empty")
-        token = _PROCESS_OWNER.set(owner)
-        try:
-            yield
-        finally:
-            _PROCESS_OWNER.reset(token)
+        self._cancelled_owners: set[str] = set()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -303,7 +288,11 @@ class SubprocessManager:
         ProcessResult with timed_out=True rather than an exception, so the
         caller can decide how to handle it.
         """
+        from .process_owner import process_owner
+        owner = process_owner.get()
         async with self._semaphore:
+            if owner is not None and owner in self._cancelled_owners:
+                raise asyncio.CancelledError()
             env  = self._build_env(config)
             t0   = time.monotonic()
 
@@ -335,8 +324,12 @@ class SubprocessManager:
             )
 
             self._active[proc.pid] = proc
-            self._owners[proc.pid] = _PROCESS_OWNER.get() or config.session_id
+            self._owners[proc.pid] = owner
             try:
+                if owner is not None and owner in self._cancelled_owners:
+                    await self._kill_process_tree(proc, _SIGKILL)
+                    await proc.wait()
+                    raise asyncio.CancelledError()
                 result = await self._drain_and_wait(proc, config, t0)
             finally:
                 self._active.pop(proc.pid, None)
@@ -359,7 +352,11 @@ class SubprocessManager:
         Use this when you need to display progress in real time (build
         output, flash progress bars) rather than waiting for completion.
         """
+        from .process_owner import process_owner
+        owner = process_owner.get()
         async with self._semaphore:
+            if owner is not None and owner in self._cancelled_owners:
+                raise asyncio.CancelledError()
             env  = self._build_env(config)
 
             extra_kwargs: dict = {}
@@ -382,11 +379,13 @@ class SubprocessManager:
                 **extra_kwargs,
             )
             self._active[proc.pid] = proc
-            self._owners[proc.pid] = _PROCESS_OWNER.get() or config.session_id
+            self._owners[proc.pid] = owner
 
             # [FIX-P6] Keep references to pump tasks so we can cancel them.
             pump_tasks: list[asyncio.Task] = []
             try:
+                if owner is not None and owner in self._cancelled_owners:
+                    raise asyncio.CancelledError()
                 async for item, tasks in self._interleave_streams(proc, config):
                     pump_tasks = tasks   # Updated each yield; keep latest refs
                     yield item
@@ -403,6 +402,17 @@ class SubprocessManager:
                 if proc.returncode is None:
                     await self._kill_process_tree(proc, _SIGKILL)
                     await proc.wait()
+
+    async def cancel_owner(self, owner: str) -> None:
+        if not owner:
+            raise ValueError("A process owner is required")
+        self._cancelled_owners.add(owner)
+        targets = [proc for pid, proc in tuple(self._active.items()) if self._owners.get(pid) == owner]
+        for proc in targets:
+            if proc.returncode is None:
+                await self._kill_process_tree(proc, _SIGKILL)
+        if targets:
+            await asyncio.gather(*(proc.wait() for proc in targets), return_exceptions=True)
 
     async def kill_all(self) -> None:
         """
@@ -426,44 +436,18 @@ class SubprocessManager:
         # Second pass: force-kill survivors.
         # [FIX-P3] Snapshot again — new processes may have started or old
         # ones completed during the sleep.
-        for pid, proc in list(self._active.items()):
+        for pid, proc in active_snapshot:
             if proc.returncode is None:
                 await self._kill_process_tree(proc, _SIGKILL)
 
         waits = [
             proc.wait()
-            for _, proc in list(self._active.items())
+            for _, proc in active_snapshot
             if proc.returncode is None
         ]
         if waits:
             await asyncio.gather(
                 *(asyncio.wait_for(wait, timeout=_KILL_GRACE_S) for wait in waits),
-                return_exceptions=True,
-            )
-
-    async def kill_owner(self, owner: str) -> None:
-        """Terminate only processes created by one agent run."""
-
-        active_snapshot = [
-            (pid, proc)
-            for pid, proc in list(self._active.items())
-            if self._owners.get(pid) == owner
-        ]
-        for _, proc in active_snapshot:
-            if proc.returncode is None:
-                await self._kill_process_tree(proc, _SIGTERM)
-        if active_snapshot:
-            await asyncio.sleep(_KILL_GRACE_S)
-        survivors = [
-            proc
-            for pid, proc in list(self._active.items())
-            if self._owners.get(pid) == owner and proc.returncode is None
-        ]
-        for proc in survivors:
-            await self._kill_process_tree(proc, _SIGKILL)
-        if survivors:
-            await asyncio.gather(
-                *(asyncio.wait_for(proc.wait(), timeout=_KILL_GRACE_S) for proc in survivors),
                 return_exceptions=True,
             )
 
@@ -851,14 +835,31 @@ class SubprocessManager:
 
         if sys.platform == "win32":
             if sig == _SIGKILL:
+                killer = None
                 try:
                     killer = await asyncio.create_subprocess_exec(
                         "taskkill", "/PID", str(proc.pid), "/T", "/F",
                         stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.DEVNULL,
                     )
-                    await asyncio.wait_for(killer.wait(), timeout=2.0)
+                    returncode = await asyncio.wait_for(killer.wait(), timeout=2.0)
                 except Exception:
+                    returncode = None
+                finally:
+                    # A timed-out helper must not linger and act on a reused PID.
+                    if killer is not None and killer.returncode is None:
+                        try:
+                            killer.kill()
+                        except (ProcessLookupError, PermissionError, OSError):
+                            pass
+                        try:
+                            await asyncio.wait_for(killer.wait(), timeout=2.0)
+                        except (asyncio.TimeoutError, ProcessLookupError, PermissionError, OSError):
+                            pass
+                # taskkill reports failures (including access denied in restricted
+                # Windows environments) via its exit code, not an exception.
+                # Use the owned process handle as the direct-process fallback.
+                if returncode != 0 and proc.returncode is None:
                     try:
                         proc.kill()
                     except (ProcessLookupError, PermissionError, OSError):
@@ -909,6 +910,12 @@ class SubprocessManager:
                 if not chunk:
                     break   # EOF
 
+                callback = observer.get()
+                if callback is not None:
+                    try:
+                        await callback(chunk.decode("utf-8", errors="replace"))
+                    except Exception:
+                        pass  # Presentation failures must not interrupt process draining.
                 total += len(chunk)
                 if total > max_bytes:
                     # Store up to the limit, then inject marker and drain remainder

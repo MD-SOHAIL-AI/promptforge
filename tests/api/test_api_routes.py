@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,9 +9,9 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from backend.agent.coordinator import ExecutionOutcome, ExecutionStatus
+from backend.agent.coordinator import ExecutionOutcome, ExecutionStatus, StepResult
 from backend.api.app import create_app
-from backend.contracts.execution_plan import ExecutionPlan, TaskType
+from backend.contracts.execution_plan import ExecutionPlan, ExecutionStep, TaskType
 from backend.contracts.generated_project import GeneratedFile, GeneratedProject
 from backend.runtime.result import (
     BuildResult,
@@ -19,7 +20,7 @@ from backend.runtime.result import (
     VerificationStatus,
 )
 from backend.runtime.subprocess_mgr import SubprocessManager
-from backend.services.platformio_service import PlatformIOService
+from backend.services.platformio_service import PlatformIOService, PlatformIOStatus
 from backend.services.project_service import ProjectService
 from backend.services.serial_service import SerialConfiguration
 from backend.tools.board_detector import BoardDetector, BoardInfo, BoardType
@@ -45,6 +46,16 @@ class FakePlatformIO(PlatformIOService):
         if not (Path(str(project)) / "platformio.ini").is_file():
             raise ValueError("missing platformio.ini")
         return self.result
+
+    async def status(self, *, timeout_s: float = 3.0) -> PlatformIOStatus:
+        del timeout_s
+        return PlatformIOStatus(
+            available=True,
+            executable="test-pio",
+            version="test",
+            reason="available",
+            message="PlatformIO test fixture is ready",
+        )
 
 
 class FakeBoardDetector(BoardDetector):
@@ -112,7 +123,7 @@ def project_service(tmp_path: Path) -> tuple[ProjectService, str]:
     return service, project.project_id
 
 
-def completed_outcome(task_id: str) -> ExecutionOutcome:
+def completed_outcome(task_id: str, *, build_result: BuildResult | None = None) -> ExecutionOutcome:
     plan = ExecutionPlan(
         task_id=task_id,
         task_type=TaskType.FIRMWARE_GENERATION,
@@ -125,7 +136,11 @@ def completed_outcome(task_id: str) -> ExecutionOutcome:
     return ExecutionOutcome(
         plan=plan,
         status=ExecutionStatus.COMPLETED,
-        step_results=(),
+        step_results=(
+            (StepResult(step=ExecutionStep.BUILD_FIRMWARE, success=True, result=build_result),)
+            if build_result is not None
+            else ()
+        ),
         failures=(),
         execution_time=0.012,
     )
@@ -155,6 +170,14 @@ def make_client(
         await callback("TASK_CREATED", {"task_id": task_id})
         await callback("PLAN_GENERATED", {"task_id": task_id})
         await callback("WORKFLOW_COMPLETED", {"task_id": task_id, "status": "COMPLETED"})
+        active_workspace = kwargs.get("active_workspace")
+        if isinstance(active_workspace, dict) and active_workspace.get("agent_autonomy") in {
+            "build_only", "build_then_confirm_flash"
+        }:
+            workspace_root = Path(str(active_workspace.get("root_path") or active_workspace.get("rootPath") or active_workspace.get("workspace_root") or ""))
+            if workspace_root:
+                build = successful_build(workspace_root / ".pio" / "build" / "esp32dev" / "firmware.bin")
+                return completed_outcome(task_id, build_result=build)
         return completed_outcome(task_id)
 
     async def default_tool(name: str, *args: object, **kwargs: object) -> FlashResult:
@@ -174,6 +197,7 @@ def make_client(
         )
 
     app = create_app(
+        local_api_token_override=None if os.getenv("FORGEX_LOCAL_TOKEN") else "t" * 43,
         code_generation_service=object(),  # Existing boundary is replaced in route tests.
         project_service=projects,
         subprocess_manager=manager,
@@ -186,7 +210,8 @@ def make_client(
         workspace_manager=WorkspaceManager(PathManager(tmp_path / "workspace-root")),
         version="test-version",
     )
-    return TestClient(app, raise_server_exceptions=False), project_id, platformio
+    headers = {} if os.getenv("FORGEX_LOCAL_TOKEN") else {"Authorization": f"Bearer {'t' * 43}"}
+    return TestClient(app, base_url="http://127.0.0.1:8000", headers=headers, raise_server_exceptions=False), project_id, platformio
 
 
 def test_health_and_openapi(tmp_path: Path) -> None:
@@ -194,10 +219,18 @@ def test_health_and_openapi(tmp_path: Path) -> None:
     with client:
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.json()["status"] == "healthy"
-        assert response.json()["version"] == "test-version"
-        assert response.json()["runtime_contract"] == "forgex-agent-runtime-v2"
-        assert len(response.json()["source_fingerprint"]) == 64
+        payload = response.json()
+        assert payload["status"] == "healthy"
+        assert payload["version"] == "test-version"
+        assert payload["runtime_contract"] == "forgex-agent-runtime-v3"
+        assert len(payload["source_fingerprint"]) == 64
+        assert payload["platformio"] == {
+            "available": True,
+            "executable": "test-pio",
+            "version": "test",
+            "reason": "available",
+            "message": "PlatformIO test fixture is ready",
+        }
 
         document = client.get("/openapi.json").json()
         for path in (
@@ -205,6 +238,7 @@ def test_health_and_openapi(tmp_path: Path) -> None:
             "/execute",
             "/projects",
             "/projects/import",
+            "/projects/{project_id}/refresh",
             "/projects/{project_id}",
             "/projects/{project_id}/files",
             "/files/content",
@@ -332,6 +366,7 @@ def test_external_project_import_files_and_build(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (external / "src" / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+    (external / ".env").write_text("FORGEX_TEST_SECRET=never-return-this\n", encoding="utf-8")
     (external / ".pio" / "build" / "ignored.txt").write_text("ignored", encoding="utf-8")
 
     client, _, platformio = make_client(tmp_path)
@@ -366,6 +401,17 @@ def test_external_project_import_files_and_build(tmp_path: Path) -> None:
         assert content.status_code == 200
         assert "void setup" in content.json()["content"]
 
+        searched = client.get(f"/projects/{project_id}/files/search", params={"query": "void setup"})
+        assert searched.status_code == 200
+        assert searched.json()["paths"] == ["src/main.cpp"]
+
+        sensitive_search = client.get(
+            f"/projects/{project_id}/files/search",
+            params={"query": "never-return-this"},
+        )
+        assert sensitive_search.status_code == 200
+        assert sensitive_search.json()["paths"] == []
+
         saved = client.put(
             "/files",
             json={"project_id": project_id, "path": "src/main.cpp", "content": "void setup() {}\n"},
@@ -376,9 +422,48 @@ def test_external_project_import_files_and_build(tmp_path: Path) -> None:
         traversal = client.get("/files/content", params={"project_id": project_id, "path": "../outside.txt"})
         assert traversal.status_code == 422
 
+        sensitive_create = client.post(
+            "/files",
+            json={"project_id": project_id, "path": ".env", "content": "SECRET=value"},
+        )
+        assert sensitive_create.status_code == 403
+        assert sensitive_create.json()["code"] == "SENSITIVE_PATH_FORBIDDEN"
+
+        (external / ".npmrc").write_text("//registry.example/:_authToken=secret", encoding="utf-8")
+        sensitive_read = client.get("/files/content", params={"project_id": project_id, "path": ".npmrc"})
+        assert sensitive_read.status_code == 403
+        assert sensitive_read.json()["code"] == "SENSITIVE_PATH_FORBIDDEN"
+
         build = client.post("/build", json={"project_id": project_id, "environment": "esp32dev"})
         assert build.status_code == 200
         assert platformio.calls[-1] == (str(external.resolve()), "esp32dev")
+
+
+def test_external_project_refresh_updates_registered_metadata(tmp_path: Path) -> None:
+    external = tmp_path / "refreshable"
+    (external / "src").mkdir(parents=True)
+    (external / "platformio.ini").write_text(
+        "[env:first]\nplatform = espressif32\nboard = esp32dev\nframework = arduino\n",
+        encoding="utf-8",
+    )
+    (external / "src" / "main.cpp").write_text("void setup() {}\n", encoding="utf-8")
+    client, _, _ = make_client(tmp_path)
+    with client:
+        imported = client.post("/projects/import", json={"path": str(external)})
+        assert imported.status_code == 200
+        project_id = imported.json()["project_id"]
+
+        (external / "platformio.ini").write_text(
+            "[env:second]\nplatform = espressif32\nboard = esp32-s3-devkitc-1\nframework = arduino\n",
+            encoding="utf-8",
+        )
+
+        refreshed = client.post(f"/projects/{project_id}/refresh", json={})
+        assert refreshed.status_code == 200
+        payload = refreshed.json()
+        assert payload["project_id"] == project_id
+        assert payload["target_board"] == "esp32-s3-devkitc-1"
+        assert payload["metadata"]["active_environment"] == "second"
 
 
 def test_external_project_import_opens_generic_folder(tmp_path: Path) -> None:
@@ -437,6 +522,33 @@ def test_execute_passes_selected_board_for_generic_workspace(tmp_path: Path) -> 
     assert active_workspace["selected_board"] == "esp32dev"
     assert active_workspace["board"] == "ESP32"
     assert active_workspace["generation_mode"] == "generate_into_open_folder"
+
+
+def test_execute_rejects_unregistered_or_mismatched_workspace_root(tmp_path: Path) -> None:
+    outside = tmp_path / "unregistered"
+    outside.mkdir()
+    client, project_id, _ = make_client(tmp_path)
+    with client:
+        unregistered = client.post(
+            "/execute", json={"prompt": "Build", "workspace_root": str(outside)}
+        )
+        assert unregistered.status_code == 422
+        assert unregistered.json()["code"] == "WORKSPACE_ROOT_UNREGISTERED"
+
+        mismatch = client.post(
+            "/execute",
+            json={"prompt": "Build", "project_id": project_id, "workspace_root": str(outside)},
+        )
+        assert mismatch.status_code == 422
+        assert mismatch.json()["code"] == "WORKSPACE_ROOT_MISMATCH"
+
+        imported = client.post("/projects/import", json={"path": str(outside)})
+        assert imported.status_code == 200
+        allowed = client.post(
+            "/execute",
+            json={"prompt": "Build", "workspace_root": str(outside)},
+        )
+        assert allowed.status_code == 200
 
 
 def test_workspace_file_routes(tmp_path: Path) -> None:
@@ -527,7 +639,7 @@ def test_build_success_and_missing_project(tmp_path: Path) -> None:
         assert missing.status_code == 404
 
 
-def test_flash_success_build_failure_and_board_mismatch(tmp_path: Path) -> None:
+def test_direct_flash_requires_agent_approval(tmp_path: Path) -> None:
     board = BoardInfo(
         board_type=BoardType.ESP32,
         port="COM7",
@@ -537,44 +649,15 @@ def test_flash_success_build_failure_and_board_mismatch(tmp_path: Path) -> None:
         description="test",
         serial_number="test",
     )
-    client, project_id, _ = make_client(tmp_path, boards=[board])
+    client, project_id, platformio = make_client(tmp_path, boards=[board])
     with client:
         response = client.post(
             "/flash",
             json={"project_id": project_id, "board_type": "ESP32", "port": "COM7"},
         )
-        assert response.status_code == 200
-        assert response.json()["flash"]["success"] is True
-
-        mismatch = client.post(
-            "/flash",
-            json={"project_id": project_id, "board_type": "STM32", "port": "COM7"},
-        )
-        assert mismatch.status_code == 409
-        assert mismatch.json()["code"] == "BOARD_TYPE_MISMATCH"
-
-        missing = client.post(
-            "/flash",
-            json={"project_id": project_id, "board_type": "ESP32", "port": "COM9"},
-        )
-        assert missing.status_code == 404
-        assert missing.json()["code"] == "BOARD_NOT_FOUND"
-        assert missing.json()["message"] == "No matching ESP32 device detected. Connect a board and try again."
-
-    failed_build = BuildResult(
-        success=False,
-        status=ResultStatus.FAILED,
-        message="Compiler failed",
-    )
-    client, project_id, _ = make_client(tmp_path / "failed", build_result=failed_build, boards=[board])
-    with client:
-        response = client.post(
-            "/flash",
-            json={"project_id": project_id, "board_type": "ESP32", "port": "COM7"},
-        )
-        assert response.status_code == 200
-        assert response.json()["build"]["success"] is False
-        assert response.json()["flash"] is None
+        assert response.status_code == 409
+        assert response.json()["code"] == "FLASH_APPROVAL_REQUIRED"
+        assert platformio.calls == []
 
 
 def test_monitor_lifecycle_and_conflict(tmp_path: Path) -> None:

@@ -70,6 +70,27 @@ def test_valid_write_creates_changeset_without_touching_active_workspace(tmp_pat
     assert change_set.changed_files[0].path == "src/main.cpp"
 
 
+def test_missing_project_file_can_be_created_in_the_same_run(tmp_path: Path) -> None:
+    runtime, active, changes = make_runtime(tmp_path)
+    read_missing = ProductToolPlan.parse({
+        "version": PRODUCT_TOOLPLAN_VERSION,
+        "summary": "Inspect the header",
+        "tool_calls": [{"id": "read_header", "type": "read_file", "arguments": {"path": "include/Pins.h"}}],
+        "final": False,
+    })
+    planner = SequencePlanner([
+        read_missing,
+        plan(path="include/Pins.h", content="#pragma once\n", call_id="write_header"),
+        plan(final=True),
+    ])
+    result = runtime.run_product(task="Create the missing header", planner=planner, policy=product_agent_policy())
+    assert result.classification is RuntimeClassification.PASS
+    assert planner.seen_results[1][-1]["classification"] == RuntimeClassification.FILE_NOT_FOUND.value
+    assert result.change_set_id is not None
+    assert changes.get(result.change_set_id).changed_files[0].path == "include/Pins.h"
+    assert not (active / "include/Pins.h").exists()
+
+
 def test_tool_results_return_only_safe_metadata_to_planner(tmp_path: Path) -> None:
     runtime, _, _ = make_runtime(tmp_path)
     planner = SequencePlanner([plan(), plan(final=True)])
@@ -78,6 +99,29 @@ def test_tool_results_return_only_safe_metadata_to_planner(tmp_path: Path) -> No
     second_turn_results = planner.seen_results[1]
     assert second_turn_results[-1]["status"] == "completed"
     assert "content" not in second_turn_results[-1]
+
+
+def test_tool_lifecycle_events_include_correlation_and_summaries(tmp_path: Path) -> None:
+    runtime, _, _ = make_runtime(tmp_path)
+    events: list[dict[str, object]] = []
+    result = runtime.run_product(
+        task="write",
+        planner=SequencePlanner([plan(path="src/main.cpp", content="int main(){}\n"), plan(final=True)]),
+        policy=product_agent_policy(),
+        capability_run_id="run-123",
+        event_callback=events.append,
+    )
+
+    assert result.classification is RuntimeClassification.PASS
+    turn_started = next(event for event in events if event["event_type"] == "agent.turn.started")
+    tool_started = next(event for event in events if event["event_type"] == "tool.started")
+    tool_completed = next(event for event in events if event["event_type"] == "tool.completed")
+    assert turn_started["turn_id"] == "run-123:turn-1"
+    assert tool_started["tool_call_id"] == "call_1"
+    assert tool_started["turn_id"] == "run-123:turn-1"
+    assert tool_started["arguments"] == {"path": "src/main.cpp", "content_bytes": len("int main(){}\n")}
+    assert tool_completed["duration_ms"] >= 0
+    assert tool_completed["result"]["path"] == "src/main.cpp"
 
 
 @pytest.mark.parametrize("path", ["/absolute.txt", "C:/absolute.txt", "../parent.txt", "safe/../../parent.txt", "safe\\file.txt"])
@@ -156,7 +200,7 @@ def test_active_workspace_mutation_aborts_run(tmp_path: Path) -> None:
     assert result.change_set_id is None
 
 
-def test_max_turns_discards_stage_and_creates_no_changeset(tmp_path: Path) -> None:
+def test_max_turns_retains_isolated_recovery_draft(tmp_path: Path) -> None:
     runtime, _, service = make_runtime(tmp_path)
 
     class EndlessPlanner:
@@ -174,8 +218,11 @@ def test_max_turns_discards_stage_and_creates_no_changeset(tmp_path: Path) -> No
         limits=ProductRuntimeLimits(max_turns=2),
     )
     assert result.classification is RuntimeClassification.MAX_TURNS
-    assert result.change_set_id is None
-    assert service.list() == ()
+    assert result.change_set_id
+    draft = service.get(result.change_set_id)
+    assert draft.status == "draft"
+    assert {item.path for item in draft.changed_files} == {f"file{index}.txt" for index in range(1, 15)}
+    assert not (runtime.active_workspace_root / "file1.txt").exists()
 
 
 def test_pre_cancelled_run_executes_nothing(tmp_path: Path) -> None:
@@ -210,3 +257,105 @@ def test_policy_rejects_symlink_escape(tmp_path: Path) -> None:
     with pytest.raises(ToolPolicyError) as exc:
         product_agent_policy().resolve_path(root, "link/file.txt", must_exist=False)
     assert exc.value.classification is RuntimeClassification.PATH_UNSAFE
+
+
+def test_high_confidence_secret_content_is_not_written_by_agent(tmp_path: Path) -> None:
+    runtime, _, _ = make_runtime(tmp_path)
+    result = runtime.run_product(
+        task="secret",
+        planner=SequencePlanner([plan(path="src/config.cpp", content='const char* key = "sk-abcdefghijklmnopqrstuvwxyz123456";\n'), plan(final=True)]),
+        policy=product_agent_policy(),
+    )
+    assert result.classification is RuntimeClassification.POLICY_DENIED
+    assert result.change_set_id is None
+
+
+def test_high_confidence_secret_in_safe_named_file_is_not_exposed_to_agent(tmp_path: Path) -> None:
+    runtime, active, _ = make_runtime(tmp_path)
+    (active / "config.txt").write_text("token=ghp_abcdefghijklmnopqrstuvwxyzABCDE12345\n", encoding="utf-8")
+    from backend.agent_runtime.tool_executor import ForgeXToolExecutor
+    from backend.agent_runtime.tool_contracts import ToolName
+
+    stage = tmp_path / "overlay"
+    stage.mkdir()
+    executor = ForgeXToolExecutor(write_root=stage, read_root=active, policy=product_agent_policy())
+    call = ToolCall(tool=ToolName.READ_FILE, arguments={"path": "config.txt"})
+    with pytest.raises(ToolPolicyError) as exc:
+        executor.execute(call)
+    assert exc.value.reason == "secret_content_forbidden"
+
+
+def test_policy_rejects_windows_reparse_point_attribute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import backend.agent_runtime.tool_policy as policy_module
+
+    target = tmp_path / "reparse-target"
+    target.write_text("data", encoding="utf-8")
+    original_lstat = Path.lstat
+
+    class StatProxy:
+        def __init__(self, source):
+            self._source = source
+            self.st_mode = source.st_mode
+            self.st_file_attributes = getattr(source, "st_file_attributes", 0) | 0x400
+
+        def __getattr__(self, name):
+            return getattr(self._source, name)
+
+    def fake_lstat(path: Path):
+        result = original_lstat(path)
+        if path == target:
+            return StatProxy(result)
+        return result
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    with pytest.raises(ToolPolicyError, match="link_or_reparse_forbidden"):
+        policy_module._reject_link_or_reparse(target)
+
+
+def test_present_tool_can_declare_staged_deliverable_without_exposing_content(tmp_path: Path) -> None:
+    from backend.agent_runtime.tool_contracts import ToolName
+    from backend.agent_runtime.tool_executor import ForgeXToolExecutor
+
+    runtime, active, _ = make_runtime(tmp_path)
+    stage = tmp_path / "present-stage"
+    stage.mkdir()
+    (stage / "report.md").write_text("# Result\nSafe output\n", encoding="utf-8")
+    executor = ForgeXToolExecutor(
+        write_root=stage,
+        read_root=active,
+        policy=product_agent_policy(),
+    )
+    call = ToolCall(
+        ToolName.PRESENT_FILES,
+        {"files": [{"path": "report.md", "description": "Generated report"}]},
+    )
+    result = executor.execute(call)
+    assert result["count"] == 1
+    item = result["files"][0]
+    assert item["path"] == "report.md"
+    assert item["staged"] is True
+    assert len(item["sha256"]) == 64
+    assert "content" not in item
+
+
+def test_canonical_settlement_precedes_tool_admission_and_commit(tmp_path: Path) -> None:
+    runtime, _, _ = make_runtime(tmp_path)
+    events: list[dict[str, object]] = []
+    result = runtime.run_product(
+        task="write",
+        planner=SequencePlanner([plan(path="src/main.cpp", content="int main(){}\n"), plan(final=True)]),
+        policy=product_agent_policy(),
+        event_callback=events.append,
+    )
+    assert result.classification is RuntimeClassification.PASS
+    names = [str(item.get("event_type")) for item in events]
+    settled = names.index("model.attempt.settled")
+    admitted = names.index("tool.invocation.admitted")
+    started = names.index("tool.execution.started")
+    committed = names.index("tool.result.committed")
+    step_settled = names.index("step.settled")
+    assert settled < admitted < started < committed < step_settled
+    settlement = events[settled]
+    assert settlement.get("attempt_id")
+    assert settlement.get("turn") == 1
+    assert settlement.get("step") == 1

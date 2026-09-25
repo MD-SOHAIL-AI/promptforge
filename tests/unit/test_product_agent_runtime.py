@@ -30,8 +30,9 @@ def change_service(tmp_path: Path) -> ChangeSetService:
 def test_product_registry_has_only_canonical_and_local_test_providers(tmp_path: Path) -> None:
     registry = ProductProviderRegistry(model_provider_registry=model_registry(tmp_path), fake_enabled=False)
     ids = {item.provider_id for item in registry.list()}
-    assert ids == {"verified_template", "fake_planner", "openrouter", "openai", "groq", "gemini"}
-    assert registry.resolve("verified_template").provider_id == "verified_template"
+    assert ids == {"deepseek", "anthropic", "openrouter", "openai", "groq", "cerebras", "nvidia_nim", "gemini", "ollama", "lmstudio"}
+    with pytest.raises(ValueError, match="PRODUCT_PROVIDER_NOT_ROUTEABLE"):
+        registry.resolve("verified_template")
     with pytest.raises(ValueError, match="PRODUCT_PROVIDER_NOT_ROUTEABLE"):
         registry.resolve("fake_planner")
 
@@ -63,73 +64,102 @@ def test_api_planner_uses_canonical_provider_settings_and_route(tmp_path: Path) 
     planner = registry.resolve("openai")
     assert planner.provider_id == "openai"
     assert planner.model_id == "gpt-test-route"
-    assert planner.endpoint == "https://gateway.example/v1/chat/completions"
+    assert planner.transport_name == "model_router"
 
 
-def test_fake_agent_run_creates_changeset_and_leaves_workspace_unchanged(tmp_path: Path) -> None:
+def test_unavailable_selected_provider_does_not_choose_another_recipient(tmp_path: Path) -> None:
+    models = model_registry(tmp_path)
+    models.configure_provider("openai", {"api_key": "test", "enabled": True, "default_model": "ready"})
+    models.save_route(ModelRoute(task_type="code_generation", provider_id="anthropic", model_id="unavailable", fallback_enabled=False))
+    registry = ProductProviderRegistry(model_provider_registry=models)
+    assert any(entry.provider_id == "openai" and entry.routeable for entry in registry.list())
+    with pytest.raises(ValueError, match="PRODUCT_PROVIDER_NOT_ROUTEABLE"):
+        registry.default_provider_id()
+
+
+def test_nvidia_nim_is_routeable_by_the_product_agent(tmp_path: Path) -> None:
+    models = model_registry(tmp_path)
+    models.configure_provider(
+        "nvidia_nim",
+        {"api_key": "nvapi-test", "enabled": True},
+    )
+    models.save_route(ModelRoute(
+        task_type="code_generation",
+        provider_id="nvidia_nim",
+        model_id="nvidia/nemotron-3-super-120b-a12b",
+        fallback_enabled=False,
+        fallback_provider_id=None,
+    ))
+
+    registry = ProductProviderRegistry(model_provider_registry=models)
+    planner = registry.resolve("nvidia_nim")
+
+    assert planner.provider_id == "nvidia_nim"
+    assert planner.model_id == "nvidia/nemotron-3-super-120b-a12b"
+    assert planner.transport_name == "model_router"
+
+
+def test_product_service_requires_orchestrator_for_enabled_runs(tmp_path: Path) -> None:
     async def scenario() -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        (workspace / "README.txt").write_text("baseline\n", encoding="utf-8")
-        changes = change_service(tmp_path)
-        providers = ProductProviderRegistry(model_provider_registry=model_registry(tmp_path), fake_enabled=True)
-        service = ProductAgentService(change_service=changes, provider_registry=providers, enabled=True)
-        try:
-            run = await service.start_run(
-                project_id="project",
-                active_workspace_root=workspace,
-                instruction="create a safe test file",
-                provider_id="fake_planner",
+        service = ProductAgentService(
+            change_service=change_service(tmp_path),
+            provider_registry=ProductProviderRegistry(model_provider_registry=model_registry(tmp_path), fake_enabled=True),
+            enabled=True,
+        )
+        with pytest.raises(RuntimeError, match="AGENT_ORCHESTRATOR_REQUIRED"):
+            await service.start_run(
+                project_id="project", active_workspace_root=workspace, instruction="create file", provider_id="fake_planner"
             )
-            for _ in range(200):
-                completed = service.get_run(run.run_id)
-                if completed.status in TERMINAL_AGENT_STATUSES:
-                    break
-                await asyncio.sleep(0.01)
-            completed = service.get_run(run.run_id)
-            assert completed.status == "completed"
-            assert completed.change_set_id
-            assert completed.created_file_count == 1
-            assert completed.active_workspace_unchanged is True
-            assert not (workspace / "FORGEX_AGENT_RUNTIME_SMOKE.txt").exists()
-            staged = changes.get(completed.change_set_id)
-            assert staged.status == "pending"
-            safe = completed.to_safe_dict()
-            assert safe["change_set_id"] == completed.change_set_id
-            assert "raw_prompt" not in str(safe).casefold()
-        finally:
-            await service.close()
-
     asyncio.run(scenario())
 
 
-def test_verified_template_agent_is_routeable_without_api_key(tmp_path: Path) -> None:
+class _Owner:
+    def __init__(self) -> None:
+        self.started = []
+        self.cancelled = []
+    async def start_run(self, **kwargs):
+        self.started.append(kwargs)
+        from backend.agent_runtime.product_agent_service import ProductAgentRun
+        return ProductAgentRun("run-1", str(kwargs["project_id"]), str(kwargs["provider_id"]), model_id=kwargs.get("model_id"))
+    def get_run(self, run_id):
+        from backend.agent_runtime.product_agent_service import ProductAgentRun
+        return ProductAgentRun(run_id, "p", "fake_planner")
+    def events(self, run_id, **kwargs): return ()
+    async def cancel(self, run_id): self.cancelled.append(run_id); return self.get_run(run_id)
+    async def retry(self, run_id): return self.get_run(run_id)
+    async def confirm_flash(self, run_id, **kwargs): return self.get_run(run_id)
+    async def close(self): return None
+    def steer(self, run_id, message): return self.get_run(run_id)
+    def prepare_flash(self, run_id, **kwargs): return self.get_run(run_id)
+    def apply_pending_changes(self, run_id): return self.get_run(run_id)
+    def session_projection(self, session_id): return {}
+    def transient_events(self, run_id, **kwargs): return ()
+    def queued_guidance(self, run_id): return ()
+    def edit_guidance(self, run_id, item_id, message): return {}
+    def remove_guidance(self, run_id, item_id): return {}
+
+
+def test_product_service_is_facade_and_ignores_legacy_fallback(tmp_path: Path) -> None:
     async def scenario() -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        changes = change_service(tmp_path)
-        providers = ProductProviderRegistry(model_provider_registry=model_registry(tmp_path))
-        service = ProductAgentService(change_service=changes, provider_registry=providers, enabled=True)
-        try:
-            run = await service.start_run(
-                project_id="project",
-                active_workspace_root=workspace,
-                instruction="Create an ESP32 blink project",
-                provider_id="verified_template",
-            )
-            for _ in range(200):
-                current = service.get_run(run.run_id)
-                if current.status in TERMINAL_AGENT_STATUSES:
-                    break
-                await asyncio.sleep(0.01)
-            current = service.get_run(run.run_id)
-            assert current.status == "completed"
-            assert current.change_set_id
-            assert current.created_file_count >= 2
-            assert not (workspace / "platformio.ini").exists()
-        finally:
-            await service.close()
-
+        service = ProductAgentService(
+            change_service=change_service(tmp_path),
+            provider_registry=ProductProviderRegistry(model_provider_registry=model_registry(tmp_path), fake_enabled=True),
+            enabled=True,
+        )
+        owner = _Owner()
+        service.attach_orchestrator(owner)
+        run = await service.start_run(
+            project_id="project", active_workspace_root=workspace, instruction="x",
+            provider_id="fake_planner", model_id="m", fallback_provider_id="openai",
+        )
+        assert run.run_id == "run-1"
+        assert owner.started[0]["fallback_provider_id"] is None
+        await service.cancel(run.run_id)
+        assert owner.cancelled == ["run-1"]
     asyncio.run(scenario())
 
 
@@ -144,70 +174,5 @@ def test_disabled_agent_runtime_rejects_run(tmp_path: Path) -> None:
         )
         with pytest.raises(PermissionError, match="AGENT_RUNTIME_DISABLED"):
             await service.start_run(project_id="project", active_workspace_root=workspace, instruction="safe")
-
-    asyncio.run(scenario())
-
-
-def test_local_greeting_does_not_create_changeset(tmp_path: Path) -> None:
-    async def scenario() -> None:
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        changes = change_service(tmp_path)
-        service = ProductAgentService(
-            change_service=changes,
-            provider_registry=ProductProviderRegistry(model_provider_registry=model_registry(tmp_path)),
-            enabled=True,
-        )
-        run = await service.start_run(project_id="project", active_workspace_root=workspace, instruction="hello", provider_id="verified_template")
-        assert run.status == "completed"
-        assert run.classification == "LOCAL_RESPONSE"
-        assert run.change_set_id is None
-        assert changes.list() == ()
-        await service.close()
-
-    asyncio.run(scenario())
-
-
-class SlowPlanner:
-    provider_id = "slow"
-    model_id = "test"
-
-    def request_turn(self, **kwargs):
-        del kwargs
-        time.sleep(0.1)
-        from backend.agent_runtime.product_providers import FakeProductPlanner
-        return FakeProductPlanner().request_turn(task="x", tool_results=(), allowed_tools=("write_file",), run_id="x", turn=1)
-
-
-class SlowRegistry:
-    def resolve(self, provider_id: str):
-        assert provider_id == "slow"
-        return SlowPlanner()
-
-
-def test_product_service_cancel_stops_before_apply(tmp_path: Path) -> None:
-    async def scenario() -> None:
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        changes = change_service(tmp_path)
-        service = ProductAgentService(
-            change_service=changes,
-            provider_registry=SlowRegistry(),  # type: ignore[arg-type]
-            enabled=True,
-        )
-        try:
-            run = await service.start_run(project_id="project", active_workspace_root=workspace, instruction="cancel", provider_id="slow")
-            await service.cancel(run.run_id)
-            for _ in range(200):
-                current = service.get_run(run.run_id)
-                if current.status in TERMINAL_AGENT_STATUSES:
-                    break
-                await asyncio.sleep(0.01)
-            current = service.get_run(run.run_id)
-            assert current.status == "cancelled"
-            assert current.change_set_id is None
-            assert changes.list() == ()
-        finally:
-            await service.close()
 
     asyncio.run(scenario())

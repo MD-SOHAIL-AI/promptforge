@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 
 ChangeType = Literal["created", "modified", "deleted"]
-ChangeSetStatus = Literal["pending", "applied", "undone", "discarded", "conflicted", "failed"]
+ChangeSetStatus = Literal["pending", "draft", "applied", "undone", "discarded", "conflicted", "failed"]
 
 
 def utc_now() -> datetime:

@@ -44,11 +44,13 @@ export const EditorWorkbench = memo(function EditorWorkbench({
   const platform = activeProject?.framework || "PlatformIO";
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-transparent">
+    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-transparent">
       <div className="fx-editor-context flex h-8 shrink-0 items-center justify-between border-b border-[var(--fx-border-soft)] px-3 text-[10px] text-[var(--fx-text-muted)]">
         <div className="flex min-w-0 items-center gap-2">
           <Braces className="h-4 w-4 shrink-0 text-[var(--fx-info)]" />
-          <span className="truncate text-[var(--fx-code-text)]">{activeProject?.project_name ?? "ForgeX Workspace"}</span>
+          <span className="truncate text-[var(--fx-code-text)]">
+            {activeProject?.project_name ?? "ForgeX Workspace"}
+          </span>
           <span className="text-[var(--fx-text-muted)]">/</span>
           <span className="truncate">{breadcrumb(activePath)}</span>
         </div>

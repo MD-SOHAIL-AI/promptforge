@@ -11,10 +11,18 @@ from ..services.project_import_service import (
 )
 from ..services.project_service import ProjectMetadata, ProjectService
 from .errors import APIError
+from .service_container import ForgeXServices
+
+
+def services(request: Request) -> ForgeXServices:
+    value = getattr(request.app.state, "services", None)
+    if not isinstance(value, ForgeXServices):
+        raise APIError(503, "SERVICE_UNAVAILABLE", "ForgeX service container is not configured", {"service": "ForgeXServices"})
+    return value
 
 
 def required_state(request: Request, name: str, label: str) -> object:
-    value = getattr(request.app.state, name, None)
+    value = getattr(services(request), name, None)
     if value is None:
         raise APIError(
             503,
@@ -49,7 +57,7 @@ async def resolve_project_from_request(
     for metadata in await service.list_projects():
         if metadata.project_id == project_id:
             return metadata
-    import_service = getattr(request.app.state, "project_import_service", None)
+    import_service = services(request).project_import_service
     if isinstance(import_service, ProjectImportService):
         try:
             return await import_service.get_project(project_id)

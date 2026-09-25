@@ -22,7 +22,7 @@ V4 includes:
 
 See [`FORGEX_NEXUS_V4.md`](FORGEX_NEXUS_V4.md) for the UI architecture and interaction model.
 
-## Forge Agent V3
+## Forge Agent V3 + Harness Host
 
 Forge Agent V3 uses a continuous model → tool → observation → model loop instead of a write-file-only generation pipeline. The agent can acquire project context on demand, stage edits safely, build firmware, reason over compiler diagnostics, repair failures, maintain a live plan, search verified project memory, load skills, and delegate bounded read-only subagents.
 
@@ -37,6 +37,16 @@ Hardware remains host-controlled: verified firmware artifacts and one-time appro
 
 See [`FORGEX_AGENT_V3.md`](FORGEX_AGENT_V3.md) for the architecture and behavior.
 
+The desktop now also owns an authenticated TypeScript harness host inspired by
+the reviewed DeepSeek Harness architecture. It runs beside the Python hardware
+daemon in shadow mode, durably mirrors session events, and provides the new
+provider catalog, tool pipeline, plugin permissions, bounded subagents,
+workflows, and fail-closed sandbox boundary. Shadow mode deliberately keeps the
+proven Python orchestrator authoritative while compatibility is validated.
+
+See [`FORGEX_HARNESS_ARCHITECTURE.md`](FORGEX_HARNESS_ARCHITECTURE.md) for the
+runtime boundary, migration stages, security invariants, and source provenance.
+
 ## Main stack
 
 - Backend: Python, FastAPI, PlatformIO integration
@@ -49,46 +59,36 @@ See [`FORGEX_AGENT_V3.md`](FORGEX_AGENT_V3.md) for the architecture and behavior
 Install these on the development machine:
 
 - Python 3.10+
-- Node.js 20+
+- Node.js 22.19+
 - npm
 - PlatformIO / PlatformIO Core for real firmware builds and uploads
 - USB/serial drivers required by the target board
 
-## Setup
+## First-time setup
 
-From the repository root:
-
-```bash
-python -m venv .venv
-```
-
-Activate the virtual environment, then install Python dependencies:
+From the repository root on Windows:
 
 ```bash
-python -m pip install -r requirements.txt
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+npm ci
+npm --prefix frontend ci
 ```
 
-Install desktop dependencies:
+On Linux/macOS, use the equivalent `.venv/bin/python` commands. Copy `.env.example` to `.env` only if you need local overrides for model providers, ports, diagnostics, or feature flags.
 
-```bash
-npm install
-```
-
-Install frontend dependencies:
-
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-Copy `.env.example` to `.env` and configure the desired model provider/API key or local model provider.
+You do **not** need to activate the virtual environment for normal desktop development. Electron resolves the repository Python interpreter and owns the FastAPI backend lifecycle.
 
 ## Run ForgeX desktop
+
+From a fresh terminal, the normal development command is only:
 
 ```bash
 npm run dev:desktop
 ```
+
+That command starts/reuses the Next.js frontend, launches Electron, and Electron starts or safely reuses the ForgeX FastAPI backend. Manual `.venv` activation and a separate `npm run dev:backend` are not required.
 
 Individual development processes are also available:
 
@@ -97,6 +97,53 @@ npm run dev:backend
 npm run dev:frontend
 npm run dev:electron
 ```
+
+The standalone backend requires `FORGEX_LOCAL_TOKEN` (at least 32 characters)
+for API and WebSocket operations. `npm run dev:desktop` provisions this token and
+the desktop session cookie automatically. A backend started without a token
+serves `/health` only.
+
+Firmware flashing runs through a Forge task's verified build, prepare, and
+one-time confirmation flow. The legacy direct `POST /flash` endpoint is disabled.
+
+## NVIDIA NIM provider
+
+Open **Settings -> Models -> Cloud APIs -> NVIDIA NIM**, paste the API key
+created in the NVIDIA API Catalog into **API key**, and select **Save provider**.
+Use **Models** to refresh NVIDIA's model list, choose a NVIDIA NIM model, then
+select **Use this model**. Provider credentials and model catalogs are kept
+separate from every other provider.
+
+For environment-based development configuration, copy `.env.example` to
+`.env` and set `NVIDIA_API_KEY` and, optionally, `NVIDIA_MODEL`. The hosted API
+defaults to `https://integrate.api.nvidia.com/v1`; a self-hosted NIM can be used
+by changing its Base URL in the same settings panel.
+
+NVIDIA requests use a strict 45-second deadline and Forge Agent applies a
+60-second whole-turn budget, including schema repair and fallback. Override the
+request deadline with `FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS` (5-180 seconds) when a
+self-hosted deployment has different cold-start characteristics. ForgeX never
+disables the NIM deadline.
+
+Long NIM turns are protected by a fenced session-lease heartbeat. The runtime
+renews ownership while a model or hardware step is active and fails closed if
+another worker takes the lease; an expired owner is never revived.
+
+## Model providers
+
+ForgeX includes DeepSeek, Anthropic, OpenAI, OpenRouter, Groq, Cerebras, NVIDIA NIM,
+Gemini, Ollama, and LM Studio adapters. Settings also supports custom OpenAI
+Chat Completions, OpenAI Responses, and Anthropic Messages endpoints. Custom
+provider definitions are persisted separately from credentials; secrets stay
+in the operating-system credential store. A custom provider cannot be removed
+while any route still references it.
+
+To use Cerebras, open **Settings -> Models -> Cloud APIs -> Cerebras**, enter
+your API key, and select **Save provider**. ForgeX imports every model returned
+by Cerebras for that key from `/v1/models`; choose one under **Active model**
+and select **Use this model**. You can refresh the account's model list with
+**Models**. For environment configuration, set `CEREBRAS_API_KEY` and optionally
+`CEREBRAS_MODEL` in a private `.env` file.
 
 ## Agent modes
 
@@ -131,7 +178,7 @@ ForgeX keeps model reasoning separate from trusted host actions.
 - Flash approval is bound to the selected run/board/port/environment/artifact hash.
 - Serial monitor start/stop is a deterministic hardware action, not a generation workflow.
 
-## V3 compatibility flag
+## Agent runtime flags
 
 Forge Agent V3 is enabled by default:
 
@@ -139,7 +186,9 @@ Forge Agent V3 is enabled by default:
 FORGEX_ENABLE_AGENT_V3_LOOP=1
 ```
 
-To temporarily fall back to the legacy autonomous workflow:
+Desktop release mode requires the V3 loop. If `FORGEX_DESKTOP=1`, setting this flag to `0` is rejected at backend startup.
+
+The legacy fallback is only for non-desktop diagnostic runs:
 
 ```env
 FORGEX_ENABLE_AGENT_V3_LOOP=0
@@ -152,13 +201,19 @@ The existing agent orchestrator remains the host safety/state layer around the V
 Backend:
 
 ```bash
-pytest -q
+.venv\Scripts\python.exe -m pytest -q
 ```
 
 Frontend state tests:
 
 ```bash
 npm run test:ui-state
+```
+
+Harness host tests:
+
+```bash
+npm run test:harness
 ```
 
 Electron tests after installing npm dependencies:
@@ -176,6 +231,29 @@ npm run lint
 npm run build
 ```
 
+Run the complete production-beta gate from the repository root:
+
+```bash
+npm run verify:beta
+```
+
 ## Source archive policy
 
 Release/review ZIPs should not contain `node_modules`, `.next`, `.pio`, `dist`, `.pytest_cache`, Python bytecode caches, generated firmware, local `.env` files, or runtime workspace metadata such as `workspace/external-projects.json`.
+
+Use the strict scanner against actual staging folders or ZIPs:
+
+```bash
+npm run scan:release -- path\to\forgex-release.zip
+```
+
+For the local development checkout, use the source-tree scan. It ignores disposable generated artifacts while still checking source paths:
+
+```bash
+npm run scan:source-release
+```
+
+
+## Forge Agent redesign validation
+
+See [`FORGEX_AGENT_REDESIGN_VALIDATION.md`](FORGEX_AGENT_REDESIGN_VALIDATION.md) for the implemented capability model, final regression results, and local provider/frontend verification commands.

@@ -19,6 +19,7 @@ from backend.services.platformio_service import (
     PlatformIOProjectError,
     PlatformIOResponseError,
     PlatformIOService,
+    resolve_platformio_executable,
 )
 from backend.tools.build_firmware import BuildConfig
 
@@ -81,6 +82,52 @@ def make_project(root: Path, ini: str | None = None) -> Path:
 
 def run(coro: Any) -> Any:
     return asyncio.run(coro)
+
+
+def test_resolve_platformio_uses_env_override(tmp_path: Path) -> None:
+    status = resolve_platformio_executable(
+        repo_root=tmp_path,
+        env={"FORGEX_PLATFORMIO_EXECUTABLE": "custom-pio", "PATH": ""},
+        path="",
+    )
+
+    assert status.available is True
+    assert status.executable == "custom-pio"
+    assert status.reason == "available"
+
+
+def test_resolve_platformio_prefers_repo_local_venv(tmp_path: Path) -> None:
+    executable = tmp_path / ".venv" / "Scripts" / "pio.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("", encoding="utf-8")
+
+    status = resolve_platformio_executable(repo_root=tmp_path, env={"PATH": ""}, path="")
+
+    assert status.available is True
+    assert status.executable == str(executable)
+
+
+def test_resolve_platformio_falls_back_to_path(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    executable = bin_dir / ("pio.exe" if platformio_service.sys.platform == "win32" else "pio")
+    executable.write_text("", encoding="utf-8")
+    executable.chmod(0o755)
+
+    status = resolve_platformio_executable(repo_root=tmp_path, env={"PATH": str(bin_dir)}, path=str(bin_dir))
+
+    assert status.available is True
+    assert status.executable is not None
+    assert status.executable.casefold() == str(executable).casefold()
+
+
+def test_resolve_platformio_reports_missing(tmp_path: Path) -> None:
+    status = resolve_platformio_executable(repo_root=tmp_path, env={"PATH": ""}, path="")
+
+    assert status.available is False
+    assert status.executable is None
+    assert status.reason == "missing"
+    assert "setup:platformio" in status.message
 
 
 def test_environment_is_frozen_and_serializable() -> None:
@@ -244,7 +291,7 @@ def test_clean_uses_subprocess_manager_only(tmp_path: Path) -> None:
 
     assert result.success is True
     assert manager.calls[0].args == [
-        "pio", "run", "--project-dir", str(root.resolve()),
+        service.executable, "run", "--project-dir", str(root.resolve()),
         "--target", "clean", "--environment", "esp32dev",
     ]
     assert manager.calls[0].cwd == str(root.resolve())
@@ -252,12 +299,26 @@ def test_clean_uses_subprocess_manager_only(tmp_path: Path) -> None:
     assert manager.calls[0].session_id == "session-1"
 
 
+def test_search_libraries_returns_only_bounded_registry_package_ids() -> None:
+    manager = FakeSubprocessManager(process_result(stdout=(
+        "Found 30 packages\n\nadafruit/DHT sensor library\n"
+        "Library 1.4.7\nDescription text\n\nmarkruys/DHT\n"
+        "adafruit/DHT sensor library\n"
+    )))
+    service = PlatformIOService(manager)
+    assert run(service.search_libraries("header:DHT.h", limit=2)) == (
+        "adafruit/DHT sensor library", "markruys/DHT",
+    )
+    assert manager.calls[0].args == [service.executable, "pkg", "search", "header:DHT.h"]
+
+
 def test_install_dependencies_builds_canonical_command(tmp_path: Path) -> None:
     root = make_project(tmp_path / "firmware")
     manager = FakeSubprocessManager(process_result())
+    service = PlatformIOService(manager)
 
     result = run(
-        PlatformIOService(manager).install_dependencies(
+        service.install_dependencies(
             root,
             environment="esp32dev",
             force=True,
@@ -266,7 +327,7 @@ def test_install_dependencies_builds_canonical_command(tmp_path: Path) -> None:
 
     assert result.success is True
     assert manager.calls[0].args == [
-        "pio", "pkg", "install", "--project-dir", str(root.resolve()),
+        service.executable, "pkg", "install", "--project-dir", str(root.resolve()),
         "--environment", "esp32dev", "--force",
     ]
 
@@ -293,16 +354,17 @@ def test_list_boards_parses_and_freezes_json() -> None:
         }
     ]
     manager = FakeSubprocessManager(process_result(stdout=json.dumps(payload)))
+    service = PlatformIOService(manager)
 
     boards = run(
-        PlatformIOService(manager).list_boards(
+        service.list_boards(
             "esp32",
             installed_only=True,
         )
     )
 
     assert manager.calls[0].args == [
-        "pio", "boards", "--json-output", "--installed", "esp32",
+        service.executable, "boards", "--json-output", "--installed", "esp32",
     ]
     assert boards[0]["id"] == "esp32dev"
     assert boards[0]["frameworks"] == ("arduino", "espidf")
@@ -320,12 +382,13 @@ def test_list_boards_parses_and_freezes_json() -> None:
 )
 def test_list_boards_raises_structured_command_error(result: ProcessResult) -> None:
     manager = FakeSubprocessManager(result)
+    service = PlatformIOService(manager)
 
     with pytest.raises(PlatformIOCommandError) as exc_info:
-        run(PlatformIOService(manager).list_boards())
+        run(service.list_boards())
 
     assert exc_info.value.result is result
-    assert exc_info.value.command[:2] == ("pio", "boards")
+    assert exc_info.value.command[:2] == (service.executable, "boards")
 
 
 @pytest.mark.parametrize("stdout", ["not json", "{}", '["bad"]'])

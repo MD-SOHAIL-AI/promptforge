@@ -4,40 +4,59 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 import os
 import time
+import uuid
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Any
+
+from backend.observability.diagnostics import emit_diagnostic_event
 
 from ..services.llm_service import (
     LLMConfigurationError,
+    LLMError,
     LLMProvider,
     LLMProviderError,
     LLMRequest,
     LLMResponse,
     LLMService,
 )
-from .models import ModelRequest, ModelResponse, UsageRecord
+from .models import CanonicalStreamEvent, ModelRequest, ModelResponse, UsageRecord
 from .providers import (
+    AnthropicProvider,
     BaseModelProvider,
+    CerebrasProvider,
+    DeepSeekProvider,
+    CompatibleProvider,
     GeminiProvider,
     GroqProvider,
     LMStudioProvider,
+    NvidiaNimProvider,
     OllamaProvider,
     OpenAIProvider,
     OpenRouterProvider,
 )
 from .registry import ProviderRegistry
 from .usage import UsageTracker
-
+from .catalog import ModelCatalog
+from .resolver import ModelResolver
+from .runtime import ModelRuntime
+from .selection import ModelSelectionStore
+from .admission import ProviderAdmissionController
 
 logger = logging.getLogger(__name__)
 
 
 PROVIDER_ENUMS = {
+    "deepseek": LLMProvider.OPENAI,
+    "anthropic": LLMProvider.ANTHROPIC,
     "openrouter": LLMProvider.OPENROUTER,
     "openai": LLMProvider.OPENAI,
     "groq": LLMProvider.OPENAI,
+    "cerebras": LLMProvider.OPENAI,
+    "nvidia_nim": LLMProvider.OPENAI,
     "gemini": LLMProvider.GEMINI,
     "ollama": LLMProvider.OLLAMA,
     "lmstudio": LLMProvider.LMSTUDIO,
@@ -68,17 +87,47 @@ class ModelRouterService(LLMService):
         initial_route = self.registry.route_for_task("code_generation")
         # LLMService requires these compatibility attributes, but persisted route
         # state is authoritative. Request execution never mutates them.
-        self.provider = PROVIDER_ENUMS.get(initial_route.provider_id, LLMProvider.OPENROUTER)
+        self.provider = PROVIDER_ENUMS.get(
+            initial_route.provider_id, LLMProvider.OPENROUTER
+        )
         self.model = initial_route.model_id
         self.timeout_s = 180.0
         self._providers = providers or {
+            "deepseek": DeepSeekProvider(self.registry),
+            "anthropic": AnthropicProvider(self.registry),
             "openrouter": OpenRouterProvider(self.registry),
             "openai": OpenAIProvider(self.registry),
             "groq": GroqProvider(self.registry),
+            "cerebras": CerebrasProvider(self.registry),
+            "nvidia_nim": NvidiaNimProvider(self.registry),
             "gemini": GeminiProvider(self.registry),
             "lmstudio": LMStudioProvider(self.registry),
             "ollama": OllamaProvider(self.registry),
         }
+        if providers is None:
+            for provider_id in self.registry.provider_ids():
+                if provider_id not in self._providers:
+                    definition = self.registry.definition(provider_id)
+                    self._providers[provider_id] = CompatibleProvider(
+                        self.registry, provider_id, definition.protocol
+                    )
+        self.catalog = ModelCatalog(self.registry)
+        self.selections = ModelSelectionStore(self.registry.storage.path.with_suffix(".selections.sqlite3"))
+        self.resolver = ModelResolver(self.registry, self.catalog, self.selections)
+        self.runtime = ModelRuntime(self.resolver, self._providers)
+        self.admission = ProviderAdmissionController()
+
+    def install_custom_provider(self, provider_id: str) -> None:
+        definition = self.registry.definition(provider_id)
+        self._providers[provider_id] = CompatibleProvider(
+            self.registry, provider_id, definition.protocol
+        )
+
+    def remove_custom_provider(self, provider_id: str) -> None:
+        if self.selections.references(provider_id):
+            raise ValueError("Custom provider is referenced by routes or session/role selections")
+        self.registry.delete_custom_provider(provider_id)
+        self._providers.pop(provider_id, None)
 
     async def generate(self, request: LLMRequest | ModelRequest) -> LLMResponse:
         """Generate through the router while preserving the LLMService API."""
@@ -102,8 +151,11 @@ class ModelRouterService(LLMService):
                 max_tokens=request.max_tokens,
                 provider_id=provider_id if isinstance(provider_id, str) else None,
                 model_id=model_id if isinstance(model_id, str) else None,
-                allow_fallback=allow_fallback if isinstance(allow_fallback, bool) else True,
+                allow_fallback=(
+                    allow_fallback if isinstance(allow_fallback, bool) else True
+                ),
                 local_only=local_only if isinstance(local_only, bool) else False,
+                structured_output=None,
                 metadata=dict(request.metadata),
             )
         )
@@ -112,112 +164,54 @@ class ModelRouterService(LLMService):
     async def generate_model(self, request: ModelRequest) -> ModelResponse:
         if not isinstance(request, ModelRequest):
             raise TypeError("request must be a ModelRequest")
-        route = self.registry.route_for_task(request.task_type)
-        preferred_provider = request.provider_id or route.provider_id
-        preferred_model = request.model_id or (
-            route.model_id if preferred_provider == route.provider_id else self.registry.default_model(preferred_provider)
-        )
-        requested_fallback = request.metadata.get("fallback_provider_id")
-        fallback_provider_id = requested_fallback if isinstance(requested_fallback, str) and requested_fallback.strip() else route.fallback_provider_id
-        fallback_enabled = route.fallback_enabled or (
-            isinstance(requested_fallback, str) and bool(requested_fallback.strip())
-        )
-        candidates = self._candidate_provider_ids(
-            preferred_provider,
-            allow_fallback=request.allow_fallback and fallback_enabled,
-            local_only=request.local_only or route.local_only,
-            task_type=request.task_type,
-            fallback_provider_id=fallback_provider_id,
-        )
-        skip_provider = request.metadata.get("skip_provider_id")
-        if isinstance(skip_provider, str) and skip_provider.strip():
-            candidates = tuple(
-                provider_id for provider_id in candidates if provider_id != skip_provider
-            )
-        if not candidates:
-            preferred_meta = self.registry.provider(preferred_provider)
-            if not preferred_meta.configured or not preferred_meta.enabled:
-                raise LLMConfigurationError(
-                    (
-                        f"Model provider {preferred_provider} is not configured. "
-                        f"Add your {preferred_meta.display_name} settings in Models."
-                    ),
-                    provider=PROVIDER_ENUMS.get(preferred_provider, LLMProvider.OPENROUTER),
-                )
+        resolved = self.resolver.resolve(request)
         started = time.monotonic()
-        last_error: Exception | None = None
-        for provider_id in candidates:
-            provider_meta = self.registry.provider(provider_id)
-            model_id = preferred_model if provider_id == preferred_provider else self.registry.default_model(provider_id)
-            if not provider_meta.configured or not provider_meta.enabled:
-                last_error = LLMConfigurationError(
-                    (
-                        f"Model provider {provider_id} is not configured. "
-                        f"Add your {provider_meta.display_name} settings in Models."
-                    ),
-                    provider=PROVIDER_ENUMS.get(provider_id, LLMProvider.OPENROUTER),
-                )
-                self._record_failure(provider_id, model_id, request.task_type, last_error, started)
-                if provider_id == preferred_provider and not request.allow_fallback:
-                    break
-                continue
-            try:
-                routed_request = ModelRequest(
-                    prompt=request.prompt,
-                    system_prompt=request.system_prompt,
-                    task_type=request.task_type,
-                    model_id=model_id,
-                    provider_id=provider_id,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens,
-                    allow_fallback=request.allow_fallback,
-                    local_only=request.local_only,
-                    metadata=request.metadata,
-                )
-                response = await self._providers[provider_id].generate(routed_request)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                last_error = exc
-                logger.exception(
-                    "Model provider failed provider=%s model=%s task=%s",
-                    provider_id,
-                    model_id,
-                    request.task_type,
-                )
-                self._record_failure(provider_id, model_id, request.task_type, exc, started)
-                if provider_id == preferred_provider and not request.allow_fallback:
-                    break
-                continue
-            self._record_usage(
-                UsageRecord(
-                    provider_id=response.provider_id,
-                    model_id=response.model_id,
-                    task_type=request.task_type,
-                    latency_ms=response.latency_ms,
-                    success=True,
-                    input_tokens=response.input_tokens,
-                    output_tokens=response.output_tokens,
-                    total_tokens=response.total_tokens,
-                    estimated_cost=response.estimated_cost,
-                )
-            )
-            return response
-        if last_error is not None:
-            if isinstance(last_error, LLMConfigurationError):
-                raise last_error
-            retryable = bool(getattr(last_error, "retryable", False))
-            raise LLMProviderError(
-                f"No model route available for {request.task_type}. Last error: {last_error}",
-                provider=PROVIDER_ENUMS.get(preferred_provider, LLMProvider.OPENROUTER),
-                retryable=retryable,
-                details={"provider_id": preferred_provider},
-            ) from last_error
-        raise LLMConfigurationError(
-            f"No model route available for {request.task_type}.",
-            provider=PROVIDER_ENUMS.get(preferred_provider, LLMProvider.OPENROUTER),
-            details={"task_type": request.task_type},
+        provider_request_id = _provider_request_id(request)
+        emit_diagnostic_event(
+            component="provider", event="provider.request.started",
+            provider=resolved.provider_id, model=resolved.model_id,
+            request_id=provider_request_id, run_id=_metadata_str(request, "run_id"),
+            turn_id=_metadata_str(request, "turn_id"), session_id=_metadata_str(request, "session_id"),
+            project_id=_metadata_str(request, "project_id"), task_type=request.task_type,
         )
+        try:
+            async with self.admission.slot(
+                resolved.provider_id,
+                resolved.model_id,
+                run_id=_metadata_str(request, "run_id"),
+                turn_id=_metadata_str(request, "turn_id"),
+            ):
+                response = await self.runtime.generate(request, resolved=resolved)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._record_failure(resolved.provider_id, resolved.model_id, request.task_type, exc, started)
+            emit_diagnostic_event(
+                component="provider", event="provider.request.failed", level="ERROR",
+                provider=resolved.provider_id, model=resolved.model_id,
+                request_id=provider_request_id, run_id=_metadata_str(request, "run_id"),
+                turn_id=_metadata_str(request, "turn_id"), session_id=_metadata_str(request, "session_id"),
+                project_id=_metadata_str(request, "project_id"), task_type=request.task_type,
+                duration_ms=max(0, int((time.monotonic() - started) * 1000)),
+                error_code=str(getattr(exc, "code", type(exc).__name__)),
+                message=str(exc)[:1024], status=getattr(exc, "status_code", None),
+            )
+            raise
+        self._record_usage(UsageRecord(
+            provider_id=response.provider_id, model_id=response.model_id, task_type=request.task_type,
+            latency_ms=response.latency_ms, success=True, input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens, total_tokens=response.total_tokens,
+            estimated_cost=response.estimated_cost,
+        ))
+        emit_diagnostic_event(
+            component="provider", event="provider.request.completed", provider=response.provider_id,
+            model=response.model_id, request_id=provider_request_id, run_id=_metadata_str(request, "run_id"),
+            turn_id=_metadata_str(request, "turn_id"), session_id=_metadata_str(request, "session_id"),
+            project_id=_metadata_str(request, "project_id"), task_type=request.task_type, status=200,
+            duration_ms=response.latency_ms or max(0, int((time.monotonic() - started) * 1000)),
+            input_tokens=response.input_tokens, output_tokens=response.output_tokens, total_tokens=response.total_tokens,
+        )
+        return response
 
     async def generate_stream(self, request: LLMRequest) -> AsyncIterator[str]:
         if not isinstance(request, LLMRequest):
@@ -225,31 +219,175 @@ class ModelRouterService(LLMService):
         task_type = str(request.metadata.get("task_type", "code_generation"))
         route = self.registry.route_for_task(task_type)
         provider_id = request.metadata.get("provider_id")
-        selected_provider = provider_id if isinstance(provider_id, str) and provider_id else route.provider_id
-        adapter = self._providers.get(selected_provider)
-        stream = getattr(adapter, "generate_stream", None) if adapter is not None else None
+        selected_provider = (
+            provider_id
+            if isinstance(provider_id, str) and provider_id
+            else route.provider_id
+        )
+        selected_model = (
+            request.metadata.get("model_id")
+            if isinstance(request.metadata.get("model_id"), str)
+            else route.model_id
+        )
+        routed = ModelRequest(
+            prompt=request.prompt,
+            system_prompt=request.system_prompt,
+            task_type=task_type,
+            provider_id=selected_provider,
+            model_id=selected_model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            allow_fallback=False,
+            local_only=bool(request.metadata.get("local_only", False))
+            or route.local_only,
+            structured_output=None,
+            metadata=dict(request.metadata),
+        )
+        async for event in self.stream_model(routed):
+            if event.type == "text_delta" and event.text:
+                yield event.text
+
+    async def stream_model(
+        self, request: ModelRequest
+    ) -> AsyncIterator[CanonicalStreamEvent]:
+        """Stream canonical events from one explicitly selected model route."""
+
+        resolved = self.resolver.resolve(request, streaming=True)
+        provider_id = resolved.provider_id
+        model_id = resolved.model_id
+        adapter = self._providers.get(provider_id)
+        stream = getattr(adapter, "generate_event_stream", None) if adapter else None
         if not callable(stream):
             raise LLMProviderError(
-                f"Model provider {selected_provider} does not support streaming.",
-                provider=PROVIDER_ENUMS.get(selected_provider, LLMProvider.OPENROUTER),
+                f"Model provider {provider_id} does not support canonical streaming.",
+                provider=PROVIDER_ENUMS.get(provider_id, LLMProvider.OPENROUTER),
+                code="PROVIDER_STREAM_UNSUPPORTED",
                 retryable=False,
-                details={"provider_id": selected_provider, "streaming_supported": False},
+                details={
+                    "provider_id": provider_id,
+                    "streaming_supported": False,
+                },
             )
-        async for chunk in stream(
-            ModelRequest(
-                prompt=request.prompt,
-                system_prompt=request.system_prompt,
-                task_type=task_type,  # type: ignore[arg-type]
-                provider_id=selected_provider,
-                model_id=request.metadata.get("model_id") if isinstance(request.metadata.get("model_id"), str) else route.model_id,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                allow_fallback=False,
-                local_only=bool(request.metadata.get("local_only", False)),
-                metadata=dict(request.metadata),
+        provider = self.registry.provider(provider_id)
+        if not provider.configured or not provider.enabled:
+            raise LLMConfigurationError(
+                "The selected streaming provider is unavailable for this route.",
+                provider=PROVIDER_ENUMS.get(provider_id, LLMProvider.OPENROUTER),
             )
-        ):
-            yield chunk
+        routed = ModelRequest(
+            prompt=request.prompt,
+            system_prompt=request.system_prompt,
+            task_type=request.task_type,
+            provider_id=provider_id,
+            model_id=model_id,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            allow_fallback=False,
+            local_only=request.local_only,
+            structured_output=request.structured_output,
+            metadata=request.metadata,
+        )
+        started = time.monotonic()
+        provider_request_id = _provider_request_id(request)
+        success = False
+        error_code: str | None = None
+        token_usage: dict[str, int] = {}
+        emit_diagnostic_event(
+            component="provider",
+            event="provider.request.started",
+            provider=provider_id,
+            model=model_id,
+            request_id=provider_request_id,
+            run_id=_metadata_str(request, "run_id"),
+            turn_id=_metadata_str(request, "turn_id"),
+            session_id=_metadata_str(request, "session_id"),
+            project_id=_metadata_str(request, "project_id"),
+            task_type=request.task_type,
+            streaming=True,
+        )
+        try:
+            async with self.admission.slot(
+                provider_id,
+                model_id,
+                run_id=_metadata_str(request, "run_id"),
+                turn_id=_metadata_str(request, "turn_id"),
+            ):
+                async with aclosing(stream(routed)) as events:
+                    async for event in events:
+                        token_usage.update(event.usage)
+                        yield event
+            success = True
+        except asyncio.CancelledError:
+            error_code = "CANCELLED"
+            emit_diagnostic_event(
+                component="provider",
+                event="provider.request.failed",
+                level="WARNING",
+                provider=provider_id,
+                model=model_id,
+                request_id=provider_request_id,
+                run_id=_metadata_str(request, "run_id"),
+                turn_id=_metadata_str(request, "turn_id"),
+                session_id=_metadata_str(request, "session_id"),
+                project_id=_metadata_str(request, "project_id"),
+                task_type=request.task_type,
+                duration_ms=max(0, int((time.monotonic() - started) * 1000)),
+                error_code=error_code,
+                streaming=True,
+            )
+            raise
+        except Exception as exc:
+            error_code = str(getattr(exc, "code", type(exc).__name__))
+            emit_diagnostic_event(
+                component="provider",
+                event="provider.request.failed",
+                level="ERROR",
+                provider=provider_id,
+                model=model_id,
+                request_id=provider_request_id,
+                run_id=_metadata_str(request, "run_id"),
+                turn_id=_metadata_str(request, "turn_id"),
+                session_id=_metadata_str(request, "session_id"),
+                project_id=_metadata_str(request, "project_id"),
+                task_type=request.task_type,
+                duration_ms=max(0, int((time.monotonic() - started) * 1000)),
+                error_code=error_code,
+                message=str(exc)[:1024],
+                status=getattr(exc, "status_code", None),
+                retryable=bool(getattr(exc, "retryable", False)),
+                streaming=True,
+            )
+            raise
+        finally:
+            self._record_usage(UsageRecord(
+                provider_id=provider_id,
+                model_id=model_id,
+                task_type=request.task_type,
+                latency_ms=max(0, int((time.monotonic() - started) * 1000)),
+                success=success,
+                error_code=error_code,
+                input_tokens=token_usage.get("input_tokens"),
+                output_tokens=token_usage.get("output_tokens"),
+                total_tokens=token_usage.get("total_tokens"),
+            ))
+        emit_diagnostic_event(
+            component="provider",
+            event="provider.request.completed",
+            provider=provider_id,
+            model=model_id,
+            request_id=provider_request_id,
+            run_id=_metadata_str(request, "run_id"),
+            turn_id=_metadata_str(request, "turn_id"),
+            session_id=_metadata_str(request, "session_id"),
+            project_id=_metadata_str(request, "project_id"),
+            task_type=request.task_type,
+            status=200,
+            duration_ms=max(0, int((time.monotonic() - started) * 1000)),
+            input_tokens=token_usage.get("input_tokens"),
+            output_tokens=token_usage.get("output_tokens"),
+            total_tokens=token_usage.get("total_tokens"),
+            streaming=True,
+        )
 
     async def health_check(self) -> bool:
         route = self.registry.route_for_task("code_generation")
@@ -268,43 +406,11 @@ class ModelRouterService(LLMService):
         task_type: str,
         fallback_provider_id: str | None,
     ) -> tuple[str, ...]:
-        del task_type  # capability filtering belongs in provider metadata, not hard-coded IDs.
-        ordered: list[str] = []
-        preferred = self.registry.provider(preferred_provider)
-        if not local_only or preferred.local:
-            ordered.append(preferred_provider)
-
-        if allow_fallback:
-            fallbacks: list[str] = []
-            if fallback_provider_id:
-                fallbacks.append(fallback_provider_id)
-            for provider_id in self.registry.fallback_provider_ids(local_only=local_only):
-                if provider_id not in fallbacks:
-                    fallbacks.append(provider_id)
-            for provider_id in fallbacks:
-                if provider_id in ordered or provider_id not in self._providers:
-                    continue
-                provider = self.registry.provider(provider_id)
-                if local_only and not provider.local:
-                    continue
-                # Do not silently switch between local and cloud categories.
-                if provider.local != preferred.local:
-                    continue
-                ordered.append(provider_id)
-
-        candidates: list[str] = []
-        for provider_id in ordered:
-            if provider_id not in self._providers:
-                continue
-            provider = self.registry.provider(provider_id)
-            if provider_id != preferred_provider and (not provider.configured or not provider.enabled):
-                continue
-            if provider.health_status.strip().casefold() in UNAVAILABLE_PROVIDER_HEALTH:
-                continue
-            # Unknown/stale health is not a reason to suppress a configured
-            # fallback; the request itself is the live probe.
-            candidates.append(provider_id)
-        return tuple(candidates)
+        del allow_fallback, task_type, fallback_provider_id
+        provider = self.registry.provider(preferred_provider)
+        if local_only and not provider.local:
+            return ()
+        return (preferred_provider,) if preferred_provider in self._providers else ()
 
     def _record_failure(
         self,
@@ -329,7 +435,7 @@ class ModelRouterService(LLMService):
     def _record_usage(self, record: UsageRecord) -> None:
         try:
             self.usage.record(record)
-        except OSError:
+        except (OSError, sqlite3.Error):
             # Telemetry must never replace the provider result or original
             # provider error with a filesystem failure.
             logger.exception("Could not persist model usage telemetry")
@@ -342,4 +448,34 @@ class ModelRouterService(LLMService):
             token_usage=response.token_usage(),
             latency_ms=response.latency_ms,
             provider_id=response.provider_id,
+            structured_output=response.structured_output,
+            tool_calls=response.tool_calls,
+            finish_reason=response.finish_reason,
+            request_id=response.request_id,
+            reasoning=response.reasoning,
+            truncated=response.truncated,
         )
+
+
+def _metadata_str(request: ModelRequest, key: str) -> str | None:
+    value = request.metadata.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _provider_request_id(request: ModelRequest) -> str:
+    explicit = _metadata_str(request, "request_id")
+    if explicit:
+        return explicit
+    http_request_id = _active_http_request_id()
+    if http_request_id:
+        return f"{http_request_id}:provider"
+    return f"provider-{uuid.uuid4().hex}"
+
+
+def _active_http_request_id() -> str:
+    try:
+        from backend.api.observability import request_id_context
+
+        return request_id_context.get()
+    except Exception:
+        return ""

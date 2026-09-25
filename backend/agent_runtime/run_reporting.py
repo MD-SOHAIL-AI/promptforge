@@ -26,6 +26,7 @@ class GenerationStatus(str, Enum):
     STARTED = "generation_started"
     CONTENT_VERIFIED = "content_verified"
     PROVIDER_FAILED = "provider_failed"
+    RUNTIME_FAILED = "runtime_failed"
 
 
 class ProviderErrorCode(str, Enum):
@@ -34,6 +35,27 @@ class ProviderErrorCode(str, Enum):
     PROVIDER_RATE_LIMITED = "PROVIDER_RATE_LIMITED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     PROVIDER_INVALID_RESPONSE = "PROVIDER_INVALID_RESPONSE"
+    PROVIDER_HTTP_ERROR = "PROVIDER_HTTP_ERROR"
+    PROVIDER_AUTH_ERROR = "PROVIDER_AUTH_ERROR"
+    PROVIDER_TIMEOUT = "PROVIDER_TIMEOUT"
+    PROVIDER_ENVELOPE_INVALID = "PROVIDER_ENVELOPE_INVALID"
+    PROVIDER_CONTENT_MISSING = "PROVIDER_CONTENT_MISSING"
+    PROVIDER_STREAM_INVALID = "PROVIDER_STREAM_INVALID"
+    MODEL_CAPABILITY_UNSUPPORTED = "MODEL_CAPABILITY_UNSUPPORTED"
+    MODEL_OUTPUT_EMPTY = "MODEL_OUTPUT_EMPTY"
+    MODEL_OUTPUT_TRUNCATED = "MODEL_OUTPUT_TRUNCATED"
+    MODEL_OUTPUT_NOT_JSON = "MODEL_OUTPUT_NOT_JSON"
+    TOOLPLAN_SCHEMA_INVALID = "TOOLPLAN_SCHEMA_INVALID"
+    TOOLPLAN_VERSION_INVALID = "TOOLPLAN_VERSION_INVALID"
+    TOOLPLAN_TOOL_UNKNOWN = "TOOLPLAN_TOOL_UNKNOWN"
+    TOOL_ARGUMENTS_INVALID = "TOOL_ARGUMENTS_INVALID"
+    TOOL_NOT_ALLOWED = "TOOL_NOT_ALLOWED"
+    PATH_UNSAFE = "PATH_UNSAFE"
+    FILE_NOT_FOUND = "FILE_NOT_FOUND"
+    POLICY_DENIED = "POLICY_DENIED"
+    FORGEX_NORMALIZATION_ERROR = "FORGEX_NORMALIZATION_ERROR"
+    FORGEX_RUNTIME_ERROR = "FORGEX_RUNTIME_ERROR"
+    FORGEX_INTERNAL_ERROR = "FORGEX_INTERNAL_ERROR"
     INVALID_GENERATED_OUTPUT = "INVALID_GENERATED_OUTPUT"
 
 
@@ -129,17 +151,65 @@ def detect_workspace_mode(workspace_root: str | Path) -> WorkspaceMode:
 
 def normalize_provider_error(value: str | None) -> ProviderErrorCode:
     text = (value or "").casefold()
+    exact = {
+        code.value.casefold(): code
+        for code in ProviderErrorCode
+    }
+    if text in exact:
+        return exact[text]
     if "key_missing" in text or "missing_api_key" in text:
         return ProviderErrorCode.MISSING_API_KEY
-    if "auth_invalid" in text or "invalid_api_key" in text:
-        return ProviderErrorCode.INVALID_API_KEY
+    if "auth_invalid" in text or "invalid_api_key" in text or "auth_error" in text:
+        return ProviderErrorCode.PROVIDER_AUTH_ERROR
+    if "timeout" in text:
+        return ProviderErrorCode.PROVIDER_TIMEOUT
     if "rate" in text and "limit" in text or "quota" in text:
         return ProviderErrorCode.PROVIDER_RATE_LIMITED
-    if "response" in text or "schema" in text or "json" in text or "toolplan_invalid" in text:
+    if "stream" in text and "invalid" in text:
+        return ProviderErrorCode.PROVIDER_STREAM_INVALID
+    if "envelope" in text or "response_shape" in text:
+        return ProviderErrorCode.PROVIDER_ENVELOPE_INVALID
+    if "content_missing" in text:
+        return ProviderErrorCode.PROVIDER_CONTENT_MISSING
+    if "output_empty" in text:
+        return ProviderErrorCode.MODEL_OUTPUT_EMPTY
+    if "output_truncated" in text:
+        return ProviderErrorCode.MODEL_OUTPUT_TRUNCATED
+    if "not_json" in text or "invalid_json" in text:
+        return ProviderErrorCode.MODEL_OUTPUT_NOT_JSON
+    if "toolplan" in text and "version" in text:
+        return ProviderErrorCode.TOOLPLAN_VERSION_INVALID
+    if "toolplan" in text and "schema" in text:
+        return ProviderErrorCode.TOOLPLAN_SCHEMA_INVALID
+    if "tool" in text and ("forbidden" in text or "not_allowed" in text):
+        return ProviderErrorCode.TOOL_NOT_ALLOWED
+    if "path_unsafe" in text:
+        return ProviderErrorCode.PATH_UNSAFE
+    if "file_not_found" in text or "directory_missing" in text:
+        return ProviderErrorCode.FILE_NOT_FOUND
+    if "policy_denied" in text:
+        return ProviderErrorCode.POLICY_DENIED
+    if "toolplan_no_progress" in text:
+        return ProviderErrorCode.FORGEX_RUNTIME_ERROR
+    if text.startswith(("agent_runtime_", "tool_runtime_", "build_", "simulation_")):
+        return ProviderErrorCode.FORGEX_RUNTIME_ERROR
+    if "response" in text:
         return ProviderErrorCode.PROVIDER_INVALID_RESPONSE
-    if "content" in text or "path_unsafe" in text or "output" in text or "changeset" in text or "toolplan_unsafe" in text:
+    if "content" in text or "path_unsafe" in text or "output" in text or "changeset" in text:
         return ProviderErrorCode.INVALID_GENERATED_OUTPUT
-    return ProviderErrorCode.PROVIDER_UNAVAILABLE
+    if text.startswith(("api_", "provider_")):
+        return ProviderErrorCode.PROVIDER_UNAVAILABLE
+    return ProviderErrorCode.FORGEX_RUNTIME_ERROR
+
+
+def runtime_failure_message(classification: str | None) -> str:
+    if classification == "AGENT_RUNTIME_NO_PROGRESS":
+        return "ForgeX stopped after repeated tool turns produced no new information or file changes."
+    if classification == "AGENT_RUNTIME_MAX_TURNS":
+        return "ForgeX reached its reasoning-turn limit before completing the requested files."
+    if classification == "AGENT_RUNTIME_REPEATED_CALL":
+        return "ForgeX stopped repeated tool calls that were making no progress."
+    return "ForgeX could not continue the Agent runtime."
 
 
 def actionable_message(code: ProviderErrorCode, provider_name: str) -> str:
@@ -147,7 +217,29 @@ def actionable_message(code: ProviderErrorCode, provider_name: str) -> str:
         ProviderErrorCode.MISSING_API_KEY: f"{provider_name} has no API key configured. Add one in Model Settings or choose another provider.",
         ProviderErrorCode.INVALID_API_KEY: f"{provider_name} rejected the configured API key. Replace it in Model Settings.",
         ProviderErrorCode.PROVIDER_RATE_LIMITED: f"{provider_name} is rate limited. Retry later or use the configured fallback.",
+        ProviderErrorCode.PROVIDER_UNAVAILABLE: f"{provider_name}'s selected model endpoint is temporarily unavailable. Retry the same model; ForgeX will not silently send project data to another provider.",
         ProviderErrorCode.PROVIDER_INVALID_RESPONSE: f"{provider_name} returned an invalid response.",
+        ProviderErrorCode.PROVIDER_HTTP_ERROR: f"{provider_name} could not complete the request.",
+        ProviderErrorCode.PROVIDER_AUTH_ERROR: f"{provider_name} rejected the configured credentials. Update them in Model Settings.",
+        ProviderErrorCode.PROVIDER_TIMEOUT: f"{provider_name} timed out before completing the response.",
+        ProviderErrorCode.PROVIDER_ENVELOPE_INVALID: f"{provider_name} returned a response envelope ForgeX does not recognize.",
+        ProviderErrorCode.PROVIDER_CONTENT_MISSING: "The model request succeeded, but it returned no final answer or tool call.",
+        ProviderErrorCode.PROVIDER_STREAM_INVALID: f"{provider_name} returned an invalid streaming packet.",
+        ProviderErrorCode.MODEL_CAPABILITY_UNSUPPORTED: "The selected model endpoint does not support the tool calling required by Agent mode. Choose a tool-capable model or refresh the model catalog and retry.",
+        ProviderErrorCode.MODEL_OUTPUT_EMPTY: "The model completed without producing an answer or tool plan.",
+        ProviderErrorCode.MODEL_OUTPUT_TRUNCATED: "The model stopped before its answer or tool plan was complete.",
+        ProviderErrorCode.MODEL_OUTPUT_NOT_JSON: "The model responded successfully, but ForgeX could not convert the output into JSON for a tool plan.",
+        ProviderErrorCode.TOOLPLAN_SCHEMA_INVALID: "The model responded successfully, but ForgeX could not convert the output into a valid tool plan.",
+        ProviderErrorCode.TOOLPLAN_VERSION_INVALID: "The model returned a tool plan version this ForgeX runtime does not support.",
+        ProviderErrorCode.TOOLPLAN_TOOL_UNKNOWN: "The model requested a tool that ForgeX does not recognize.",
+        ProviderErrorCode.TOOL_ARGUMENTS_INVALID: "The model returned invalid arguments for a ForgeX tool.",
+        ProviderErrorCode.TOOL_NOT_ALLOWED: "The requested tool is not allowed for this Agent mode.",
+        ProviderErrorCode.PATH_UNSAFE: "The model requested a path outside the active project.",
+        ProviderErrorCode.FILE_NOT_FOUND: "The requested file or directory does not exist in the active project.",
+        ProviderErrorCode.POLICY_DENIED: "ForgeX policy denied the requested operation.",
+        ProviderErrorCode.FORGEX_NORMALIZATION_ERROR: "ForgeX could not normalize the model response.",
+        ProviderErrorCode.FORGEX_RUNTIME_ERROR: "ForgeX could not continue the Agent runtime.",
+        ProviderErrorCode.FORGEX_INTERNAL_ERROR: "ForgeX encountered an internal model-processing error.",
         ProviderErrorCode.INVALID_GENERATED_OUTPUT: f"{provider_name} returned output that ForgeX rejected during ChangeSet validation.",
     }
     return messages.get(code, f"{provider_name} is currently unavailable.")

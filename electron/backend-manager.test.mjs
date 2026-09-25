@@ -189,3 +189,72 @@ test("BackendManager reports Python resolver startup failures cleanly", async ()
   await assert.rejects(manager.start(), /ForgeX backend dependencies are not installed/);
   assert.equal(manager.getStatus().ownsProcess, false);
 });
+
+test("BackendManager cleans up an owned backend when readiness times out", async () => {
+  const child = fakeProcess(33333);
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    readinessTimeoutMs: 5,
+    readinessIntervalMs: 1,
+    healthProbe: async () => ({
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      error: "ECONNREFUSED",
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => child,
+  });
+
+  await assert.rejects(manager.start(), /did not become healthy/);
+  assert.deepEqual(child.killCalls, ["SIGTERM"]);
+  assert.equal(manager.getStatus().state, "crashed");
+  assert.equal(manager.getStatus().ownsProcess, false);
+  assert.equal(manager.getStatus().pid, undefined);
+});
+
+test("BackendManager reports a synchronous backend spawn failure cleanly", async () => {
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => ({
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      error: "ECONNREFUSED",
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => {
+      throw new Error("spawn EACCES");
+    },
+  });
+
+  await assert.rejects(manager.start(), /Failed to start ForgeX backend process: spawn EACCES/);
+  assert.equal(manager.getStatus().state, "crashed");
+  assert.equal(manager.getStatus().ownsProcess, false);
+});
+
+test("BackendManager clears ownership when the owned backend exits", async () => {
+  const child = fakeProcess(44444);
+  const probes = [
+    { reachable: false, forgeX: false, healthy: false, error: "ECONNREFUSED" },
+    healthy,
+  ];
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    readinessIntervalMs: 1,
+    healthProbe: async () => probes.shift() ?? healthy,
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => child,
+  });
+
+  await manager.start();
+  child.emit("exit", 1, null);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(manager.getStatus().state, "crashed");
+  assert.equal(manager.getStatus().ownsProcess, false);
+  assert.equal(manager.getStatus().pid, undefined);
+});

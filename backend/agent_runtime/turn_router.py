@@ -14,6 +14,7 @@ class AgentTurnIntent(str, Enum):
     EDIT = "edit"
     GENERATE = "generate"
     BUILD = "build"
+    SIMULATE = "simulate"
     REPAIR = "repair"
     FLASH = "flash"
     MONITOR = "monitor"
@@ -63,6 +64,7 @@ class AgentTurnDecision:
             AgentTurnIntent.EDIT,
             AgentTurnIntent.GENERATE,
             AgentTurnIntent.BUILD,
+            AgentTurnIntent.SIMULATE,
             AgentTurnIntent.REPAIR,
         }
 
@@ -136,6 +138,7 @@ class AgentTurnRouter:
             _is_flash_action(normalized)
             or _is_monitor_action(normalized)
             or _is_repair_action(normalized, context)
+            or _is_simulate_action(normalized)
             or _is_build_action(normalized)
             or _is_edit_action(normalized)
             or _is_generate_action(normalized)
@@ -207,14 +210,18 @@ class AgentTurnRouter:
                 requires_workspace=True,
                 requires_write=True,
                 requires_build="build" not in prohibited,
-                requested=_actions("repair", "edit", "build", prohibited=prohibited),
+                requested=_actions("repair", "edit", "build", "simulate" if _requests_simulation(normalized) else None, prohibited=prohibited),
                 prohibited=prohibited,
             )
 
         if _is_generate_action(normalized):
             if "write" in prohibited:
                 return _decision(AgentTurnIntent.INSPECT, 0.82, "rule", requires_workspace=True, requested=("inspect",), prohibited=prohibited)
-            requires_build = "build" not in prohibited and "execute" not in prohibited
+            requires_build = (
+                "build" not in prohibited
+                and "execute" not in prohibited
+                and (_is_embedded_project_request(normalized) or _requests_validation(normalized))
+            )
             return _decision(
                 AgentTurnIntent.GENERATE,
                 0.88,
@@ -222,14 +229,14 @@ class AgentTurnRouter:
                 requires_workspace=True,
                 requires_write=True,
                 requires_build=requires_build,
-                requested=_actions("generate", "build" if requires_build else None, prohibited=prohibited),
+                requested=_actions("generate", "build" if requires_build else None, "simulate" if _requests_simulation(normalized) else None, prohibited=prohibited),
                 prohibited=prohibited,
             )
 
         if _is_edit_action(normalized):
             if "write" in prohibited:
                 return _decision(AgentTurnIntent.INSPECT, 0.84, "rule", requires_workspace=True, requested=("inspect",), prohibited=prohibited)
-            requires_build = _requests_validation(normalized) and "build" not in prohibited and "execute" not in prohibited
+            requires_build = (_requests_validation(normalized) or _requests_simulation(normalized)) and "build" not in prohibited and "execute" not in prohibited
             return _decision(
                 AgentTurnIntent.EDIT,
                 0.9,
@@ -237,7 +244,7 @@ class AgentTurnRouter:
                 requires_workspace=True,
                 requires_write=True,
                 requires_build=requires_build,
-                requested=_actions("edit", "build" if requires_build else None, prohibited=prohibited),
+                requested=_actions("edit", "build" if requires_build else None, "simulate" if _requests_simulation(normalized) else None, prohibited=prohibited),
                 prohibited=prohibited,
             )
 
@@ -250,7 +257,20 @@ class AgentTurnRouter:
                 "rule",
                 requires_workspace=True,
                 requires_build=True,
-                requested=("build",),
+                requested=_actions("build", "simulate" if _requests_simulation(normalized) else None, prohibited=prohibited),
+                prohibited=prohibited,
+            )
+
+        if _is_simulate_action(normalized):
+            if "build" in prohibited or "execute" in prohibited:
+                return _decision(AgentTurnIntent.INSPECT, 0.84, "rule", requires_workspace=True, requested=("inspect",), prohibited=prohibited)
+            return _decision(
+                AgentTurnIntent.SIMULATE,
+                0.94,
+                "rule",
+                requires_workspace=True,
+                requires_build=True,
+                requested=("build", "simulate"),
                 prohibited=prohibited,
             )
 
@@ -266,6 +286,19 @@ class AgentTurnRouter:
 
         return _decision(AgentTurnIntent.UNKNOWN, 0.2, "fallback", prohibited=prohibited)
 
+
+
+def approved_plan_execution_decision() -> AgentTurnDecision:
+    """Trusted route for an already hash-bound user-approved implementation plan."""
+    return _decision(
+        AgentTurnIntent.EDIT,
+        1.0,
+        "approved_plan",
+        requires_workspace=True,
+        requires_write=True,
+        requires_build=True,
+        requested=("execute_plan", "edit", "build"),
+    )
 
 def _decision(
     intent: AgentTurnIntent,
@@ -306,11 +339,23 @@ def _prohibited_actions(text: str) -> tuple[str, ...]:
         prohibited.extend(("flash", "hardware"))
     if _contains_any(text, ("don't monitor", "do not monitor", "dont monitor", "don't open serial", "do not open serial")):
         prohibited.extend(("monitor", "hardware"))
-    if _contains_any(text, ("don't modify", "do not modify", "dont modify", "don't change", "do not change", "don't edit", "do not edit", "don't write", "do not write", "don't create", "do not create", "don't touch the files", "don't change the files")):
+    # A scoped instruction such as "do not create fake files" must not revoke
+    # permission to create the genuine files requested elsewhere in the turn.
+    # Only a blanket file/code prohibition changes the tool capability.
+    if _blanket_write_prohibition(text):
         prohibited.append("write")
     if _contains_any(text, ("read only", "read-only", "just explain", "only inspect", "only explain", "inspect only", "explain only")):
         prohibited.extend(("write", "build", "flash", "monitor", "hardware"))
     return tuple(dict.fromkeys(prohibited))
+
+
+def _blanket_write_prohibition(text: str) -> bool:
+    if _contains_any(text, ("don't touch the files", "do not touch the files", "don't change the files", "do not change the files")):
+        return True
+    action = r"(?:don't|do not|dont)\s+(?:modify|change|edit|write|create)"
+    if re.search(rf"{action}\s+(?:(?:any|all|the|my|existing|project|source|these|those|new)\s+)*(?:files?|code|source|anything|changes?)\b", text):
+        return True
+    return bool(re.search(rf"{action}(?=\s*(?:$|[.!?;,]|\b(?:or|and|but)\b))", text))
 
 
 def _has_read_only_constraint(prohibited: tuple[str, ...]) -> bool:
@@ -350,23 +395,39 @@ def _is_discussion_question(text: str) -> bool:
 
 
 def _direct_action_question(text: str) -> bool:
-    return bool(re.search(r"\b(can|could|would) you (please )?(build|compile|change|update|modify|edit|create|generate|fix|repair|flash|upload|open|start)\b", text))
+    return bool(re.search(r"\b(can|could|would) you (please )?(build|compile|simulate|run simulation|change|update|modify|edit|create|generate|fix|repair|flash|upload|open|start)\b", text))
 
 
 def _is_flash_action(text: str) -> bool:
     if re.search(r"\b(how|what|why|when)\b.*\b(flash|upload|burn)\b", text):
         return False
-    return bool(re.search(r"(^|\b)(flash|upload|burn) (it|this|firmware|the firmware|my esp32|to my esp32|the board)\b", text))
+    # A leading flash/upload/burn verb is an explicit physical-hardware action.
+    # Keep this broad enough for modifiers such as "the verified firmware" while
+    # still excluding explanatory questions above.
+    return bool(re.match(r"^(please )?(flash|upload|burn)\b", text))
 
 
 def _is_stop_monitor(text: str) -> bool:
-    return bool(re.search(r"\b(stop|close|disconnect|end) (the )?(serial monitor|monitor|serial connection)\b|\bstop monitoring\b", text))
+    # Hardware controls must be direct requests. A project specification can
+    # contain adjacent requirements such as "buzzer should stop\nmonitoring
+    # values can still be displayed"; normalization joins those lines.
+    return bool(re.fullmatch(
+        r"(?:(?:please|can you|could you) )?"
+        r"(?:(?:stop|close|disconnect|end) (?:the )?(?:serial monitor|monitor|serial connection)"
+        r"|stop monitoring(?: serial output)?)"
+        r"(?: now| please)?[.!?]*",
+        text,
+    ))
 
 
 def _is_monitor_action(text: str) -> bool:
-    if re.search(r"\b(how|what|why|when)\b.*\b(serial monitor|monitor)\b", text):
-        return False
-    return bool(re.search(r"\b(open|start|connect|watch|read) (the )?(serial monitor|monitor|serial output)\b|\bmonitor serial\b", text))
+    return bool(re.fullmatch(
+        r"(?:(?:please|can you|could you) )?"
+        r"(?:(?:open|start|connect|watch|read) (?:the )?(?:serial monitor|monitor|serial output)"
+        r"|monitor serial(?: output)?)"
+        r"(?: now| please)?[.!?]*",
+        text,
+    ))
 
 
 def _is_repair_action(text: str, context: AgentTurnContext) -> bool:
@@ -377,6 +438,19 @@ def _is_repair_action(text: str, context: AgentTurnContext) -> bool:
     if text.strip(" .!?") in {"fix it", "fix that", "repair it", "repair that", "solve it"} and context.last_failed:
         return True
     return False
+
+
+def _requests_simulation(text: str) -> bool:
+    return bool(re.search(r"\b(simulate|simulation|wokwi)\b", text))
+
+
+def _is_simulate_action(text: str) -> bool:
+    if re.match(r"^(how|what|why|when)\b.*\b(simulate|simulation|wokwi)\b", text):
+        return False
+    return bool(
+        re.search(r"^(simulate|run simulation|run the simulation|test in wokwi|run in wokwi)( it| this| the project| firmware| the firmware)?\b", text)
+        or re.search(r"^(please )?(simulate|test in wokwi|run in wokwi)\b", text)
+    )
 
 
 def _is_build_action(text: str) -> bool:
@@ -398,21 +472,33 @@ def _is_edit_action(text: str) -> bool:
 def _is_generate_action(text: str) -> bool:
     if re.match(r"^(how|what|why|when)\b.*\b(create|generate|make|write|build)\b", text):
         return False
+    # Negated quality constraints describe what to avoid; they are not a
+    # standalone request to create files.
+    text = re.sub(
+        r"(?:don't|do not|dont)\s+(?:create|generate|write|make)\b[^.!?;]*(?:[.!?;]|$)",
+        " ", text,
+    )
     return bool(
         re.search(r"\b(create|generate|make|write|develop)\b.*\b(project|firmware|sketch|platformio|esp32|blink|sensor|monitor|controller)\b", text)
+        or re.search(r"\b(?:i\s+)?(?:need|want)(?: you| u)? to build (?:me )?(?:a|an|new|complete)\b.*\b(project|firmware|sketch|platformio|esp32|sensor|monitor|controller)\b", text)
         or re.search(r"\b(create|generate|make)\b.*\b(dht11|led|wifi|wi-fi|temperature|pwm|adc|uart|i2c|spi)\b", text)
-        or re.search(r"^build\b.*\b(project|firmware|sketch|platformio|esp32|sensor|monitor|controller)\b", text)
+        or re.search(r"^build (me |a |an ).*\b(project|firmware|sketch|platformio|esp32|sensor|monitor|controller)\b", text)
+        or re.search(r"\b(create|generate|write|make)\b.*\b(files?|modules?|components?|configs?|tests?|documentation|readme|makefile|dockerfile)\b", text)
+        or re.search(r"\b(create|generate|write|make)\b.*\b[\w./-]+\.(?:c|cc|cpp|cs|css|go|h|hpp|html|ini|ino|java|js|json|kt|md|php|py|rb|rs|scss|sh|sql|svelte|toml|ts|tsx|txt|vue|xml|yaml|yml)\b", text)
     )
+
+
+def _is_embedded_project_request(text: str) -> bool:
+    return bool(re.search(r"\b(esp32|esp8266|arduino|platformio|firmware|sketch|microcontroller)\b", text))
 
 
 def _is_inspect_request(text: str) -> bool:
     if _is_monitor_action(text):
         return False
     return bool(
-        re.search(r"\b(show|read|look at|inspect|review|explain)\b.*\b(src/|main\.cpp|platformio\.ini|\.ino|\.h|\.hpp|\.c|\.cpp|line \d+|file|function|workspace|project|code)\b", text)
+        re.search(r"\b(show|read|look at|inspect|review|explain)\b.*\b(src/|main\.cpp|platformio\.ini|\.ino|\.h|\.hpp|\.c|\.cpp|line \d+|file|function|workspace|project|architecture|code)\b", text)
         or re.search(r"\bwhat does line \d+ do\b", text)
         or re.search(r"\bwhy is my esp32 restarting\b", text)
-        or re.search(r"\bdiagnose\b.*\b(build|compile|compiler|linker|error|failure|failed|problem|issue)\b", text)
     )
 
 
@@ -427,7 +513,7 @@ def _asks_about_recent_failure(text: str) -> bool:
 
 def _has_workspace_reference(text: str) -> bool:
     return bool(
-        re.search(r"\b(src/|include/|lib/|test/|platformio\.ini|main\.cpp|\.ino|\.h|\.hpp|\.c|\.cpp|\.ini|line \d+|this file|this function|workspace|project files?|build error|compiler error|linker error)\b", text)
+        re.search(r"\b(src/|include/|lib/|test/|platformio\.ini|main\.cpp|\.ino|\.h|\.hpp|\.c|\.cpp|\.ini|line \d+|this file|this function|workspace|project files?|architecture|build error|compiler error|linker error)\b", text)
     )
 
 

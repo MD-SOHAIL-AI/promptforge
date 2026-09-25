@@ -66,7 +66,6 @@ export function useForgeXSettings() {
     async (key: string, value: ForgeXSettingValue) => {
       setSaving(true);
       setError(null);
-      const previous = settingsRef.current;
       const optimistic = mergedForgeXSettings({ ...settingsRef.current, [key]: value });
       settingsRef.current = optimistic;
       setSettings(optimistic);
@@ -80,15 +79,13 @@ export function useForgeXSettings() {
         return next;
       } catch (err) {
         setError(toErrorMessage(err, "Setting could not be saved"));
-        settingsRef.current = previous;
-        setSettings(previous);
-        applyForgeXTheme(previous);
-        return previous;
+        await refresh();
+        throw err;
       } finally {
         setSaving(false);
       }
     },
-    [],
+    [refresh],
   );
 
   const reset = useCallback(async () => {
@@ -102,7 +99,7 @@ export function useForgeXSettings() {
       return next;
     } catch (err) {
       setError(toErrorMessage(err, "Settings could not be reset"));
-      return settingsRef.current;
+      throw err;
     } finally {
       setSaving(false);
     }

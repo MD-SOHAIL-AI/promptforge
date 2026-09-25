@@ -3,6 +3,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
+
+
+def _read_skill(root: Path, path: Path, limit: int) -> str:
+    for component in (root.parent, root, path.parent, path):
+        if component.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(component):
+            raise ValueError("AGENT_SKILL_PATH_UNSAFE")
+    path.resolve(strict=True).relative_to(root.resolve(strict=True))
+    with path.open("rb") as source:
+        data = source.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("AGENT_SKILL_TOO_LARGE")
+    return data.decode("utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +50,8 @@ class SkillRegistry:
                 if not _safe_name(name):
                     continue
                 try:
-                    text = skill_file.read_text(encoding="utf-8")
-                except (OSError, UnicodeError):
+                    text = _read_skill(root, skill_file, 96_000)
+                except (OSError, ValueError, UnicodeError):
                     continue
                 summary = next((line.lstrip("# ").strip() for line in text.splitlines() if line.strip()), name)
                 try:
@@ -60,7 +73,7 @@ class SkillRegistry:
                 continue
             if resolved.is_symlink() or not resolved.is_file():
                 continue
-            text = resolved.read_text(encoding="utf-8")
+            text = _read_skill(root, skill_file, 96_000)
             return text[:max_chars]
         raise KeyError("AGENT_SKILL_NOT_FOUND")
 

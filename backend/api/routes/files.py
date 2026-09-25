@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import posixpath
+import re
 import shutil
 import os
+import stat
 from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Query, Request
 
+from ...agent_runtime.tool_policy import is_sensitive_path
 from ...contracts.generated_project import GeneratedFile, GeneratedProject
 from ...services.project_import_service import ExternalProjectRecord
 from ...services.project_service import ProjectService, ProjectServiceError
@@ -20,6 +23,7 @@ from ..schemas.files import (
     FileDeleteResponse,
     FileUpdateRequest,
     ProjectFilesResponse,
+    WorkspaceSearchResponse,
     WorkspaceEntryResponse,
 )
 
@@ -52,6 +56,44 @@ async def list_project_files(project_id: str, request: Request) -> ProjectFilesR
 
 
 @router.get(
+    "/projects/{project_id}/files/search",
+    response_model=WorkspaceSearchResponse,
+    responses=error_responses(404, 422, 500, 503),
+    summary="Search safe project file contents",
+)
+async def search_project_file_contents(
+    project_id: str,
+    request: Request,
+    query: str = Query(..., min_length=2, max_length=120),
+) -> WorkspaceSearchResponse:
+    """Return matching relative paths only; source text never leaves this endpoint."""
+    metadata = await resolve_project_from_request(request, _identifier(project_id))
+    normalized_query = query.casefold()
+    if isinstance(metadata, ExternalProjectRecord):
+        paths, truncated = _external_content_matches(Path(metadata.project_path), normalized_query)
+        return WorkspaceSearchResponse(
+            project_id=metadata.project_id,
+            query=query,
+            paths=paths,
+            truncated=truncated,
+        )
+    project = await _load_project_by_metadata(_project_service(request), metadata)
+    paths = [
+        item.path
+        for item in project.files
+        if not _is_folder_marker(item.path)
+        and not is_sensitive_path(item.path)
+        and normalized_query in item.content.casefold()
+    ][:_CONTENT_SEARCH_MATCH_LIMIT]
+    return WorkspaceSearchResponse(
+        project_id=project.project_id,
+        query=query,
+        paths=paths,
+        truncated=len(paths) >= _CONTENT_SEARCH_MATCH_LIMIT,
+    )
+
+
+@router.get(
     "/files/content",
     response_model=FileContentResponse,
     responses=error_responses(404, 422, 500, 503),
@@ -63,7 +105,7 @@ async def get_file_content(
     path: str = Query(...),
 ) -> FileContentResponse:
     metadata = await resolve_project_from_request(request, _identifier(project_id))
-    normalized = _workspace_path(path)
+    normalized = _guard_workspace_path(path)
     if isinstance(metadata, ExternalProjectRecord):
         target = _external_target(Path(metadata.project_path), normalized)
         if not target.is_file() or target.is_symlink():
@@ -99,7 +141,7 @@ async def get_file_content(
 async def create_file(body: FileCreateRequest, request: Request) -> ProjectFilesResponse:
     service = _project_service(request)
     metadata = await resolve_project_from_request(request, _identifier(body.project_id))
-    path = _workspace_path(body.path)
+    path = _guard_workspace_path(body.path)
     if isinstance(metadata, ExternalProjectRecord):
         root = Path(metadata.project_path)
         target = _external_target(root, path)
@@ -153,8 +195,8 @@ async def update_file(
 ) -> FileContentResponse | ProjectFilesResponse:
     service = _project_service(request)
     metadata = await resolve_project_from_request(request, _identifier(body.project_id))
-    path = _workspace_path(body.path)
-    new_path = _workspace_path(body.new_path) if body.new_path else None
+    path = _guard_workspace_path(body.path)
+    new_path = _guard_workspace_path(body.new_path) if body.new_path else None
     if isinstance(metadata, ExternalProjectRecord):
         root = Path(metadata.project_path)
         target = _external_target(root, path)
@@ -248,7 +290,7 @@ async def delete_file(
 ) -> FileDeleteResponse:
     service = _project_service(request)
     metadata = await resolve_project_from_request(request, _identifier(project_id))
-    normalized = _workspace_path(path)
+    normalized = _guard_workspace_path(path)
     if isinstance(metadata, ExternalProjectRecord):
         root = Path(metadata.project_path)
         target = _external_target(root, normalized)
@@ -354,7 +396,7 @@ def _entries(project: GeneratedProject) -> list[WorkspaceEntryResponse]:
     ]
     return sorted(
         [*folder_entries, *files],
-        key=lambda item: (item.path.casefold(), item.kind),
+        key=_workspace_entry_sort_key,
     )
 
 
@@ -420,6 +462,13 @@ def _workspace_path(value: str) -> str:
     return probe.path
 
 
+
+def _guard_workspace_path(value: str) -> str:
+    path = _workspace_path(value)
+    if is_sensitive_path(path):
+        raise APIError(403, "SENSITIVE_PATH_FORBIDDEN", "Sensitive credential/configuration paths are not exposed through the workspace file API.", {"path": path})
+    return path
+
 def _file_type(path: str) -> str:
     suffix = PurePosixPath(path).suffix.lower().lstrip(".")
     if suffix:
@@ -466,16 +515,78 @@ def _external_entries(root: Path) -> list[WorkspaceEntryResponse]:
     ]
     return sorted(
         [*folder_entries, *files],
-        key=lambda item: (item.path.casefold(), item.kind),
+        key=_workspace_entry_sort_key,
+    )
+
+
+def _external_content_matches(root: Path, query: str) -> tuple[list[str], bool]:
+    matches: list[str] = []
+    resolved_root = root.resolve()
+    scanned_bytes = 0
+    for current, directories, filenames in os.walk(resolved_root):
+        current_path = Path(current)
+        directories[:] = sorted(
+            directory
+            for directory in directories
+            if directory not in _EXTERNAL_IGNORED_DIRECTORIES
+            and not (current_path / directory).is_symlink()
+        )
+        for filename in sorted(filenames, key=_natural_name_key):
+            file_path = current_path / filename
+            if filename in _EXTERNAL_IGNORED_FILES or file_path.is_symlink():
+                continue
+            relative = _external_relative(resolved_root, file_path)
+            if is_sensitive_path(relative):
+                continue
+            try:
+                size = file_path.stat().st_size
+            except OSError:
+                continue
+            if size > _CONTENT_SEARCH_FILE_LIMIT or scanned_bytes + size > _CONTENT_SEARCH_TOTAL_LIMIT:
+                continue
+            scanned_bytes += size
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if query in content.casefold():
+                matches.append(relative)
+                if len(matches) >= _CONTENT_SEARCH_MATCH_LIMIT:
+                    return matches, True
+    return matches, False
+
+
+def _workspace_entry_sort_key(item: WorkspaceEntryResponse):
+    return (
+        tuple(_natural_name_key(part) for part in item.path.casefold().split("/")),
+        0 if item.kind == "folder" else 1,
+    )
+
+
+def _natural_name_key(value: str):
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in re.split(r"(\\d+)", value.casefold())
+        if part
     )
 
 
 def _external_target(root: Path, path: str) -> Path:
     resolved_root = root.resolve()
     target = resolved_root / Path(*PurePosixPath(path).parts)
+    current = resolved_root
     try:
+        relative = target.relative_to(resolved_root)
+        for part in relative.parts:
+            current = current / part
+            if current.exists() or current.is_symlink():
+                info = current.lstat()
+                if current.is_symlink() or bool(getattr(info, "st_file_attributes", 0) & _REPARSE_ATTRIBUTE):
+                    raise APIError(422, "INVALID_WORKSPACE_PATH", "Workspace path traverses a link or Windows reparse point", {"path": path})
         resolved_target = target.resolve(strict=False)
         resolved_target.relative_to(resolved_root)
+    except APIError:
+        raise
     except (OSError, RuntimeError, ValueError) as exc:
         raise APIError(422, "INVALID_WORKSPACE_PATH", "Workspace path escapes project root") from exc
     return target
@@ -493,6 +604,8 @@ def _identifier(value: str) -> str:
     return value
 
 
+_REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
 _EXTERNAL_IGNORED_DIRECTORIES = {
     ".git",
     ".pio",
@@ -503,3 +616,6 @@ _EXTERNAL_IGNORED_DIRECTORIES = {
     "node_modules",
 }
 _EXTERNAL_IGNORED_FILES = {".DS_Store", "Thumbs.db"}
+_CONTENT_SEARCH_FILE_LIMIT = 512 * 1024
+_CONTENT_SEARCH_TOTAL_LIMIT = 4 * 1024 * 1024
+_CONTENT_SEARCH_MATCH_LIMIT = 200

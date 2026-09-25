@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from serial.tools import list_ports
+from backend.utils.serial_compat import list_ports
 
 from ..runtime.failure_classifier import FailureClassification, classify_failure
 from ..runtime.result import (

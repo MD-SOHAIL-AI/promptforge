@@ -2,17 +2,24 @@ import { BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from "electron
 
 import { BackgroundAssetError, BackgroundAssetStore, isBackgroundAssetId } from "./background-assets";
 import type { BackendManager } from "./backend-manager";
+import type { HarnessManager } from "./harness-manager";
+import { emitDiagnosticEvent, type DiagnosticEventInput } from "./diagnostics";
 
 export function registerIpcHandlers(
   backendManager: BackendManager,
   backgroundAssets: BackgroundAssetStore,
+  harnessManager?: HarnessManager,
 ): void {
   ipcMain.handle("desktop:get-status", () => ({
     desktop: true,
     backend: backendManager.getStatus(),
+    harness: harnessManager?.getStatus(),
   }));
-  ipcMain.on("desktop:get-backend-url", (event) => {
-    event.returnValue = backendManager.url;
+
+  ipcMain.handle("desktop:diagnostic", (_event, payload: unknown) => {
+    if (!isDiagnosticPayload(payload)) return { accepted: false };
+    emitDiagnosticEvent(payload);
+    return { accepted: true };
   });
 
   ipcMain.handle("desktop:open-folder", async (event) => {
@@ -79,4 +86,10 @@ export function registerIpcHandlers(
     }
     return { removed: await backgroundAssets.remove(assetId) };
   });
+}
+
+function isDiagnosticPayload(value: unknown): value is DiagnosticEventInput {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.event === "string" && record.event.length > 0 && record.event.length <= 160;
 }

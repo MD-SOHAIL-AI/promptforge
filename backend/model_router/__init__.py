@@ -1,11 +1,20 @@
 """Model provider routing for ForgeX AI requests."""
 
 from .models import (
+    CanonicalResponse,
+    CanonicalModelResponse,
+    CanonicalStreamEvent,
+    ModelCapabilities,
     ModelInfo,
     ModelProvider,
     ModelRequest,
     ModelResponse,
+    StructuredOutputSpec,
     ModelRoute,
+    RouteRequest,
+    RouteAttempt,
+    RouteDecision,
+    ProviderStatus,
     ProviderHealth,
     UsageRecord,
 )
@@ -16,11 +25,20 @@ from .credentials import CredentialStoreError, MemoryCredentialStore, WindowsCre
 from .usage import UsageTracker
 
 __all__ = [
+    "CanonicalModelResponse",
+    "CanonicalResponse",
+    "CanonicalStreamEvent",
+    "ModelCapabilities",
     "ModelInfo",
     "ModelProvider",
     "ModelRequest",
     "ModelResponse",
+    "StructuredOutputSpec",
     "ModelRoute",
+    "RouteRequest",
+    "RouteAttempt",
+    "RouteDecision",
+    "ProviderStatus",
     "ModelRouterService",
     "ProviderHealth",
     "ProviderRegistry",
@@ -30,4 +48,14 @@ __all__ = [
     "WindowsCredentialStore",
     "UsageRecord",
     "UsageTracker",
+    "ModelCatalog",
+    "ModelResolver",
+    "ResolvedModel",
+    "ModelRuntime",
+    "ModelError",
 ]
+
+from .catalog import ModelCatalog
+from .resolver import ModelResolver, ResolvedModel
+from .runtime import ModelRuntime
+from .errors import ModelError
