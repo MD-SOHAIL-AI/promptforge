@@ -27,10 +27,11 @@ def change_service(tmp_path: Path) -> ChangeSetService:
     return ChangeSetService(state_root=tmp_path / "changes", staging_root=tmp_path / "staging")
 
 
-def test_product_registry_has_only_canonical_and_local_test_providers(tmp_path: Path) -> None:
-    registry = ProductProviderRegistry(model_provider_registry=model_registry(tmp_path), fake_enabled=False)
+def test_product_registry_exposes_the_complete_canonical_catalog(tmp_path: Path) -> None:
+    models = model_registry(tmp_path)
+    registry = ProductProviderRegistry(model_provider_registry=models, fake_enabled=False)
     ids = {item.provider_id for item in registry.list()}
-    assert ids == {"deepseek", "anthropic", "openrouter", "openai", "groq", "cerebras", "nvidia_nim", "gemini", "ollama", "lmstudio"}
+    assert ids == set(models.provider_ids())
     with pytest.raises(ValueError, match="PRODUCT_PROVIDER_NOT_ROUTEABLE"):
         registry.resolve("verified_template")
     with pytest.raises(ValueError, match="PRODUCT_PROVIDER_NOT_ROUTEABLE"):

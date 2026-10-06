@@ -4,6 +4,6 @@
   "private": true,
   "description": "Local npm command forwarding to the ForgeX desktop workspace.",
   "scripts": {
-    "dev:desktop": "npm --prefix C:\\Users\\diwan\\Downloads\\ForgeX-Phase6-Final run dev:desktop"
+    "dev:desktop": "npm --prefix D:\\projects\\ForgeX-Phase6-Final run dev:desktop"
   }
 }

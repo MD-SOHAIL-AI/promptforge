@@ -369,13 +369,13 @@ function TerminalTabPane({
       const terminal = new Terminal({
         cursorBlink: true,
         convertEol: true,
-        fontFamily: "'Cascadia Code', 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace",
+        fontFamily: "'ForgeX Mono', Consolas, monospace",
         fontSize: Number.parseInt(
           getComputedStyle(document.documentElement).getPropertyValue("--fx-terminal-font-size"),
           10,
         ) || 13,
         theme: xtermTheme(),
-        scrollback: 5_000,
+        scrollback: Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue("--fx-terminal-scrollback"), 10) || 1000,
         lineHeight: 1.2,
         fontWeight: 400,
         fontWeightBold: 600,
@@ -430,7 +430,13 @@ function TerminalTabPane({
   useEffect(() => {
     const applyTheme = () => {
       const terminal = terminalRef.current;
-      if (terminal) terminal.options.theme = xtermTheme();
+      if (terminal) {
+        terminal.options.theme = xtermTheme();
+        const style = getComputedStyle(document.documentElement);
+        terminal.options.fontSize = Number.parseInt(style.getPropertyValue("--fx-terminal-font-size"), 10) || 13;
+        terminal.options.scrollback = Number.parseInt(style.getPropertyValue("--fx-terminal-scrollback"), 10) || 1000;
+        fitRef.current?.fit();
+      }
     };
     applyTheme();
     window.addEventListener("forgex-theme-change", applyTheme);

@@ -10,8 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import re
+import os
+import shutil
+import sys
+import importlib.util
 import time
 from dataclasses import dataclass
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -134,6 +139,21 @@ class FirmwareFlasher:
         board: BoardInfo,
         config: FlashConfig,
     ) -> FlashResult:
+        from ..services.firmware_manifest import lock_upload_set
+        started = time.monotonic()
+        try:
+            with lock_upload_set(artifact.manifest) if artifact.manifest is not None else nullcontext():
+                return await self._flash_locked(artifact, board, config)
+        except (ValueError, OSError) as exc:
+            return self._classified_failure(started=started, board=board, port=config.port,
+                signal=str(exc), exception_type="ArtifactIntegrityError")
+
+    async def _flash_locked(
+        self,
+        artifact: BuildArtifact,
+        board: BoardInfo,
+        config: FlashConfig,
+    ) -> FlashResult:
         """Execute exactly one flash attempt and return a ``FlashResult``."""
         started = time.monotonic()
         port = config.port.strip()
@@ -165,7 +185,7 @@ class FirmwareFlasher:
 
         try:
             backend = _select_backend(artifact, board, config)
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             return self._classified_failure(
                 started=started,
                 board=board,
@@ -208,6 +228,13 @@ class FirmwareFlasher:
             )
 
         tool_version = _parse_tool_version(probe_result)
+        if artifact.manifest is not None:
+            from ..services.firmware_manifest import verify_upload_set
+            try:
+                verify_upload_set(artifact.manifest, chip=_ESPTOOL_CHIPS.get(board.board_type), environment=artifact.environment)
+            except (ValueError, OSError) as exc:
+                return self._classified_failure(started=started, board=board, port=port,
+                    signal=str(exc), exception_type="ArtifactIntegrityError")
         try:
             flash_result = await self._subprocess_mgr.run(
                 ProcessConfig(
@@ -496,29 +523,30 @@ def _select_backend(
     port = config.port.strip()
 
     if board.board_type in _ESP32_TYPES:
+        if artifact.manifest is not None:
+            from ..services.firmware_manifest import verify_upload_set
+            images = verify_upload_set(artifact.manifest, chip=_ESPTOOL_CHIPS[board.board_type], environment=artifact.environment)
+            application = next(image for image in artifact.manifest["images"] if image["role"] == "application")
+            approved_path = (Path(artifact.manifest["artifact_root"]) / application["filename"]).resolve(strict=True)
+            if path != approved_path or artifact.size_bytes != application["size_bytes"]:
+                raise ValueError("UPLOAD_APPLICATION_BINDING_MISMATCH")
+            prefix = ("esptool",)
+            if importlib.util.find_spec("esptool") is not None:
+                prefix = (sys.executable, "-m", "esptool")
+            elif not shutil.which("esptool"):
+                core = Path(os.environ.get("PLATFORMIO_CORE_DIR", str(Path.home() / ".platformio")))
+                script = core / "packages/tool-esptoolpy/esptool.py"
+                if script.is_file():
+                    prefix = (sys.executable, str(script.resolve()))
+            args = (*prefix, "--chip", artifact.manifest["chip"], "--port", port,
+                    "--baud", str(config.baudrate), "write-flash",
+                    *(value for offset, image in images for value in (hex(offset), str(image))))
+            return _BackendCommand(tool="esptool", executable=prefix[0], probe_args=(*prefix[1:], "version"),
+                flash_args=args, cwd=artifact.manifest["artifact_root"], verification_integrated=True,
+                metadata={"backend": "esptool", "manifest_sha256": artifact.manifest["sha256"], "images": artifact.manifest["images"]})
         project_root = _find_platformio_project(path)
         if project_root is not None and artifact.environment.strip():
-            args = (
-                "pio",
-                "run",
-                "--project-dir",
-                str(project_root),
-                "--environment",
-                artifact.environment.strip(),
-                "--target",
-                "upload",
-                "--upload-port",
-                port,
-            )
-            return _BackendCommand(
-                tool="platformio",
-                executable="pio",
-                probe_args=("--version",),
-                flash_args=args,
-                cwd=str(project_root),
-                verification_integrated=True,
-                metadata={"backend": "platformio", "project_root": str(project_root)},
-            )
+            raise ValueError("SEALED_UPLOAD_REQUIRED")
 
         offset = "0x0" if _is_merged_esp_image(path) else "0x10000"
         args = (
@@ -545,7 +573,10 @@ def _select_backend(
 
     if board.board_type is BoardType.STM32:
         target_config = _stm32_target_config(artifact, board)
-        program_parts = ["program", str(path)]
+        tcl_path = path.as_posix()
+        if any(character in tcl_path for character in ("{", "}", "\n", "\r", "\x00")):
+            raise ValueError("OPENOCD_ARTIFACT_PATH_INVALID")
+        program_parts = ["program", "{" + tcl_path + "}"]
         if config.verify:
             program_parts.append("verify")
         program_parts.extend(("reset", "exit"))

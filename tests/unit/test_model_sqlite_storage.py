@@ -33,6 +33,26 @@ def test_independent_storage_instances_do_not_lose_updates(tmp_path):
     assert len(stores[0].routes()) == 40
 
 
+def test_provider_setup_writes_use_fresh_state_inside_snapshot(tmp_path):
+    path = tmp_path / "models.sqlite3"
+    credentials = MemoryCredentialStore()
+    store = SQLiteProviderSettingsStorage(path, credential_store=credentials)
+    other = SQLiteProviderSettingsStorage(path, credential_store=credentials)
+    with store.read_snapshot():
+        assert store.provider_settings("nvidia_nim") == {}
+        other.save_route("planning", {"model_id": "kept"})
+        store.save_provider_settings("nvidia_nim", {"enabled": True, "api_key": "private-key"})
+        store.save_provider_health("nvidia_nim", {"status": "connected"})
+        store.save_provider_models("nvidia_nim", [{"model_id": "nvidia/nemotron-3-super-120b-a12b"}])
+        assert store.provider_settings("nvidia_nim")["enabled"] is True
+        assert store.provider_health("nvidia_nim")["status"] == "connected"
+        assert store.provider_models("nvidia_nim")[0]["model_id"] == "nvidia/nemotron-3-super-120b-a12b"
+        assert store.routes()["planning"]["model_id"] == "kept"
+    assert other.provider_health("nvidia_nim")["status"] == "connected"
+    assert "api_key" not in other.provider_settings("nvidia_nim")
+    assert credentials.get("nvidia_nim") == "private-key"
+
+
 def test_corrupt_migration_can_be_retried_after_source_repair(tmp_path):
     legacy = tmp_path / "legacy.json"
     legacy.write_text("{bad", encoding="utf-8")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping
@@ -49,6 +50,26 @@ class ProjectMemoryEntry:
 class ProjectMemoryService:
     def __init__(self, store: AgentOrchestrationStore) -> None:
         self.store = store
+
+    def remember_choices(self, *, project_id, session_id, contract, board_id=None):
+        for choice in contract.get("accepted_choices",[]):
+            # Store only bounded named component decisions, never credentials.
+            if not isinstance(choice,str) or not re.fullmatch(r"[a-z_0-9]{1,64}: [A-Za-z0-9 _./-]{1,64}",choice) or re.search(r"password|secret|token|credential|api.?key",choice,re.I):
+                continue
+            key=choice.split(":",1)[0]
+            kind="user_choice:"+key
+            same=False
+            for entry in self.store.memories(project_id):
+                if entry.get("kind")!=kind or entry.get("source_id")!=session_id:
+                    continue
+                if entry.get("value")==choice:
+                    same=True
+                else:
+                    self.store.invalidate_memory(entry["memory_id"],"user_choice_revised")
+            if not same:
+                self.add_verified(project_id=project_id,kind=kind,value=choice,
+                    source_type="user_clarification",source_id=session_id,
+                    source_payload=str(contract.get("revision"))+":"+choice,board_id=board_id)
 
     def add_verified(
         self,

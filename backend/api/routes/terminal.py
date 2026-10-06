@@ -221,6 +221,9 @@ async def terminal_stream(websocket: WebSocket, session_id: str) -> None:
             raw = message.get("text")
             if raw is None:
                 continue
+            if len(raw) > 32_768:
+                await websocket.close(code=1009, reason="Terminal message exceeds limit")
+                return
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError:

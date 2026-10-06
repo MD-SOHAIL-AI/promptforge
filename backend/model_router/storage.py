@@ -6,6 +6,9 @@ import json
 import os
 import tempfile
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +46,29 @@ class ProviderSettingsStorage:
         self.path = Path(path) if path is not None else _default_settings_path()
         self.credential_store = credential_store or default_credential_store()
         self._lock = threading.RLock()
+        self._snapshot: ContextVar[dict[str, Any] | None] = ContextVar(
+            "model_router_settings_snapshot", default=None
+        )
+
+    @contextmanager
+    def read_snapshot(self) -> Iterator[None]:
+        """Reuse one settings read within a synchronous catalog operation.
+
+        The scope is local to the caller, so concurrent requests and later
+        lists see fresh state. Writes always read current disk state instead
+        of using a snapshot that could overwrite another caller's changes.
+        """
+
+        if self._snapshot.get() is not None:
+            yield
+            return
+        with self._lock:
+            state = self._read_unlocked()
+        token = self._snapshot.set(state)
+        try:
+            yield
+        finally:
+            self._snapshot.reset(token)
 
     def read(self) -> dict[str, Any]:
         with self._lock:
@@ -71,7 +97,7 @@ class ProviderSettingsStorage:
         self, provider_id: str, definition: dict[str, Any]
     ) -> None:
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             records = dict(data["custom_providers"])
             records[provider_id] = dict(definition)
             data["custom_providers"] = records
@@ -79,7 +105,7 @@ class ProviderSettingsStorage:
 
     def delete_custom_provider_definition(self, provider_id: str) -> None:
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             records = dict(data["custom_providers"])
             records.pop(provider_id, None)
             data["custom_providers"] = records
@@ -89,7 +115,7 @@ class ProviderSettingsStorage:
         """Remove every non-secret record owned by a custom provider."""
 
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             for section in ("providers", "custom_providers", "health", "models"):
                 records = dict(data[section])
                 records.pop(provider_id, None)
@@ -102,7 +128,7 @@ class ProviderSettingsStorage:
         settings: dict[str, Any],
     ) -> dict[str, Any]:
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             providers = dict(data["providers"])
             current = providers.get(provider_id, {})
             if not isinstance(current, dict):
@@ -139,7 +165,6 @@ class ProviderSettingsStorage:
             if isinstance(legacy, str) and legacy.strip():
                 # Historical plaintext state is migrated immediately and then
                 # removed from JSON by save_provider_settings().
-                self.credential_store.set(provider_id, legacy.strip())
                 self.save_provider_settings(provider_id, {"api_key": legacy.strip()})
             return self.credential_store.get(provider_id)
 
@@ -149,7 +174,7 @@ class ProviderSettingsStorage:
         health: dict[str, Any],
     ) -> None:
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             records = dict(data["health"])
             records[provider_id] = dict(health)
             data["health"] = records
@@ -167,7 +192,7 @@ class ProviderSettingsStorage:
         models: list[dict[str, Any]],
     ) -> None:
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             records = dict(data["models"])
             records[provider_id] = [dict(model) for model in models]
             data["models"] = records
@@ -192,13 +217,16 @@ class ProviderSettingsStorage:
 
     def save_route(self, task_type: str, route: dict[str, Any]) -> None:
         with self._lock:
-            data = self._read_unlocked()
+            data = self._read_unlocked(fresh=True)
             routes = dict(data["routes"])
             routes[task_type] = dict(route)
             data["routes"] = routes
             self._write_unlocked(data)
 
-    def _read_unlocked(self) -> dict[str, Any]:
+    def _read_unlocked(self, *, fresh: bool = False) -> dict[str, Any]:
+        snapshot = self._snapshot.get()
+        if not fresh and snapshot is not None:
+            return snapshot
         if not self.path.exists():
             return _empty_state()
         try:
@@ -243,6 +271,8 @@ class ProviderSettingsStorage:
                 os.fsync(handle.fileno())
             os.replace(temporary_path, self.path)
             temporary_path = None
+            if self._snapshot.get() is not None:
+                self._snapshot.set(payload)
         except OSError as exc:
             raise ModelRouterStorageError("model_router_settings_write_failed") from exc
         finally:

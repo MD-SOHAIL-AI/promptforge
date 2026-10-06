@@ -336,7 +336,8 @@ def test_autonomous_progress_updates_stages_and_preserves_failure_message(tmp_pa
     asyncio.run(scenario())
 
 
-def test_failed_verified_autonomous_run_saves_draft_and_retries_from_it(tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure_code", ["TOOLPLAN_SCHEMA_INVALID", "MODEL_OUTPUT_TRUNCATED"])
+def test_verified_build_with_invalid_final_response_saves_warning_draft_and_retries(tmp_path: Path, failure_code: str) -> None:
     attempts = 0
 
     async def executor(request: object) -> dict[str, object]:
@@ -346,14 +347,14 @@ def test_failed_verified_autonomous_run_saves_draft_and_retries_from_it(tmp_path
         if attempts == 1:
             (stage / "main.cpp").write_text("repaired", encoding="utf-8")
             return {
-                "success": False, "classification": "TOOLPLAN_SCHEMA_INVALID",
+                "success": False, "classification": failure_code,
                 "message": "Agent response invalid", "build_verified": True,
                 "build_result": {"success": True, "message": "Build passed"},
                 "provider_diagnostics": {
                     "outbound_request_count": 3, "physical_request_count": 4,
                     "request_reached_provider": True, "last_turn": 8,
                     "response_mode": "native_tools",
-                    "last_failure_code": "TOOLPLAN_SCHEMA_INVALID",
+                    "last_failure_code": failure_code,
                     "last_repair_outcome": "failed",
                 },
             }
@@ -381,12 +382,17 @@ def test_failed_verified_autonomous_run_saves_draft_and_retries_from_it(tmp_path
                 autonomy="build_only", session_id="session-draft",
             )
             for _ in range(200):
-                if orchestrator.get_run(first.run_id).status == "failed":
+                if orchestrator.get_run(first.run_id).status == "completed_with_warning":
                     break
                 await asyncio.sleep(0.01)
             failed = orchestrator.get_run(first.run_id)
+            assert failed.status == "completed_with_warning"
             assert failed.change_set_id
             assert failed.recoverable is True
+            assert failed.build_result["success"] is True
+            assert failed.to_safe_dict()["build_verified"] is True
+            assert "build verified" in failed.to_safe_dict()["assistant_message"]
+            assert any(event["event_type"] == "runtime.completed_with_warning" for event in orchestrator.events(first.run_id))
             assert failed.to_safe_dict()["provider_diagnostics"]["last_turn"] == 8
             draft = changes.get(failed.change_set_id)
             assert draft.status == "draft"
@@ -598,8 +604,9 @@ def test_autonomous_context_checkpoint_is_durable_and_preserves_payload(tmp_path
 
 
 def test_orchestrator_heartbeats_session_lease_during_long_workflow(tmp_path: Path) -> None:
+    heartbeat_observed = None
     async def slow_executor(request: object) -> dict[str, object]:
-        await asyncio.sleep(0.08)
+        await asyncio.wait_for(heartbeat_observed.wait(), timeout=5)
         return {
             "success": False,
             "classification": "EXPECTED_TEST_FAILURE",
@@ -607,6 +614,8 @@ def test_orchestrator_heartbeats_session_lease_during_long_workflow(tmp_path: Pa
         }
 
     async def scenario() -> None:
+        nonlocal heartbeat_observed
+        heartbeat_observed = asyncio.Event()
         workspace = tmp_path / "heartbeat-workspace"
         workspace.mkdir()
         store = AgentOrchestrationStore(tmp_path / "heartbeat.sqlite3")
@@ -616,6 +625,8 @@ def test_orchestrator_heartbeats_session_lease_during_long_workflow(tmp_path: Pa
         def tracking_renew(grant: object, *, ttl_seconds: int = 20):
             nonlocal renewals
             renewals += 1
+            if renewals >= 2:
+                heartbeat_observed.set()
             return original_renew(grant, ttl_seconds=ttl_seconds)  # type: ignore[arg-type]
 
         store.renew_lease = tracking_renew  # type: ignore[method-assign]

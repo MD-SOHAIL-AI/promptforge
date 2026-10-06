@@ -134,6 +134,7 @@ class BuildArtifact:
     environment: str
     artifact_type: str
     size_bytes: int
+    manifest: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +409,7 @@ class FirmwareBuilder:
         artifact = artifacts[0]
         metadata = {
             **common_metadata,
+            **_memory_measurements(process_result.stdout_text),
             "artifact_type": artifact.artifact_type,
             "artifact_environment": artifact.environment,
             "artifacts": [str(item.path) for item in artifacts],
@@ -765,6 +767,17 @@ def _find_artifacts(
         )
 
     return sorted(artifacts, key=sort_key)
+
+
+def _memory_measurements(output):
+    """Compiler-reported bytes; absence stays unknown instead of estimated."""
+    import re
+    result = {}
+    for kind, used, total in re.findall(r"(?im)^\s*(RAM|Flash):[^\r\n]*?\(used\s+(\d+)\s+bytes\s+from\s+(\d+)\s+bytes\)", output):
+        used, total = int(used), int(total)
+        if 0 <= used <= total and total > 0:
+            result.update({kind.lower()+"_used_bytes":used, kind.lower()+"_total_bytes":total})
+    return result
 
 
 def _scan_artifacts(

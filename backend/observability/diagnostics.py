@@ -10,15 +10,19 @@ import json
 import os
 import re
 import threading
+import uuid
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from backend.runtime_contract import BACKEND_SOURCE_FINGERPRINT
 
 DEFAULT_LIVE_LOG_PATH = Path(".forgex") / "logs" / "live-runtime.jsonl"
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 _LOCK = threading.RLock()
+BACKEND_INSTANCE_ID = uuid.uuid4().hex
 _SECRET_KEY_RE = re.compile(r"(authorization|cookie|api[_-]?key|token|password|secret|credential|private[_-]?key)", re.I)
+_TOKEN_COUNT_KEYS = frozenset({"input_tokens", "output_tokens", "total_tokens", "output_tokens_limit", "max_tokens", "tokens_used", "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens", "requested_output_tokens", "effective_output_tokens"})
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.I)
 _COMMON_SECRET_RE = re.compile(r"\b(?:sk|sk-or|ghp|AIza)[A-Za-z0-9_\-]{12,}\b")
 _ALLOWED_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -26,7 +30,8 @@ _ALLOWED_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 def live_log_path() -> Path:
     configured = os.getenv("FORGEX_LIVE_LOG_PATH", "").strip()
-    return Path(configured) if configured else DEFAULT_LIVE_LOG_PATH
+    base = Path(configured) if configured else DEFAULT_LIVE_LOG_PATH
+    return base.with_name(f"{base.stem}.backend-{BACKEND_INSTANCE_ID}{base.suffix}")
 
 
 def emit_diagnostic_event(
@@ -50,8 +55,7 @@ def emit_diagnostic_event(
             path.parent.mkdir(parents=True, exist_ok=True)
             _rotate_if_needed(path, _max_bytes())
             with path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
-                handle.write("\n")
+                handle.write(json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n")
     except Exception:
         pass
     try:
@@ -74,6 +78,11 @@ def _event_payload(*, component: str, event: str, level: str, message: str | Non
     if normalized_level not in _ALLOWED_LEVELS:
         normalized_level = "INFO"
     payload: dict[str, Any] = {
+        "backend_instance_id": BACKEND_INSTANCE_ID,
+        "desktop_launch_id": os.getenv("FORGEX_DESKTOP_LAUNCH_ID"),
+        "pid": os.getpid(),
+        "app_version": os.getenv("FORGEX_VERSION", "development"),
+        "source_fingerprint": BACKEND_SOURCE_FINGERPRINT,
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "level": normalized_level,
         "component": _short_text(component or "runtime", 128),
@@ -82,12 +91,18 @@ def _event_payload(*, component: str, event: str, level: str, message: str | Non
     if message:
         payload["message"] = _sanitize_string(str(message), 2000)
     for key, value in fields.items():
-        if not isinstance(key, str) or not key or key == "timestamp":
+        if not isinstance(key, str) or not key or key in {"timestamp", "backend_instance_id", "desktop_launch_id", "pid", "app_version", "source_fingerprint"}:
             continue
-        safe = redact(value)
+        safe = "[redacted]" if _secret_field(key, value) else redact(value)
         if safe is not None:
             payload[key] = safe
     return payload
+
+
+def _secret_field(key: str, value: Any) -> bool:
+    if key in _TOKEN_COUNT_KEYS and type(value) is int and value >= 0:
+        return False
+    return bool(_SECRET_KEY_RE.search(key))
 
 
 def _redact(value: Any, *, depth: int) -> Any:
@@ -104,7 +119,7 @@ def _redact(value: Any, *, depth: int) -> Any:
         for key, item in value.items():
             if not isinstance(key, str) or not key:
                 continue
-            if _SECRET_KEY_RE.search(key):
+            if _secret_field(key, item):
                 out[key] = "[redacted]"
             else:
                 out[key] = _redact(item, depth=depth + 1)
@@ -123,6 +138,7 @@ def _sanitize_string(value: str, limit: int) -> str:
     text = value.replace("\x00", "")
     text = _BEARER_RE.sub("Bearer [redacted]", text)
     text = _COMMON_SECRET_RE.sub("[redacted]", text)
+    text = re.sub(r"(?i)((?:api[_-]?key|wifi[_-]?password|password|auth[_-]?token|secret)\s*[=:]\s*[\"']?)[^\s\"';,]+", r"\1[redacted]", text)
     if len(text) > limit:
         return text[:limit] + "\n[truncated]"
     return text

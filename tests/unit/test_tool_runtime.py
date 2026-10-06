@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -68,6 +69,53 @@ def test_valid_write_creates_changeset_without_touching_active_workspace(tmp_pat
     change_set = changes.get(result.change_set_id)
     assert change_set.status == "pending"
     assert change_set.changed_files[0].path == "src/main.cpp"
+
+
+def test_staged_runtime_binds_cumulative_job_deadline_to_model_turns(tmp_path: Path) -> None:
+    runtime, _, _ = make_runtime(tmp_path)
+    class DeadlinePlanner(SequencePlanner):
+        def bind_deadline(self, deadline):
+            self.deadline = deadline
+    planner = DeadlinePlanner([plan(), plan(final=True)])
+    result = runtime.run_product(task="create file", planner=planner,
+        policy=product_agent_policy(), limits=ProductRuntimeLimits(max_runtime_seconds=900),
+        budget_consumed={"elapsed_seconds": 600})
+    assert result.classification is RuntimeClassification.PASS
+    assert 290 < planner.deadline - time.monotonic() < 296
+
+
+def test_grant_remains_valid_after_five_minutes_within_job_deadline(tmp_path, monkeypatch):
+    from backend.agent_runtime.capabilities import ToolPolicyEngine
+    import backend.agent_runtime.capabilities as capabilities
+    clock = [1000.0]
+    monkeypatch.setattr(capabilities.time, "monotonic", lambda: clock[0])
+    runtime, active, _ = make_runtime(tmp_path)
+    def delayed_model(_):
+        clock[0] += 301
+    planner = SequencePlanner([plan(), plan(final=True)], callback=delayed_model)
+    result = runtime.run_product(task="Create a file", planner=planner,
+        policy=product_agent_policy(), policy_engine=ToolPolicyEngine(),
+        limits=ProductRuntimeLimits(max_runtime_seconds=900))
+    assert result.classification is RuntimeClassification.PASS
+    assert result.created_file_count == 1
+    assert not (active / "safe.txt").exists()
+
+
+def test_turn_exhaustion_keeps_observed_provider_diagnostics(tmp_path):
+    runtime, _, _ = make_runtime(tmp_path)
+    class Planner(SequencePlanner):
+        def to_safe_metadata(self):
+            return {"physical_request_count": 1, "http_status": 200,
+                    "request_reached_provider": True}
+    listing = ProductToolPlan.parse({"version": PRODUCT_TOOLPLAN_VERSION,
+        "summary": "Inspect files", "tool_calls": [{"id": "list-1", "type": "list_files",
+        "arguments": {"path": "."}}], "final": False})
+    result = runtime.run_product(task="Inspect files", planner=Planner([listing]),
+        policy=product_agent_policy(), limits=ProductRuntimeLimits(max_turns=1))
+    assert result.classification is RuntimeClassification.MAX_TURNS
+    # Stop without fabricating that the successful provider call never happened.
+    assert result.provider_diagnostics["http_status"] == 200
+    assert result.provider_diagnostics["request_reached_provider"] is True
 
 
 def test_missing_project_file_can_be_created_in_the_same_run(tmp_path: Path) -> None:
@@ -222,6 +270,8 @@ def test_max_turns_retains_isolated_recovery_draft(tmp_path: Path) -> None:
     draft = service.get(result.change_set_id)
     assert draft.status == "draft"
     assert {item.path for item in draft.changed_files} == {f"file{index}.txt" for index in range(1, 15)}
+    assert result.created_file_count == 14
+    assert result.modified_file_count == result.deleted_file_count == 0
     assert not (runtime.active_workspace_root / "file1.txt").exists()
 
 

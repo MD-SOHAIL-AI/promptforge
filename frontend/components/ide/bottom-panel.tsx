@@ -4,24 +4,26 @@ import { AlertTriangle, Bug, ChevronDown, ChevronUp, Maximize2, Minimize2, Radio
 import { useMemo, useState } from "react";
 
 import { ForgeXTerminal } from "@/components/terminal/forgex-terminal";
+import { useWorkspacePreferences } from "@/hooks/workspace-preferences";
 import type { ConsoleEntry, ProjectResponse, WorkspaceLog, WorkflowStage } from "@/types";
 
-type BottomTab = "problems" | "terminal" | "debug" | "serial";
+type BottomTab = "output" | "problems" | "terminal" | "debug" | "serial";
 
 interface BottomPanelProps {
   logs: ConsoleEntry[];
   workspaceLogs: WorkspaceLog[];
   stages: WorkflowStage[];
   activeProject: ProjectResponse | null;
-  height: number;
+  height: number | string;
   collapsed: boolean;
   maximized: boolean;
-  onToggleCollapsed: () => void;
-  onToggleMaximized: () => void;
+  onToggleCollapsed?: () => void;
+  onToggleMaximized?: () => void;
   onClearLogs: () => void;
 }
 
 const tabs = [
+  { id: "output" as const, label: "Output", icon: SquareTerminal },
   { id: "problems" as const, label: "Problems", icon: AlertTriangle },
   { id: "terminal" as const, label: "Terminal", icon: SquareTerminal },
   { id: "debug" as const, label: "Debug Console", icon: Bug },
@@ -48,29 +50,31 @@ export function BottomPanel({
   onToggleMaximized,
   onClearLogs,
 }: BottomPanelProps) {
-  const [active, setActive] = useState<BottomTab>("terminal");
+  const preferences = useWorkspacePreferences();
+  const [active, setActive] = useState<BottomTab>(() => preferences["terminal.default_tab"] === "Terminal" ? "terminal" : preferences["terminal.default_tab"] === "Serial Monitor" ? "serial" : "output");
   const problems = logs.filter((log) => log.channel === "error");
   const serialLogs = logs.filter((log) => log.channel === "serial");
   const workspaceSerial = workspaceLogs.filter((log) => log.log_type === "monitor");
 
   const lines = useMemo(() => {
+    const prefix = (stamp: string) => preferences["terminal.show_timestamps"] === false ? "" : `[${time(stamp)}] `;
     if (active === "problems") {
-      return problems.length > 0 ? problems.map((log) => `[${time(log.timestamp)}] ${log.message}`) : ["No problems detected."];
+      return problems.length > 0 ? problems.map((log) => `${prefix(log.timestamp)}${log.message}`) : ["No problems detected."];
     }
     if (active === "debug") {
       return stages.map((stage) => `${stage.label.padEnd(12)} ${stage.status} - ${stage.description}`);
     }
     if (active === "serial") {
       const stream = [
-        ...serialLogs.map((log) => `[${time(log.timestamp)}] ${log.message}`),
+        ...serialLogs.map((log) => `${prefix(log.timestamp)}${log.message}`),
         ...workspaceSerial.map((log) => `[${log.execution_id}] ${log.content.trim()}`),
       ].filter(Boolean);
       return stream.length > 0 ? stream : ["Serial monitor idle."];
     }
     return logs.length > 0
-      ? logs.map((log) => `[${time(log.timestamp)}] [${log.channel}] ${log.message}`)
+      ? logs.map((log) => `${prefix(log.timestamp)}[${log.channel}] ${log.message}`)
       : ["ForgeX output ready."];
-  }, [active, logs, problems, serialLogs, stages, workspaceSerial]);
+  }, [active, logs, problems, serialLogs, stages, workspaceSerial, preferences]);
 
   return (
     <section
@@ -109,30 +113,30 @@ export function BottomPanel({
             <Trash2 className="h-3.5 w-3.5" />
             Clear
           </button>
-          <button
+          {onToggleMaximized ? <button
             className="flex h-7 w-7 items-center justify-center rounded text-[var(--fx-text-muted)] hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]"
             onClick={onToggleMaximized}
             title={maximized ? "Restore bottom panel" : "Maximize bottom panel"}
             aria-label={maximized ? "Restore bottom panel" : "Maximize bottom panel"}
           >
             {maximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          </button>
-          <button
+          </button> : null}
+          {onToggleCollapsed ? <button
             className="flex h-7 w-7 items-center justify-center rounded text-[var(--fx-text-muted)] hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]"
             onClick={onToggleCollapsed}
             title={collapsed ? "Show terminal panel" : "Collapse terminal panel"}
             aria-label={collapsed ? "Show bottom panel" : "Collapse bottom panel"}
           >
             {collapsed ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
+          </button> : null}
         </div>
       </div>
       {collapsed ? null : active === "terminal" ? (
-        <div className="min-h-0" style={{ height: height - 36 }} role="tabpanel">
+        <div className="min-h-0" style={{ height: typeof height === "number" ? height - 36 : "calc(100% - 36px)" }} role="tabpanel">
           <ForgeXTerminal activeProject={activeProject} />
         </div>
       ) : (
-        <div className="overflow-auto px-3 py-2 font-mono leading-5 text-[var(--fx-terminal-text)]" style={{ height: height - 36, fontSize: "var(--fx-terminal-font-size)" }} role="tabpanel">
+        <div className="overflow-auto px-3 py-2 font-mono leading-5 text-[var(--fx-terminal-text)]" style={{ height: typeof height === "number" ? height - 36 : "calc(100% - 36px)", fontSize: "var(--fx-terminal-font-size)" }} role="tabpanel">
           {lines.map((line, index) => (
             <div key={`${active}-${index}`} className={active === "problems" && problems.length > 0 ? "text-[var(--fx-error)]" : ""}>
               {line}

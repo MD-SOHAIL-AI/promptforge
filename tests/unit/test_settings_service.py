@@ -18,6 +18,42 @@ def test_settings_defaults_load(tmp_path: Path) -> None:
     assert settings["appearance.surface_opacity"] == 94
     assert settings["appearance.contrast"] == "standard"
     assert settings["hardware.confirm_before_flash"] is True
+    assert settings["appearance.activity_detail"] == "normal"
+
+
+def test_concurrent_instances_preserve_independent_updates(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "settings.json"
+    patches = [{"appearance.theme": "paper"}, {"editor.tab_size": 8}, {"appearance.activity_detail": "verbose"}, {"appearance.background_blur": 12}]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda patch: SettingsService(path).patch_settings(patch), patches))
+    settings = SettingsService(path).get_settings()
+    for patch in patches:
+        for key, value in patch.items():
+            assert settings[key] == value
+
+
+def test_failed_atomic_replace_preserves_previous_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    path = tmp_path / "settings.json"
+    service = SettingsService(path)
+    service.patch_settings({"appearance.theme": "paper"})
+    previous = path.read_bytes()
+    def fail_replace(*_args: object) -> None:
+        raise OSError("disk unavailable")
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(OSError, match="disk unavailable"):
+        service.patch_settings({"appearance.theme": "nord"})
+    assert path.read_bytes() == previous
+    assert not list(tmp_path.glob(".settings-*.tmp"))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_preferences_are_rejected(tmp_path: Path, value: float) -> None:
+    with pytest.raises(SettingsValidationError, match="Invalid value"):
+        SettingsService(tmp_path / "settings.json").patch_settings({"appearance.surface_opacity": value})
 
 
 def test_settings_patch_persists_values(tmp_path: Path) -> None:

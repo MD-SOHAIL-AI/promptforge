@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from backend.observability.diagnostics import live_log_path
 
 import pytest
 
@@ -75,6 +76,7 @@ def test_api_planner_uses_explicit_model_and_key_without_env_registry() -> None:
 def test_api_planner_logs_provider_request_start_and_completion(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "provider.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
 
     def transport(url, payload, api_key, headers, timeout):
         del url, payload, api_key, headers, timeout
@@ -103,6 +105,7 @@ def test_api_planner_logs_provider_request_start_and_completion(tmp_path, monkey
 def test_api_planner_logs_provider_failure(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "provider.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
 
     def transport(*args):
         raise ApiTransportHTTPError(401, "bad Bearer sk-or-v1-secretsecretsecret", "req-provider")
@@ -122,6 +125,7 @@ def test_api_planner_logs_provider_failure(tmp_path, monkeypatch) -> None:
 def test_openrouter_free_model_failure_retries_agent_planner_fallback(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "provider.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
     models: list[str] = []
 
     def transport(url, payload, api_key, headers, timeout):
@@ -407,6 +411,7 @@ def test_api_planner_normalizes_null_build_environment() -> None:
 def test_api_planner_still_rejects_write_root_path_with_diagnostics(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "provider.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
     provider = ApiPlannerProvider(
         API_PLANNER_CONFIGS["openai"],
         api_key="secret",
@@ -431,6 +436,7 @@ def test_api_planner_still_rejects_write_root_path_with_diagnostics(tmp_path, mo
 def test_api_planner_rejects_forbidden_tool_with_safe_diagnostics(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "provider.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
     provider = ApiPlannerProvider(
         API_PLANNER_CONFIGS["openai"],
         api_key="secret",

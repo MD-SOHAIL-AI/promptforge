@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -146,9 +147,10 @@ def create_app(
         raise RuntimeError("FORGEX_LOCAL_TOKEN must contain at least 32 characters.")
 
     manager = subprocess_manager or SubprocessManager()
-    paths = PathManager(
-        os.getenv("FORGEX_ROOT") or os.getenv("PROMPTFORGE_ROOT") or None
-    )
+    if os.getenv("FORGEX_DATA_DIR") and os.getenv("FORGEX_LEGACY_DATA_DIR"):
+        from ..utils.data_migration import migrate_legacy_data
+        migrate_legacy_data(os.environ["FORGEX_LEGACY_DATA_DIR"], os.environ["FORGEX_DATA_DIR"])
+    paths = PathManager()
     state_dir = paths.state_directory()
     runtime_logs = runtime_logger or RuntimeLogger()
     metrics = metrics_registry or MetricsRegistry()
@@ -157,7 +159,7 @@ def create_app(
     workspace = workspace_manager or WorkspaceManager(
         paths, runtime_logger=runtime_logs
     )
-    platformio = platformio_service or PlatformIOService(manager)
+    platformio = platformio_service or PlatformIOService(manager, artifact_store=paths.artifacts_directory() / "firmware-manifests")
     artifact_service = ArtifactService(paths.artifacts_directory())
     detector = board_detector or BoardDetector()
 
@@ -220,6 +222,7 @@ def create_app(
         manager=manager,
         tool_executor=tool_executor,
         workspace=workspace,
+        artifact_store=paths.artifacts_directory() / "firmware-manifests",
     )
 
     change_sets = change_set_service or ChangeSetService(
@@ -254,7 +257,8 @@ def create_app(
     )
 
     async def autonomous_workflow_executor(agent_request: Any) -> dict[str, object]:
-        if generation is None:
+        verify_only = agent_request.active_workspace.get("agent_verify_saved_draft") is True
+        if generation is None and not verify_only:
             return {
                 "success": False,
                 "classification": "CODE_GENERATION_UNAVAILABLE",
@@ -267,13 +271,22 @@ def create_app(
             os.getenv("FORGEX_ENABLE_AGENT_V3_LOOP", "1").strip() != "0"
             and execute_prompt_fn is execute_prompt
         )
-        if use_v3_loop:
+        if use_v3_loop or verify_only:
             try:
-                planner = provider_registry.resolve(
+                planner = None if verify_only else provider_registry.resolve(
                     agent_request.provider_id,
                     model_id=agent_request.model_id,
                     session_id=getattr(agent_request, "session_id", None),
                 )
+                job = agent_orchestrator.jobs.get(agent_orchestrator.get_run(agent_request.run_id).job_id) if agent_orchestrator else None
+                if job:
+                    from ..agent_runtime.lifecycle import bind_job_resources
+                    bind_job_resources(planner, agent_orchestrator.jobs, job, agent_request.run_id)
+                recovery_binder = getattr(planner, "bind_recovery_events", None)
+                if callable(recovery_binder):
+                    async def recovery_event(payload):
+                        await agent_request.progress_callback(str(payload["event_type"]), payload)
+                    recovery_binder(recovery_event)
                 raw_memories = agent_request.active_workspace.get(
                     "agent_verified_memories", []
                 )
@@ -293,10 +306,12 @@ def create_app(
                     agent_request.active_workspace.get("agent_autonomy") or "build_only"
                 )
                 requires_build = (
-                    agent_autonomy not in {"read_only", "plan_only", "staged_changes"}
+                    agent_autonomy not in {"read_only", "plan_only"}
                     and (
                         agent_request.active_workspace.get("agent_requires_build") is True
                         or agent_autonomy in {"build_only", "build_only_strict", "build_then_confirm_flash", "simulate"}
+                        or (agent_autonomy in {"staged_changes", "review_changes"}
+                            and bool(agent_request.active_workspace.get("task_contract")))
                     )
                 )
                 profile = profile_for_autonomy(
@@ -323,8 +338,17 @@ def create_app(
                         if isinstance(agent_request.active_workspace.get("agent_retry_context"), Mapping)
                         else None
                     ),
+                    resume_checkpoint=agent_request.active_workspace.get("agent_resume_checkpoint"),
+                    task_contract=agent_request.active_workspace.get("task_contract"),
+                    trusted_project=agent_orchestrator.jobs.is_trusted(agent_request.project_id,
+                        agent_orchestrator._recovery_context.get(agent_request.run_id, {}).get("workspace_root", "")) if agent_orchestrator else False,
+                    project_trust_getter=lambda:agent_orchestrator.jobs.is_trusted(agent_request.project_id,
+                        agent_orchestrator._recovery_context.get(agent_request.run_id,{}).get("workspace_root","")) if agent_orchestrator else False,
+                    serial_service_getter=lambda: application.state.services.serial_service,
+                    job_limits=job["limits"] if job else None,
+                    job_consumed=job["consumed"] if job else None,
                 )
-                v3_result = await loop.run(
+                v3_result = await loop.verify_saved_draft(environment=environment) if verify_only else await loop.run(
                     task=agent_request.instruction,
                     require_build=profile.require_build,
                     require_simulation=str(
@@ -337,7 +361,7 @@ def create_app(
                 payload.update(
                     {
                         "blocked": False,
-                        "validation_report": {"valid": v3_result.success},
+                        "validation_report": {"valid": v3_result.success, "requirements": dict(v3_result.requirement_report)},
                         "pending_decision": False,
                         "suggested_alternatives": [],
                     }
@@ -346,6 +370,8 @@ def create_app(
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                if "loop" in locals():
+                    return loop._result(False, type(exc).__name__, str(exc) or "Forge Agent failed.").to_dict()
                 return {
                     "success": False,
                     "classification": type(exc).__name__,
@@ -446,6 +472,7 @@ def create_app(
                 expected_artifact_hash=getattr(
                     agent_request, "expected_artifact_hash", None
                 ),
+                artifact_manifest=getattr(agent_request, "artifact_manifest", None),
             )
         except FlashServiceError as exc:
             build_payload = (
@@ -552,18 +579,31 @@ def create_app(
                 + document[:24_000]
             )
             try:
-                response = await router_service.generate_model(
+                from ..model_router.run_budget import new_budget
+                job = agent_orchestrator.jobs.get(str(routing["job_id"]))
+                run_id = str(routing["run_id"])
+                remaining = min(60.0, job["limits"]["elapsed_seconds"] - job["consumed"]["elapsed_seconds"])
+                if remaining <= 0:
+                    raise ValueError("AGENT_JOB_BUDGET_EXHAUSTED")
+                budget = new_budget(job["consumed"])
+                budget["_limits"] = {key: job["limits"][key] for key in ("requests", "output_tokens", "input_bytes")}
+                budget["_reserve"] = lambda charges: agent_orchestrator.jobs.reserve_provider_attempt(job["job_id"], run_id, charges)
+                budget["_settle"] = lambda attempt_id, actual: agent_orchestrator.jobs.settle_provider_attempt(job["job_id"], attempt_id, actual)
+                response = await asyncio.wait_for(router_service.generate_model(
                     ModelRequest(
                         prompt=prompt,
                         task_type="review",
                         provider_id=binding.provider_id if binding else routing.get("provider_id"),
                         model_id=binding.model_id if binding else routing.get("model_id"),
-                        metadata={"agent_role": "review", "session_id": session_id},
+                        metadata={"agent_role": "review", "session_id": session_id, "run_id": run_id,
+                                  "forgex_run_budget": budget, "forgex_managed_recovery": True,
+                                  "forgex_request_attempts": {"used": 0, "limit": 4},
+                                  "forgex_turn_deadline": time.monotonic() + remaining},
                         temperature=0.0,
                         max_tokens=512,
                         allow_fallback=False,
                     )
-                )
+                ), timeout=remaining)
                 decoded = json.loads(response.content)
             except Exception:
                 return {
@@ -595,7 +635,7 @@ def create_app(
         )
         product_agent_service.attach_orchestrator(agent_orchestrator)
         from ..agent_runtime.session_run_projector import AgentSessionRunProjector
-        agent_orchestrator.add_run_listener(AgentSessionRunProjector(agent_sessions))
+        agent_orchestrator.add_run_listener(AgentSessionRunProjector(agent_sessions, agent_events))
     agent_activity = AgentActivityBroker(
         event_sink=(
             agent_orchestrator.append_chat_event
@@ -606,13 +646,28 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        if agent_orchestrator is not None:
+            agent_orchestrator.jobs.retire_checkpoints()
+            await agent_orchestrator.recover_jobs()
+        from ..agent_runtime.retention import referenced_stages, prune_orphan_stages
+        try:
+            protected = referenced_stages(change_sets.staging_root, agent_events.retention_payloads())
+            protected.update(Path(item.staging_root) for item in change_sets._sets.values())
+            prune_orphan_stages(change_sets.staging_root, protected)
+        except (OSError, ValueError):
+            pass  # Retention must never prevent startup or delete uncertain state.
         yield
+        await application.state.build_operations.close()
+        await product_agent_service.close()
         current_serial = application.state.services.serial_service
         if current_serial is not None:
             try:
                 await current_serial.disconnect()
             except Exception:
                 pass
+        close_probe = getattr(application.state.services.platformio_service, "close_status_probe", None)
+        if callable(close_probe):
+            await close_probe()
         await manager.kill_all()
         await terminal_sessions.stop_all()
         await chat_service.close()
@@ -620,7 +675,6 @@ def create_app(
             close = getattr(owned_llm, "aclose", None)
             if callable(close):
                 await close()
-        await product_agent_service.close()
 
     application = FastAPI(
         title="ForgeX API",
@@ -682,6 +736,9 @@ def create_app(
         harness_client=harness_client,
     )
 
+    from ..services.build_operations import BuildOperations
+    application.state.build_operations = BuildOperations(agent_events)
+
     @application.middleware("http")
     async def authenticated_local_desktop(request, call_next):
         # Health remains token-free for process discovery, but all requests
@@ -713,7 +770,7 @@ def create_app(
                 content_length = int(raw_length) if raw_length is not None else 0
             except ValueError:
                 content_length = 32_769
-            if content_length > 32_768:
+            if content_length < 0 or content_length > 32_768:
                 return JSONResponse(
                     status_code=413,
                     content={
@@ -722,6 +779,17 @@ def create_app(
                         "details": {},
                     },
                 )
+            body_chunks = []
+            body_size = 0
+            async for chunk in request.stream():
+                body_size += len(chunk)
+                if body_size > 32_768:
+                    return JSONResponse(status_code=413, content={"code": "REQUEST_TOO_LARGE",
+                        "message": "Agent request body is too large.", "details": {}})
+                body_chunks.append(chunk)
+            # Starlette's cached request replays this bounded body to FastAPI.
+            # Checking the actual stream also covers chunked/no-length bodies.
+            request._body = b"".join(body_chunks)
         return await call_next(request)
 
     application.middleware("http")(request_context_middleware)
@@ -827,6 +895,10 @@ def _latest_agent_build_result(outcome: object) -> dict[str, object] | None:
         api_dict = getattr(result, "api_dict", None)
         if callable(api_dict):
             value = api_dict()
+            if isinstance(value, dict) and isinstance(value.get("metadata"), dict):
+                for key in ("artifact_manifest", "flash_ready", "flash_readiness_error", "toolchain"):
+                    if key in value["metadata"]:
+                        value[key] = value["metadata"][key]
             return value if isinstance(value, dict) else None
     return None
 

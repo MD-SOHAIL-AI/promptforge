@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from backend.observability.diagnostics import live_log_path
 
 import pytest
 
@@ -11,7 +12,7 @@ from backend.agent_runtime.tool_contracts import ToolCall, ToolName
 from backend.agent_runtime.tool_executor import ForgeXToolExecutor
 from backend.agent_runtime.tool_policy import ToolPermissionPolicy, ToolPolicyError
 from backend.api.routes.agent_runtime import _bounded_instruction
-from backend.model_router.models import CanonicalStreamEvent, ModelRequest, ModelRoute
+from backend.model_router.models import CanonicalStreamEvent, ModelRequest, ModelRoute, RequestExecutionContext
 from backend.services.llm_service import LLMConfigurationError, LLMProvider, LLMProviderError
 from tests.unit.test_model_runtime_v2 import Provider, build
 
@@ -52,6 +53,7 @@ def test_local_only_stream_never_contacts_cloud(tmp_path):
 def test_router_stream_writes_sanitized_provider_diagnostics(tmp_path, monkeypatch):
     log_path = tmp_path / "live-runtime.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
     adapter = FailingStreamProvider("openrouter")
     router, _ = build(tmp_path, {"openrouter": adapter})
 
@@ -63,6 +65,7 @@ def test_router_stream_writes_sanitized_provider_diagnostics(tmp_path, monkeypat
                     prompt="private project prompt",
                     task_type="code_generation",
                     metadata={"run_id": "run-test", "request_id": "req-test"},
+                    execution_context=RequestExecutionContext(attempts={"used": 0, "limit": 1}),
                 )
             )
         ]

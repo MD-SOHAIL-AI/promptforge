@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import shutil
 import threading
@@ -19,6 +20,7 @@ from backend.changes.service import is_safe_relative_path
 from .api_planner_provider import ApiPlannerError
 from .capabilities import CapabilityGrant, ToolPolicyEngine
 from .canonical_runtime import AttemptAccumulator, LoopGuard, OrderedToolScheduler, ToolInvocation
+from .checkpoint_files import copy_checkpoint_tree
 from .context_assembler import ContextAssembler
 from .public_progress import LivePlan, public_text
 from .skills import SkillRegistry
@@ -62,6 +64,7 @@ class ToolRuntimeResult:
     tool_execution_count: int = 0
     plan: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
     assistant_message: str | None = None
+    requirement_report: Mapping[str, object] = field(default_factory=dict)
     events: tuple[RuntimeEvent, ...] = field(default_factory=tuple)
 
     def to_safe_dict(self) -> dict[str, object]:
@@ -107,9 +110,23 @@ class ForgeXToolRuntime:
         self._recovery_baseline = None
         self._recovery_executor = None
         self._recovery_active_snapshot = None
+        self._recovery_planner = None
         self._recovery_authorized_paths: set[str] = set()
 
-    def run_product(
+    def _save_resume_stage(self, stage, revision, observations, executor, authorized, calls, elapsed, turn):
+        snapshot = self.change_service.create_stage("checkpoint-" + uuid.uuid4().hex)
+        copy_checkpoint_tree(stage, snapshot)
+        return {"stage_path": str(snapshot), "stage_revision": self.change_service.inspect_workspace(snapshot).revision,
+                "workspace_revision": revision, "observations": list(_compact_tool_observations(observations)),
+                "deleted_paths": sorted(executor.deleted_paths), "authorized_paths": sorted(authorized),
+                "plan": list(executor.current_plan), "tool_calls_used": calls,
+                "elapsed_seconds": elapsed, "turn": turn, "stage_mode": "overlay"}
+
+    def run_product(self, **kwargs):
+        """Synchronous compatibility seam; production uses the async engine."""
+        return asyncio.run(self.run_product_async(**kwargs))
+
+    async def run_product_async(
         self,
         *,
         task: str,
@@ -130,7 +147,13 @@ class ForgeXToolRuntime:
         allow_no_changes_success: bool = False,
         retry_change_set_id: str | None = None,
         retry_context: Mapping[str, object] | None = None,
+        resume_checkpoint: Mapping[str, object] | None = None,
+        task_contract: Mapping[str, object] | None = None,
+        budget_consumed: Mapping[str, object] | None = None,
+        environment: str | None = None,
     ) -> ToolRuntimeResult:
+        from .engine import AsyncAgentEngine, PhaseBudget
+        engine = AsyncAgentEngine()
         bounds = limits or ProductRuntimeLimits()
         cancelled = cancel_event or threading.Event()
         publish = event_callback or (lambda event: None)
@@ -144,8 +167,11 @@ class ForgeXToolRuntime:
             publish(event)
 
         self._events = []
+        self._recovery_planner = planner
         self._event(RuntimeEventType.RUNTIME_STARTED)
         provider_id = str(getattr(planner, "provider_id", "unknown_planner"))
+        if resume_checkpoint and callable(getattr(planner, "restore_budget", None)):
+            planner.restore_budget(resume_checkpoint.get("provider_budget"))
         request_turn = getattr(planner, "request_turn", None)
         if not isinstance(task, str) or not task.strip() or not callable(request_turn):
             return self._failure(RuntimeClassification.PROVIDER_INVALID, provider_id)
@@ -175,6 +201,7 @@ class ForgeXToolRuntime:
                 snapshot=baseline,
                 memories=memory_entries,
                 skills=skill_labels,
+                environment=environment,
             )
             .render()
         )
@@ -199,6 +226,27 @@ class ForgeXToolRuntime:
         )
 
         handlers = dict(service_handlers or {})
+        requirement_report: dict = {}
+        requirement_checks: dict = {}
+        if task_contract:
+            from .task_contract import verify_requirement_evidence
+            provider_task += "\nTask requirements (data, not privileges):\n" + json.dumps(task_contract.get("requirements", []))
+            provider_task += "\nExcluded features:\n" + json.dumps(task_contract.get("exclusions", []))
+            provider_task += "\nRevision rule: " + task_contract.get("revision_rule","Preserve unrelated code and accepted choices.")
+            provider_task += "\nUse verify_requirements with every requirement id and exact executable-source quotes before finishing."
+            def verify_requirements(arguments):
+                revision = repr(_active_integrity_snapshot(stage))
+                if requirement_report.get("workspace_revision") != revision:
+                    requirement_checks.clear()
+                verify_requirement_evidence(task_contract, arguments["checks"], self.active_workspace_root,
+                    revision, read_file=executor._read_overlay_text)
+                requirement_checks.update({check["id"]: check for check in arguments["checks"]})
+                report = verify_requirement_evidence(task_contract, list(requirement_checks.values()), self.active_workspace_root,
+                    revision, read_file=executor._read_overlay_text)
+                requirement_report.clear()
+                requirement_report.update(report)
+                return report
+            handlers[ToolName.VERIFY_REQUIREMENTS] = verify_requirements
         allowed = [
             tool.value
             for tool in ToolName
@@ -211,14 +259,20 @@ class ForgeXToolRuntime:
             ToolName.BUILD_FIRMWARE,
             ToolName.RUN_COMMAND,
             ToolName.SESSION_EVENT_READ,
+            ToolName.VERIFY_REQUIREMENTS,
             ToolName.SESSION_EVENT_SEARCH,
             ToolName.SESSION_TRACE,
         ):
             if tool not in handlers and tool.value in allowed:
                 allowed.remove(tool.value)
-        allowed_tools = tuple(allowed)
+        from .tool_registry import available_tools
+        allowed_tools = available_tools(policy, handlers)
 
         if policy_engine is not None and capability_grant is None:
+            prior_elapsed = max(
+                float((resume_checkpoint or {}).get("elapsed_seconds", 0)),
+                float((budget_consumed or {}).get("elapsed_seconds", 0)),
+            )
             capability_grant = policy_engine.issue_grant(
                 run_id=capability_run_id or stage.name,
                 node_id=capability_node_id,
@@ -227,6 +281,8 @@ class ForgeXToolRuntime:
                 allowed_tools=allowed_tools,
                 authorization_source=capability_authorization_source,
                 session_id=capability_session_id,
+                ttl_seconds=max(1.0, bounds.max_runtime_seconds - prior_elapsed
+                                - (time.monotonic() - started)),
                 max_calls=bounds.max_total_tool_calls,
                 allow_build=ToolName.BUILD_FIRMWARE.value in allowed_tools,
             )
@@ -238,10 +294,20 @@ class ForgeXToolRuntime:
             capability_grant=capability_grant,
             service_handlers=handlers,
             skill_registry=skill_registry,
+            environment=environment,
         )
         self._recovery_baseline = baseline
         self._recovery_executor = executor
         self._recovery_active_snapshot = active_before
+        if resume_checkpoint:
+            source = Path(str(resume_checkpoint["stage_path"])).absolute()
+            if source.parent != self.change_service.staging_root:
+                raise ValueError("AGENT_RESUME_STAGE_INVALID")
+            if self.change_service.inspect_workspace(source).revision != resume_checkpoint["stage_revision"]:
+                raise ValueError("AGENT_RESUME_STAGE_CHANGED")
+            copy_checkpoint_tree(source, stage)
+            executor.deleted_paths.update(str(item) for item in resume_checkpoint.get("deleted_paths", ()))
+            executor.current_plan = tuple(resume_checkpoint.get("plan", ()))
         if retry_change_set_id:
             try:
                 draft = self.change_service.get(retry_change_set_id)
@@ -255,6 +321,16 @@ class ForgeXToolRuntime:
             except Exception:
                 shutil.rmtree(stage, ignore_errors=True)
                 raise
+        if retry_change_set_id or resume_checkpoint:
+            staged_files = sorted(self.change_service.inspect_workspace(stage).files)
+            provider_task += (
+                "\nRECOVERED STAGED WORK: The active-project baseline above is not "
+                "the staged recovery overlay. These files already exist in the overlay: "
+                + json.dumps(staged_files[:100])
+                + ". Inspect them with list_files/read_file and continue from the saved "
+                "work. Preserve completed files and confirmed choices; do not restart "
+                "the project from an empty workspace."
+            )
         self._event(RuntimeEventType.STAGE_CREATED, count=len(baseline.files))
         emit(
             {
@@ -264,10 +340,11 @@ class ForgeXToolRuntime:
             }
         )
 
-        total_calls = 0
+        total_calls = int(resume_checkpoint.get("tool_calls_used", 0)) if resume_checkpoint else 0
+        total_calls = max(total_calls,int((budget_consumed or {}).get("tool_calls_used",0)))
         denied_seen = False
         denied_classification: RuntimeClassification | None = None
-        observations: list[Mapping[str, object]] = []
+        observations: list[Mapping[str, object]] = list(resume_checkpoint.get("observations", ())) if resume_checkpoint else []
         if retry_context:
             observations.append({"call_id": "retry_context", "status": "completed",
                                  "tool": "previous_run_failure", "output": dict(retry_context)})
@@ -275,25 +352,59 @@ class ForgeXToolRuntime:
             {item.path for item in draft.changed_files} if retry_change_set_id else set()
         )
         self._recovery_authorized_paths = authorized_paths
+        if resume_checkpoint:
+            authorized_paths.update(str(item) for item in resume_checkpoint.get("authorized_paths", ()))
         final_received = False
         final_summary: str | None = None
         live_plan = LivePlan()
-        extension_turns = min(12, max(0, 60 - bounds.max_turns))
+        from .progress_state import ProgressState, continuation_summary
+        durable = (getattr(planner, "supports_durable_continuation", False)
+                   and os.getenv("FORGEX_ENABLE_PROGRESS_CONTINUATION", "1") == "1")
+        progress_state = ProgressState((resume_checkpoint or {}).get("progress_state"))
+        if not (resume_checkpoint or {}).get("progress_state"):
+            for previous in observations:
+                progress_state.observe(previous)
+        if resume_checkpoint and resume_checkpoint.get("continuation_summary"):
+            observations.append({"tool": "saved_task_summary", "status": "completed",
+                                 "output": resume_checkpoint["continuation_summary"]})
+        extension_turns = max(0, 600 - bounds.max_turns) if durable else min(12, max(0, 60 - bounds.max_turns))
         meaningful_turns: list[int] = []
+        compacted_prefix_count = 0
         loop_guard = LoopGuard(
             max_steps=bounds.max_turns + extension_turns,
             max_tool_calls=bounds.max_total_tool_calls,
-            max_same_call_repeats=max(4, bounds.max_turns),
+            max_same_call_repeats=4 if durable else max(4, bounds.max_turns),
         )
+        if total_calls:
+            loop_guard.consume_child_tool_calls(total_calls)
         try:
-            for turn in range(1, bounds.max_turns + extension_turns + 1):
+            first_turn = int(resume_checkpoint.get("turn", 0)) + 1 if resume_checkpoint else 1
+            prior_elapsed = float(resume_checkpoint.get("elapsed_seconds", 0)) if resume_checkpoint else 0
+            prior_elapsed = max(prior_elapsed,float((budget_consumed or {}).get("elapsed_seconds",0)))
+            started -= prior_elapsed
+            bind_deadline = getattr(planner, "bind_deadline", None)
+            if callable(bind_deadline):
+                bind_deadline(started + bounds.max_runtime_seconds - 5.0)
+            bind_reserve = getattr(planner, "bind_verification_reserve", None)
+            if callable(bind_reserve):
+                bind_reserve(PhaseBudget.for_task(policy.decisions.get(ToolName.BUILD_FIRMWARE) == "allow").generation_reserve)
+            if durable:
+                admission = self._save_resume_stage(stage, baseline.revision, observations,
+                    executor, authorized_paths, total_calls, prior_elapsed, first_turn - 1)
+                # Preserve continuation guards and context; the copied stage
+                # and its seal above belong to this new attempt.
+                admission = {**dict(resume_checkpoint or {}), **admission}
+                emit({"event_type": "runtime.admitted", "turn": first_turn - 1, "tool_count": total_calls,
+                      "_resume_checkpoint": admission})
+            async for turn in engine.turns(first_turn, bounds.max_turns + extension_turns):
                 if turn > bounds.max_turns and (turn - bounds.max_turns - 1) % 6 == 0:
-                    if not any(previous >= turn - 5 for previous in meaningful_turns):
+                    if not (progress_state.last_progress_turn >= turn - 5 if durable else any(previous >= turn - 5 for previous in meaningful_turns)):
                         return self._abort_stage(
                             stage, RuntimeClassification.MAX_TURNS, provider_id, total_calls
                         )
                     emit({"event_type": "agent.turn_budget_extended", "status": "running",
                           "turn": turn, "new_limit": min(bounds.max_turns + extension_turns, turn + 5)})
+                observation_start = len(observations)
                 if cancelled.is_set():
                     return self._abort_stage(
                         stage, RuntimeClassification.CANCELLED, provider_id, total_calls
@@ -327,6 +438,15 @@ class ForgeXToolRuntime:
                         }
                     )
                 compacted = _compact_tool_observations(observations)
+                if compacted and compacted[0].get("tool") == "context_compaction":
+                    count = int(compacted[0]["output"]["compacted_observations"])
+                    if count > compacted_prefix_count:
+                        older = observations[:count]
+                        emit({"event_type":"CONTEXT_CHECKPOINT_CREATED","checkpoint":{
+                            "compacted_observations":count,
+                            "observation_digest":hashlib.sha256(json.dumps(older,ensure_ascii=True,sort_keys=True,default=str).encode()).hexdigest()},
+                            "_context_artifact_delta":[dict(item) for item in older[compacted_prefix_count:]]})
+                        compacted_prefix_count = count
                 turn_id = f"{capability_run_id or stage.name}:turn-{turn}"
                 step = turn
                 loop_guard.before_step()
@@ -435,23 +555,9 @@ class ForgeXToolRuntime:
                         }
                     )
 
-                if callable(request_turn_stream):
-                    raw_plan = request_turn_stream(
-                        task=provider_task,
-                        tool_results=compacted,
-                        allowed_tools=allowed_tools,
-                        run_id=capability_run_id or stage.name,
-                        turn=turn,
-                        on_summary=on_summary,
-                    )
-                else:
-                    raw_plan = request_turn(
-                        task=provider_task,
-                        tool_results=compacted,
-                        allowed_tools=allowed_tools,
-                        run_id=capability_run_id or stage.name,
-                        turn=turn,
-                    )
+                raw_plan = await engine.request(planner, task=provider_task,
+                    tool_results=compacted, allowed_tools=allowed_tools,
+                    run_id=capability_run_id or stage.name, turn=turn, on_summary=on_summary)
                 plan = (
                     raw_plan
                     if isinstance(raw_plan, ProductToolPlan)
@@ -469,7 +575,7 @@ class ForgeXToolRuntime:
 
                 # The attempt settles durably before any provider-originated call can
                 # enter validation or execution. This is the canonical execution barrier.
-                settlement = attempt.settle(
+                settlement = engine.settle(attempt,
                     plan.tool_calls,
                     content=public_text(plan.summary),
                 )
@@ -499,6 +605,24 @@ class ForgeXToolRuntime:
                     }
                 )
                 if plan.final:
+                    if task_contract and (not requirement_report.get("references_valid") or
+                            requirement_report.get("workspace_revision") != repr(_active_integrity_snapshot(stage))):
+                        observations.append({"call_id": f"requirement_hint_{turn}", "tool": "requirement_validation", "status": "completed",
+                            "output": {"message": "Call verify_requirements for every requirement id before finishing; supply exact source evidence.", "report": requirement_report}})
+                        continue
+                    if task_contract:
+                        from .verification import review_requirements
+                        revision = repr(_active_integrity_snapshot(stage))
+                        reviewed = await review_requirements(planner, task_contract, requirement_report,
+                            executor._read_overlay_text, revision, deadline=started + bounds.max_runtime_seconds,
+                            run_id=capability_run_id or stage.name)
+                        if revision != repr(_active_integrity_snapshot(stage)):
+                            raise ValueError("SEMANTIC_REVIEW_SOURCE_CHANGED")
+                        requirement_report.update(reviewed)
+                        if not reviewed["valid"]:
+                            observations.append({"call_id": f"semantic_review_{turn}", "tool": "semantic_review",
+                                                 "status": "failed", "output": reviewed})
+                            continue
                     final_received = True
                     final_summary = public_text(plan.summary).strip() or None
                     emit(
@@ -591,6 +715,7 @@ class ForgeXToolRuntime:
                             "tool": invocation.tool.value,
                             "classification": classification.value,
                             "error": str(exc)[:300],
+                            "policy_details": dict(getattr(exc, "details", {})),
                         }
                         invocation_slots[invocation.invocation_index] = rejected
                         emit(
@@ -601,6 +726,7 @@ class ForgeXToolRuntime:
                                 "turn_id": turn_id,
                                 "classification": classification.value,
                                 "message": str(exc)[:300],
+                                "policy_details": dict(getattr(exc, "details", {})),
                             }
                         )
                         emit(
@@ -625,6 +751,9 @@ class ForgeXToolRuntime:
                         }
                     )
                     admitted.append(invocation)
+
+                boundary_observations: dict[int, Mapping[str, object]] = {}
+                boundary_authorized = set(authorized_paths)
 
                 async def execute_invocation(invocation: ToolInvocation) -> Mapping[str, object]:
                     if cancelled.is_set():
@@ -694,11 +823,30 @@ class ForgeXToolRuntime:
                         if isinstance(exc, ValueError) and not isinstance(exc, ToolPolicyError):
                             return {"_forgex_error": str(exc)[:500]}
                         raise
+                    boundary_observations[invocation.invocation_index] = _safe_tool_observation(
+                        invocation.call_id, call.tool, result, bounds.max_observation_chars)
+                    if call.tool in WRITE_TOOLS:
+                        product_call = calls_by_id[invocation.call_id]
+                        if product_call.path:
+                            boundary_authorized.add(product_call.path)
+                        if isinstance(result, Mapping):
+                            for key in ("path", "destination"):
+                                if isinstance(result.get(key), str):
+                                    boundary_authorized.add(result[key])
+                        # Seal the completed write before admitting the next effect.
+                        emit({"event_type": "tool.execution.settled", "status": "completed",
+                              **invocation.to_event_payload(), "turn_id": turn_id})
+                        if event_callback is not None:
+                            checkpoint = self._save_resume_stage(stage, baseline.revision,
+                                [*observations, *(boundary_observations[index] for index in sorted(boundary_observations))],
+                                executor, boundary_authorized, total_calls + len(boundary_observations),
+                                time.monotonic() - started, turn)
+                            checkpoint["provider_budget"] = planner.budget_snapshot() if callable(getattr(planner, "budget_snapshot", None)) else {}
+                            emit({"event_type": "tool.checkpoint", "turn": turn, "status": "completed",
+                                  "call_id": invocation.call_id, "_resume_checkpoint": checkpoint})
                     return {"_forgex_result": result}
 
-                scheduled = asyncio.run(
-                    OrderedToolScheduler().run(admitted, execute_invocation)
-                )
+                scheduled = await engine.execute(admitted, execute_invocation)
                 duration_by_index: dict[int, int] = {}
                 for scheduled_result in scheduled:
                     invocation = scheduled_result.invocation
@@ -815,6 +963,14 @@ class ForgeXToolRuntime:
                         }
                     )
 
+                changed = stage_before_turn != _active_integrity_snapshot(stage) or deleted_before_turn != executor.deleted_paths
+                for observation in observations[observation_start:]:
+                    changed = progress_state.observe(observation) or changed
+                progress_state.settle(turn, changed)
+                if durable and progress_state.stalled_turns == 2:
+                    hint = "The last turns added no new information. Use the saved observations to complete the task or explain the blocker."
+                    observations.append({"tool": "agent_progress_hint", "status": "completed", "output": hint})
+                    emit({"event_type": "agent.no_progress_warning", "turn": turn, "message": hint})
                 emit(
                     {
                         "event_type": "step.settled",
@@ -836,6 +992,13 @@ class ForgeXToolRuntime:
                         "attempt_id": attempt.attempt_id,
                         "outcome": "continue",
                         "tool_count": len(settlement.invocations),
+                        "_resume_checkpoint": {**self._save_resume_stage(
+                            stage, baseline.revision, observations, executor, authorized_paths,
+                            total_calls, time.monotonic() - started, turn),
+                            "provider_budget": planner.budget_snapshot() if callable(getattr(planner, "budget_snapshot", None)) else {},
+                            "progress_state": progress_state.snapshot(),
+                            "continuation_summary": continuation_summary(task, executor.current_plan, observations, turn)}
+                            if event_callback is not None else None,
                     }
                 )
                 emit(
@@ -852,6 +1015,8 @@ class ForgeXToolRuntime:
                 )
                 if stage_before_turn != _active_integrity_snapshot(stage) or deleted_before_turn != executor.deleted_paths:
                     meaningful_turns.append(turn)
+                if durable and progress_state.stalled_turns >= 3:
+                    return self._abort_stage(stage, RuntimeClassification.NO_PROGRESS, provider_id, total_calls)
 
             if not final_received:
                 return self._abort_stage(
@@ -942,6 +1107,7 @@ class ForgeXToolRuntime:
                 tool_execution_count=total_calls,
                 plan=tuple(executor.current_plan),
                 assistant_message=final_summary,
+                requirement_report=dict(requirement_report),
                 events=tuple(self._events),
             )
         except ApiPlannerError as exc:
@@ -987,7 +1153,7 @@ class ForgeXToolRuntime:
     ) -> ToolRuntimeResult:
         draft = None
         if remove and classification not in {
-            RuntimeClassification.CANCELLED, RuntimeClassification.POLICY_DENIED,
+            RuntimeClassification.POLICY_DENIED,
             RuntimeClassification.PATH_UNSAFE, RuntimeClassification.UNSAFE_ABORTED,
         }:
             draft = self._save_recovery_draft(stage, provider_id)
@@ -997,9 +1163,13 @@ class ForgeXToolRuntime:
             classification,
             provider_id,
             change_set_id=draft.change_set_id if draft else None,
+            created=sum(item.change_type == "created" for item in draft.changed_files) if draft else 0,
+            modified=sum(item.change_type == "modified" for item in draft.changed_files) if draft else 0,
+            deleted=sum(item.change_type == "deleted" for item in draft.changed_files) if draft else 0,
             active_unchanged=classification is not RuntimeClassification.UNSAFE_ABORTED,
             provider_classification=provider_classification,
-            provider_diagnostics=provider_diagnostics,
+            provider_diagnostics=(provider_diagnostics if provider_diagnostics is not None
+                                  else _safe_provider_diagnostics(self._recovery_planner)),
             execution_attempted=execution_attempted,
             tool_execution_count=tool_execution_count,
         )
@@ -1086,14 +1256,17 @@ class ForgeXToolRuntime:
 def _compact_tool_observations(
     observations: Sequence[Mapping[str, object]], *, keep: int = 24
 ) -> tuple[Mapping[str, object], ...]:
+    from .context_memory import detailed_tail, summarize_observations, bounded_observation
+    keep = detailed_tail(observations,keep=keep)
     if len(observations) <= keep:
-        return tuple(observations)
+        return tuple(bounded_observation(item) for item in observations)
     older = observations[:-keep]
     checkpoint = {
         "call_id": "context_checkpoint",
         "status": "completed",
         "tool": "context_compaction",
         "output": {
+            **summarize_observations(older),
             "compacted_observations": len(older),
             "tools": [str(item.get("tool") or "unknown") for item in older[-30:]],
             "failures": sum(
@@ -1101,7 +1274,7 @@ def _compact_tool_observations(
             ),
         },
     }
-    return (checkpoint, *observations[-keep:])
+    return (checkpoint, *(bounded_observation(item) for item in observations[-keep:]))
 
 
 def _safe_tool_observation(
@@ -1237,6 +1410,7 @@ def _planner_classification(planner: object) -> str | None:
 
 
 def _safe_provider_diagnostics(planner: object) -> dict[str, object]:
+    from backend.contracts.diagnostics import safe_provider_diagnostics
     getter = getattr(planner, "to_safe_metadata", None)
     if not callable(getter):
         return {}
@@ -1244,34 +1418,7 @@ def _safe_provider_diagnostics(planner: object) -> dict[str, object]:
         metadata = getter()
     except Exception:
         return {}
-    if not isinstance(metadata, Mapping):
-        return {}
-    allowed = {
-        "outbound_request_count",
-        "physical_request_count",
-        "request_reached_provider",
-        "http_status",
-        "provider_request_id",
-        "retry_after_ms",
-        "last_attempt_succeeded",
-        "safe_error_code",
-        "toolplan_normalized",
-        "toolplan_repair_attempted",
-        "last_turn",
-        "response_mode",
-        "last_failure_code",
-        "last_repair_outcome",
-        "last_parse_reason",
-        "last_failure_origin",
-        "last_response_shape",
-        "last_response_tool_count",
-        "stream_fallback_used",
-    }
-    return {
-        key: value
-        for key, value in metadata.items()
-        if key in allowed and isinstance(value, (str, int, bool, type(None)))
-    }
+    return safe_provider_diagnostics(metadata)
 
 
 def _active_integrity_snapshot(root: Path) -> dict[str, tuple[object, ...]]:

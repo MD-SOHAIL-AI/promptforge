@@ -273,9 +273,12 @@ export function ConversationComposer({
   initialValue = "",
   placeholder,
   running,
+  canStop = running,
   disabled,
   onSend,
   onStop,
+  stopping = false,
+  stopLabel = "Stop response",
   controls,
   context,
 }: {
@@ -283,9 +286,12 @@ export function ConversationComposer({
   initialValue?: string;
   placeholder: string;
   running?: boolean;
+  canStop?: boolean;
   disabled?: boolean;
   onSend: (value: string) => void | boolean | Promise<boolean | void>;
   onStop?: () => void;
+  stopping?: boolean;
+  stopLabel?: string;
   controls?: ReactNode;
   context?: ReactNode;
 }) {
@@ -401,14 +407,16 @@ export function ConversationComposer({
       <div className="fx-composer-controls">
         <div className="flex min-w-0 items-center gap-2">{controls}</div>
         <div className="flex items-center gap-2">
-          {running ? (
+          {canStop && onStop ? (
             <button
               type="button"
-              className="fx-send-button is-stop"
-              aria-label="Stop response"
+              className="fx-send-button is-stop fx-task-stop"
+              aria-label={stopLabel}
+              disabled={stopping}
               onClick={onStop}
             >
-              <Square size={14} />
+              <Square size={14} aria-hidden="true" />
+              {stopping ? "Stopping…" : "Stop"}
             </button>
           ) : null}
           <button

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+import tempfile
+import threading
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,8 @@ from .defaults import SETTINGS_DEFAULTS, SETTINGS_SCHEMA
 
 
 SETTINGS_PATH_ENV = "FORGEX_SETTINGS_PATH"
+_SETTINGS_LOCKS: dict[str, threading.RLock] = {}
+_SETTINGS_LOCKS_GUARD = threading.Lock()
 
 
 class SettingsValidationError(ValueError):
@@ -22,6 +27,8 @@ class SettingsValidationError(ValueError):
 class SettingsService:
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path is not None else _default_settings_path()
+        with _SETTINGS_LOCKS_GUARD:
+            self._lock = _SETTINGS_LOCKS.setdefault(os.path.normcase(str(self.path.resolve())), threading.RLock())
 
     def get_settings(self) -> dict[str, Any]:
         stored = self._read_file()
@@ -41,17 +48,19 @@ class SettingsService:
     def patch_settings(self, updates: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(updates, dict):
             raise SettingsValidationError("settings patch must be an object")
-        current = self.get_settings()
-        for key, value in updates.items():
-            self._validate_key_value(str(key), value)
-            current[str(key)] = self._normalize_value(str(key), value)
-        self._write_file(current)
-        return current
+        with self._lock:
+            current = self.get_settings()
+            for key, value in updates.items():
+                self._validate_key_value(str(key), value)
+                current[str(key)] = self._normalize_value(str(key), value)
+            self._write_file(current)
+            return current
 
     def reset(self) -> dict[str, Any]:
-        settings = deepcopy(SETTINGS_DEFAULTS)
-        self._write_file(settings)
-        return settings
+        with self._lock:
+            settings = deepcopy(SETTINGS_DEFAULTS)
+            self._write_file(settings)
+            return settings
 
     def export_settings(self) -> dict[str, Any]:
         return self.get_settings()
@@ -69,10 +78,17 @@ class SettingsService:
     def _write_file(self, settings: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"settings": settings}
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        temporary_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.path.parent, prefix=".settings-", suffix=".tmp", delete=False) as stream:
+                temporary_path = stream.name
+                stream.write(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, self.path)
+        finally:
+            if temporary_path and os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
     def _validate_key_value(self, key: str, value: Any) -> None:
         if key not in SETTINGS_SCHEMA:
@@ -97,6 +113,8 @@ class SettingsService:
         if value_type == "number":
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise SettingsValidationError(f"{key} must be a number")
+            if not math.isfinite(value):
+                raise SettingsValidationError(f"{key} must be finite")
             minimum = schema.get("min")
             maximum = schema.get("max")
             if minimum is not None and value < minimum:

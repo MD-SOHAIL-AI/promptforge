@@ -8,6 +8,8 @@ can inject a client or transport for testing and deployment-specific control.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import asyncio
 from email.utils import parsedate_to_datetime
 import json
@@ -20,6 +22,9 @@ from dataclasses import dataclass, field
 from enum import Enum, unique
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
+from contextlib import aclosing
+import uuid
+import inspect
 
 import httpx
 
@@ -27,6 +32,7 @@ if TYPE_CHECKING:
     from ..model_router.models import CanonicalStreamEvent
 
 from ..core.config import DEFAULT_LLM_TIMEOUT_SECONDS
+from ..contracts.transport import TransportPolicy
 from ..utils.serialization import (
     _freeze_json_value,
     _freeze_mapping as _freeze_mapping_value,
@@ -362,6 +368,86 @@ class _HTTPService(LLMService, ABC):
             "provider_request_id": None,
             "retry_after_ms": None,
         }
+        self._execution_context = None
+        self._transport_policy: TransportPolicy | None = None
+        self._provider_name = self.provider.value
+        self._request_started = 0.0
+        self._request_identity = {}
+        self._last_progress_report = 0.0
+        self._attempt_bound_by_parent = False
+
+    def bind_execution_context(self, context, *, provider_id: str, policy: TransportPolicy | None = None, identity=None) -> None:
+        self._execution_context = context
+        self._provider_name = provider_id
+        self._transport_policy = getattr(context, "transport_policy", None) or policy
+        self._request_identity = dict(identity or {})
+
+    def _start_request(self) -> None:
+        self._request_started = time.monotonic()
+        self._last_progress_report = 0.0
+        diagnostics = getattr(self._execution_context, "diagnostics", {})
+        self._last_request_metadata = {
+            "outbound_request_count": 1, "request_reached_provider": False,
+            "http_status": None, "provider_request_id": None, "retry_after_ms": None,
+            "physical_attempt_id": diagnostics.get("physical_attempt_id") or uuid.uuid4().hex,
+            "response_headers_received": False, "first_event_ms": None,
+            "last_event_ms": None, "stream_event_count": 0,
+            "completion_received": False, "timeout_stage": None,
+        }
+        self._transport_event("started")
+
+    def _transport_event(self, phase: str) -> None:
+        context = self._execution_context
+        if context is None:
+            return
+        values = self.to_safe_metadata()
+        values["duration_ms"] = _elapsed_ms(self._request_started)
+        context.diagnostics.update(values)
+        from backend.observability.diagnostics import emit_diagnostic_event
+        emit_diagnostic_event(component="provider", event="provider.attempt." + phase,
+                              provider_id=self._provider_name, model_id=self.model,
+                              **self._request_identity,
+                              **{k: v for k, v in values.items() if k != "outbound_request_count"})
+
+    async def _report_progress(self, *, first: bool) -> None:
+        now = time.monotonic()
+        if not first and now - self._last_progress_report < 2.0:
+            return
+        self._last_progress_report = now
+        self._transport_event("progress")
+        hook = getattr(self._execution_context, "recovery_hook", None)
+        if callable(hook):
+            values = self.to_safe_metadata()
+            payload = {"event_type": "model.request.progress", "provider_id": self._provider_name,
+                       "model_id": self.model, **self._request_identity,
+                       **{key: values[key] for key in ("physical_attempt_id", "response_headers_received", "request_reached_provider", "http_status", "first_event_ms", "last_event_ms", "stream_event_count")}}
+            # Progress diagnostics must not change the execution result.
+            try:
+                result = hook(payload)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                pass
+
+    def _attempt_timeout(self, request: LLMRequest) -> float | None:
+        total = self._transport_policy.total_seconds if self._transport_policy else _generation_timeout(request, self.timeout_s)
+        deadline = getattr(self._execution_context, "deadline", None)
+        self._attempt_bound_by_parent = False
+        if deadline is not None:
+            remaining = max(0.0, deadline - time.monotonic())
+            self._attempt_bound_by_parent = total is None or remaining <= total
+            return min(total, remaining) if total is not None else remaining
+        return total
+
+    def _http_timeout(self, total: float | None):
+        policy = self._transport_policy
+        if policy is None:
+            return total
+        def bounded(value):
+            return min(value, max(0.001, total)) if total is not None else value
+        return httpx.Timeout(connect=bounded(policy.connect_seconds),
+                             read=bounded(max(policy.first_event_seconds, policy.idle_seconds)),
+                             write=bounded(policy.write_seconds), pool=bounded(policy.pool_seconds))
 
     def to_safe_metadata(self) -> dict[str, Any]:
         return dict(self._last_request_metadata)
@@ -382,14 +468,8 @@ class _HTTPService(LLMService, ABC):
         if not isinstance(request, LLMRequest):
             raise TypeError("request must be an LLMRequest")
         started = time.monotonic()
-        self._last_request_metadata = {
-            "outbound_request_count": 1,
-            "request_reached_provider": False,
-            "http_status": None,
-            "provider_request_id": None,
-            "retry_after_ms": None,
-        }
-        request_timeout = _generation_timeout(request, self.timeout_s)
+        self._start_request()
+        request_timeout = self._attempt_timeout(request)
         try:
             async with _timeout_after(request_timeout):
                 response = await self._client.post(
@@ -397,7 +477,7 @@ class _HTTPService(LLMService, ABC):
                     headers=self._headers(),
                     params=self._params(stream=False),
                     json=self._payload(request, stream=False),
-                    timeout=request_timeout,
+                    timeout=self._http_timeout(request_timeout),
                 )
                 self._capture_response_metadata(response)
                 self._raise_for_status(response)
@@ -423,7 +503,7 @@ class _HTTPService(LLMService, ABC):
         except asyncio.CancelledError:
             raise
         except (TimeoutError, httpx.TimeoutException) as exc:
-            raise self._timeout_error("generation") from exc
+            raise self._timeout_error("generation", exc=exc) from exc
         except httpx.HTTPError as exc:
             raise LLMProviderError(
                 f"{self.provider.value} request failed: {exc}",
@@ -435,6 +515,8 @@ class _HTTPService(LLMService, ABC):
                 },
             ) from exc
 
+        self._last_request_metadata["completion_received"] = True
+        self._transport_event("completed")
         return LLMResponse(
             content=canonical.text or "",
             provider=self.provider,
@@ -469,17 +551,23 @@ class _HTTPService(LLMService, ABC):
 
         if not isinstance(request, LLMRequest):
             raise TypeError("request must be an LLMRequest")
-        request_timeout = _generation_timeout(request, self.timeout_s)
+        self._start_request()
+        request_timeout = self._attempt_timeout(request)
+        policy = self._transport_policy
+        progress_timeout = policy.first_event_seconds if policy else request_timeout
+        idle_timeout = policy.idle_seconds if policy else request_timeout
+        watchdog = _Deadline(progress_timeout)
+        overall = _Deadline(request_timeout)
         terminal_event: CanonicalStreamEvent | None = None
         try:
-            async with _timeout_after(request_timeout):
+            async with overall, watchdog:
                 async with self._client.stream(
                     "POST",
                     self._generation_url(stream=True),
                     headers=self._headers(),
                     params=self._params(stream=True),
                     json=self._payload(request, stream=True),
-                    timeout=request_timeout,
+                    timeout=self._http_timeout(request_timeout),
                 ) as response:
                     self._capture_response_metadata(response)
                     # Streaming responses are not pre-buffered by httpx. Read
@@ -489,53 +577,54 @@ class _HTTPService(LLMService, ABC):
                     if not response.is_success:
                         await response.aread()
                     self._raise_for_status(response)
-                    async for data in _iter_sse_json(
-                        response,
-                        provider=self.provider,
-                    ):
-                        self._raise_embedded_provider_error(data)
-                        from backend.model_router.normalization import (
-                            ProviderNormalizationError,
-                            normalize_stream_event,
-                        )
-
-                        try:
-                            events = normalize_stream_event(
-                                data, provider_id=self.provider.value.casefold()
-                            )
-                        except ProviderNormalizationError as exc:
-                            raise LLMResponseError(
-                                str(exc), provider=self.provider, code=exc.code
-                            ) from exc
-                        for event in events:
-                            if event.type == "error":
-                                raise LLMResponseError(
-                                    "Provider returned an invalid stream event.",
-                                    provider=self.provider,
-                                    code=event.error_code or "PROVIDER_STREAM_INVALID",
-                                )
-                            if event.type == "done":
-                                # OpenAI-compatible providers commonly send a
-                                # finish_reason packet followed by [DONE]. Keep
-                                # one terminal event and retain the meaningful
-                                # reason/usage from either packet.
-                                terminal_event = _merge_terminal_stream_event(
-                                    terminal_event, event
-                                )
-                            else:
-                                yield event
+                    async with aclosing(_iter_sse_json(response, provider=self.provider)) as packets:
+                        async for data in packets:
+                            self._raise_embedded_provider_error(data)
+                            from backend.model_router.normalization import ProviderNormalizationError, normalize_stream_event
+                            try:
+                                events = normalize_stream_event(data, provider_id=self.provider.value.casefold())
+                            except ProviderNormalizationError as exc:
+                                raise LLMResponseError(str(exc), provider=self.provider, code=exc.code) from exc
+                            for event in events:
+                                if event.type == "error":
+                                    raise LLMResponseError("Provider returned an invalid stream event.",
+                                        provider=self.provider, code=event.error_code or "PROVIDER_STREAM_INVALID")
+                                meaningful = bool(event.text or event.arguments_delta or event.arguments or event.tool_call or event.type == "done")
+                                if meaningful:
+                                    elapsed = _elapsed_ms(self._request_started)
+                                    first = self._last_request_metadata["first_event_ms"] is None
+                                    self._last_request_metadata["first_event_ms"] = self._last_request_metadata["first_event_ms"] if not first else elapsed
+                                    self._last_request_metadata["last_event_ms"] = elapsed
+                                    self._last_request_metadata["stream_event_count"] += 1
+                                    watchdog.reset(idle_timeout)
+                                    if first:
+                                        self._transport_event("first_event")
+                                    await self._report_progress(first=first)
+                                if event.type == "done":
+                                    terminal_event = _merge_terminal_stream_event(terminal_event, event)
+                                else:
+                                    yield event
+                            # These markers end a protocol response; finish_reason alone
+                            # may still be followed by a usage packet.
+                            if data.get("type") in {"forgex.stream.done", "response.completed", "response.done", "message_stop"}:
+                                break
                 if terminal_event is not None:
+                    self._last_request_metadata["completion_received"] = True
+                    self._transport_event("completed")
                     yield terminal_event
         except asyncio.CancelledError:
             raise
         except (TimeoutError, httpx.TimeoutException) as exc:
-            raise self._timeout_error("streaming generation") from exc
+            stage = "stream_idle" if self._last_request_metadata["first_event_ms"] is not None else "first_event"
+            if overall._expired:
+                stage = getattr(self._execution_context, "deadline_kind", "job_deadline") if self._attempt_bound_by_parent else "attempt_total"
+            raise self._timeout_error("streaming generation", exc=exc, stage=stage) from exc
         except httpx.HTTPError as exc:
             raise LLMProviderError(
                 f"{self.provider.value} streaming request failed: {exc}",
                 provider=self.provider,
                 retryable=True,
-                details={"exception_type": type(exc).__name__},
+                details={"exception_type": type(exc).__name__, **self.to_safe_metadata()},
             ) from exc
 
     async def health_check(self) -> bool:
@@ -554,13 +643,25 @@ class _HTTPService(LLMService, ABC):
         except (LLMError, TimeoutError, httpx.HTTPError):
             return False
 
-    def _timeout_error(self, operation: str) -> LLMTimeoutError:
+    def _timeout_error(self, operation: str, *, exc=None, stage: str = "attempt_total") -> LLMTimeoutError:
+        deadline = getattr(self._execution_context, "deadline", None)
+        if (deadline is not None and deadline <= time.monotonic()
+                or stage == "attempt_total" and self._attempt_bound_by_parent):
+            stage = getattr(self._execution_context, "deadline_kind", "job_deadline")
+        for exception_type, name in ((httpx.ConnectTimeout, "connect"), (httpx.WriteTimeout, "write"), (httpx.PoolTimeout, "pool")):
+            if stage != "job_deadline" and isinstance(exc, exception_type):
+                stage = name
+        self._last_request_metadata["timeout_stage"] = stage
+        self._last_request_metadata["duration_ms"] = _elapsed_ms(self._request_started)
+        self._transport_event("failed")
         return LLMTimeoutError(
-            f"{self.provider.value} {operation} timed out after "
-            f"{self.timeout_s:g} seconds",
+            f"{self._provider_name} {operation} timed out during {stage} after "
+            f"{self._last_request_metadata['duration_ms'] / 1000:g} seconds",
             provider=self.provider,
-            retryable=True,
-            details={"timeout_s": self.timeout_s, "operation": operation},
+            code="AGENT_RUNTIME_LIMIT_EXCEEDED" if stage == "job_deadline" else "AGENT_TURN_LIMIT_EXCEEDED" if stage == "turn_deadline" else "PROVIDER_TIMEOUT",
+            retryable=stage not in {"job_deadline", "turn_deadline"},
+            details={"timeout_s": self.timeout_s, "operation": operation,
+                     "origin": stage if stage in {"job_deadline", "turn_deadline"} else "provider_transport", **self.to_safe_metadata()},
         )
 
     def _raise_for_status(self, response: httpx.Response) -> None:
@@ -609,11 +710,13 @@ class _HTTPService(LLMService, ABC):
             request_id = None
         retry_after_ms = _retry_after_ms(response.headers.get("retry-after") or response.headers.get("retry-after-ms"), milliseconds=response.headers.get("retry-after-ms") is not None)
         self._last_request_metadata.update(
+            response_headers_received=True,
             request_reached_provider=True,
             http_status=response.status_code,
             provider_request_id=request_id,
             retry_after_ms=retry_after_ms,
         )
+        self._transport_event("headers")
 
     def _decode_json(self, response: httpx.Response) -> Mapping[str, Any]:
         try:
@@ -1236,7 +1339,7 @@ async def _iter_sse_json(
             continue
         if payload == "[DONE]":
             yield {"type": "forgex.stream.done"}
-            continue
+            return
         try:
             data = json.loads(payload)
         except json.JSONDecodeError as exc:
@@ -1286,6 +1389,12 @@ class _Deadline(AbstractAsyncContextManager[None]):
         self._expired = True
         if self._task is not None:
             self._task.cancel()
+
+    def reset(self, delay: float | None) -> None:
+        if self._handle is not None:
+            self._handle.cancel()
+        if self._task is not None and delay is not None:
+            self._handle = asyncio.get_running_loop().call_later(delay, self._cancel_for_timeout)
 
 
 def _timeout_after(delay: float | None) -> _Deadline:

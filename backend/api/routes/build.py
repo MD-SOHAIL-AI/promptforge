@@ -1,6 +1,8 @@
 """Standalone project build route."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Header
+import asyncio
+import re
 from pathlib import Path
 import logging
 
@@ -12,6 +14,41 @@ from ..schemas.build import BuildRequest, BuildResponse, BuildResultResponse
 
 router = APIRouter(tags=["build"])
 logger = logging.getLogger(__name__)
+
+
+@router.post("/build/operations", status_code=202)
+async def accept_build(body: BuildRequest, request: Request, idempotency_key: str = Header(alias="Idempotency-Key")):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", idempotency_key):
+        raise APIError(422, "BUILD_OPERATION_ID_INVALID", "A valid build operation ID is required.")
+    metadata = await resolve_project_from_request(request, body.project_id)
+    changes = services(request).change_set_service
+    snapshot = await asyncio.to_thread(changes.inspect_workspace, metadata.project_path)
+    async def execute():
+        response = (await build_project(body, request)).model_dump(mode="json")
+        revision = (await asyncio.to_thread(changes.inspect_workspace, metadata.project_path)).revision
+        response["result"]["metadata"].update(project_id=body.project_id, environment=body.environment,
+            source_revision=snapshot.revision, operation_id=idempotency_key)
+        return response, revision
+    try:
+        return request.app.state.build_operations.accept(idempotency_key, project_id=body.project_id,
+            environment=body.environment, source_revision=snapshot.revision, execute=execute)
+    except ValueError as exc:
+        raise APIError(409, "BUILD_OPERATION_CONFLICT", "This operation ID belongs to a different build.") from exc
+
+
+@router.get("/build/operations/{operation_id}")
+async def observe_build(operation_id: str, request: Request):
+    try:
+        operation = request.app.state.build_operations.get(operation_id)
+    except KeyError as exc:
+        raise APIError(404, "BUILD_OPERATION_NOT_FOUND", "The saved build operation was not found.") from exc
+    if operation["state"] == "passed":
+        metadata = await resolve_project_from_request(request, operation["project_id"])
+        revision = (await asyncio.to_thread(services(request).change_set_service.inspect_workspace, metadata.project_path)).revision
+        if revision != operation["source_revision"]:
+            operation.update(state="stale", message="Source changed after this build. Compile the current revision before flashing.")
+            request.app.state.build_operations._save(operation)
+    return operation
 
 
 @router.post(

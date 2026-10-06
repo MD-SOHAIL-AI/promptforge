@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import "highlight.js/styles/github-dark-dimmed.css";
 import "./globals.css";
+import "./design-system.css";
 import { RuntimeDiagnostics } from "./runtime-diagnostics";
 
 export const metadata: Metadata = {

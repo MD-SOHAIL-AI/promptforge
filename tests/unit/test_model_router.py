@@ -53,7 +53,9 @@ def make_router(tmp_path: Path, providers: dict[str, FakeProvider]):
 
 def test_registry_contains_only_supported_model_providers(tmp_path: Path) -> None:
     registry = ProviderRegistry(ProviderSettingsStorage(tmp_path / "settings.json", credential_store=MemoryCredentialStore()))
-    assert registry.provider_ids() == ("openrouter", "openai", "groq", "cerebras", "nvidia_nim", "gemini", "lmstudio", "ollama", "deepseek", "anthropic")
+    from backend.model_router.opencode_catalog import catalog
+    assert registry.provider_ids()[:10] == ("openrouter", "openai", "groq", "cerebras", "nvidia_nim", "gemini", "lmstudio", "ollama", "deepseek", "anthropic")
+    assert set(catalog()) <= set(registry.provider_ids())
 
 
 def test_nvidia_nim_has_isolated_credentials_and_model_catalog(tmp_path: Path) -> None:
@@ -75,9 +77,9 @@ def test_nvidia_nim_has_isolated_credentials_and_model_catalog(tmp_path: Path) -
     assert registry.api_key("openai") is None
     assert models
     assert all(model.provider_id == "nvidia_nim" for model in models)
-    assert len(models) == 80
-    assert tuple(model.model_id for model in models) == NVIDIA_NIM_MODELS
-    assert all(model.free is True for model in models)
+    assert len(models) >= len(NVIDIA_NIM_MODELS)
+    assert tuple(model.model_id for model in models[:len(NVIDIA_NIM_MODELS)]) == NVIDIA_NIM_MODELS
+    assert all(model.free is True for model in models[:len(NVIDIA_NIM_MODELS)])
     assert provider.default_model == "nvidia/nemotron-3-super-120b-a12b"
 
     adapter = NvidiaNimProvider(registry)
@@ -95,7 +97,8 @@ def test_nvidia_nim_has_isolated_credentials_and_model_catalog(tmp_path: Path) -
     )
     assert capabilities.native_tools is True
     assert capabilities.reasoning is True
-    assert capabilities.context_window == 1_000_000
+    from backend.model_router.opencode_catalog import model_data
+    assert capabilities.context_window == model_data("nvidia_nim", "nvidia/nemotron-3-super-120b-a12b")["limit"]["context"]
     asyncio.run(service.aclose())
 
 
@@ -114,10 +117,10 @@ def test_nvidia_nim_expands_an_old_partial_cache_with_the_current_fallback_catal
 
     models = ProviderRegistry(storage).list_models("nvidia_nim")
 
-    assert len(models) == 80
+    assert len(models) >= len(NVIDIA_NIM_MODELS)
     assert models[0].display_name == "Nemotron 3 Super"
-    assert {model.model_id for model in models} == set(NVIDIA_NIM_MODELS)
-    assert all(model.free is True for model in models)
+    assert set(NVIDIA_NIM_MODELS) <= {model.model_id for model in models}
+    assert all(model.free is True for model in models if model.model_id in NVIDIA_NIM_MODELS)
 
 
 def test_persisted_selection_is_authoritative_over_legacy_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

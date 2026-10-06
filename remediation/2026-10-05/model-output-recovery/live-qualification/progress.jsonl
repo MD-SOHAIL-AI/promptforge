@@ -1,0 +1,176 @@
+{"event_type": "context.started", "status": "running", "timestamp": "2026-10-05T15:38:01.384101+00:00"}
+{"event_type": "context.completed", "status": "completed", "timestamp": "2026-10-05T15:38:01.507904+00:00"}
+{"event_type": "changes.stage.created", "status": "running", "timestamp": "2026-10-05T15:38:01.514684+00:00"}
+{"event_type": "runtime.admitted", "turn": 0, "timestamp": "2026-10-05T15:38:01.530381+00:00"}
+{"event_type": "turn.started", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:01.532384+00:00"}
+{"event_type": "step.started", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:01.533386+00:00"}
+{"event_type": "model.attempt.started", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:01.534383+00:00"}
+{"event_type": "agent.turn.started", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:01.536562+00:00"}
+{"event_type": "thinking.started", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:01.537549+00:00"}
+{"event_type": "agent.model.requested", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:01.538552+00:00"}
+{"event_type": "model.attempt.settled", "status": "completed", "turn": 1, "timestamp": "2026-10-05T15:38:08.964714+00:00"}
+{"event_type": "agent.model.responded", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:08.965708+00:00"}
+{"event_type": "assistant.summary", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:08.969712+00:00"}
+{"event_type": "tool.pending", "status": "running", "turn": 1, "tool": "write_file", "timestamp": "2026-10-05T15:38:08.971716+00:00"}
+{"event_type": "tool.invocation.admitted", "status": "running", "turn": 1, "tool": "write_file", "timestamp": "2026-10-05T15:38:08.975831+00:00"}
+{"event_type": "tool.execution.started", "status": "running", "turn": 1, "tool": "write_file", "timestamp": "2026-10-05T15:38:08.975831+00:00"}
+{"event_type": "tool.started", "status": "running", "tool": "write_file", "timestamp": "2026-10-05T15:38:08.977721+00:00"}
+{"event_type": "tool.execution.settled", "status": "completed", "turn": 1, "tool": "write_file", "timestamp": "2026-10-05T15:38:09.026572+00:00"}
+{"event_type": "tool.checkpoint", "status": "completed", "turn": 1, "timestamp": "2026-10-05T15:38:09.221602+00:00"}
+{"event_type": "tool.execution.settled", "status": "completed", "turn": 1, "tool": "write_file", "timestamp": "2026-10-05T15:38:09.222597+00:00"}
+{"event_type": "tool.result.committed", "status": "completed", "turn": 1, "tool": "write_file", "timestamp": "2026-10-05T15:38:09.223622+00:00"}
+{"event_type": "tool.completed", "status": "completed", "tool": "write_file", "timestamp": "2026-10-05T15:38:09.224998+00:00"}
+{"event_type": "step.settled", "status": "completed", "turn": 1, "timestamp": "2026-10-05T15:38:09.228005+00:00"}
+{"event_type": "turn.settled", "status": "completed", "turn": 1, "timestamp": "2026-10-05T15:38:09.248753+00:00"}
+{"event_type": "agent.turn.completed", "status": "running", "turn": 1, "timestamp": "2026-10-05T15:38:09.249742+00:00"}
+{"event_type": "turn.started", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:09.251858+00:00"}
+{"event_type": "step.started", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:09.251858+00:00"}
+{"event_type": "model.attempt.started", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:09.253382+00:00"}
+{"event_type": "agent.turn.started", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:09.254720+00:00"}
+{"event_type": "thinking.started", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:09.254720+00:00"}
+{"event_type": "agent.model.requested", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:09.255729+00:00"}
+{"event_type": "model.attempt.settled", "status": "completed", "turn": 2, "timestamp": "2026-10-05T15:38:18.564608+00:00"}
+{"event_type": "agent.model.responded", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:18.565608+00:00"}
+{"event_type": "assistant.summary", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:18.566607+00:00"}
+{"event_type": "tool.pending", "status": "running", "turn": 2, "tool": "write_file", "timestamp": "2026-10-05T15:38:18.569112+00:00"}
+{"event_type": "tool.invocation.admitted", "status": "running", "turn": 2, "tool": "write_file", "timestamp": "2026-10-05T15:38:18.573122+00:00"}
+{"event_type": "tool.execution.started", "status": "running", "turn": 2, "tool": "write_file", "timestamp": "2026-10-05T15:38:18.573122+00:00"}
+{"event_type": "tool.started", "status": "running", "tool": "write_file", "timestamp": "2026-10-05T15:38:18.574193+00:00"}
+{"event_type": "tool.execution.settled", "status": "completed", "turn": 2, "tool": "write_file", "timestamp": "2026-10-05T15:38:18.601810+00:00"}
+{"event_type": "tool.checkpoint", "status": "completed", "turn": 2, "timestamp": "2026-10-05T15:38:18.685370+00:00"}
+{"event_type": "tool.execution.settled", "status": "completed", "turn": 2, "tool": "write_file", "timestamp": "2026-10-05T15:38:18.687578+00:00"}
+{"event_type": "tool.result.committed", "status": "completed", "turn": 2, "tool": "write_file", "timestamp": "2026-10-05T15:38:18.688687+00:00"}
+{"event_type": "tool.completed", "status": "completed", "tool": "write_file", "timestamp": "2026-10-05T15:38:18.690691+00:00"}
+{"event_type": "step.settled", "status": "completed", "turn": 2, "timestamp": "2026-10-05T15:38:18.695603+00:00"}
+{"event_type": "turn.settled", "status": "completed", "turn": 2, "timestamp": "2026-10-05T15:38:18.736927+00:00"}
+{"event_type": "agent.turn.completed", "status": "running", "turn": 2, "timestamp": "2026-10-05T15:38:18.737928+00:00"}
+{"event_type": "turn.started", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:18.741995+00:00"}
+{"event_type": "step.started", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:18.742995+00:00"}
+{"event_type": "model.attempt.started", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:18.743992+00:00"}
+{"event_type": "agent.turn.started", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:18.744992+00:00"}
+{"event_type": "thinking.started", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:18.746008+00:00"}
+{"event_type": "agent.model.requested", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:18.746994+00:00"}
+{"event_type": "model.attempt.settled", "status": "completed", "turn": 3, "timestamp": "2026-10-05T15:38:26.856812+00:00"}
+{"event_type": "agent.model.responded", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:26.858808+00:00"}
+{"event_type": "assistant.summary", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:26.858808+00:00"}
+{"event_type": "tool.pending", "status": "running", "turn": 3, "tool": "read_file", "timestamp": "2026-10-05T15:38:26.863624+00:00"}
+{"event_type": "tool.invocation.admitted", "status": "running", "turn": 3, "tool": "read_file", "timestamp": "2026-10-05T15:38:26.866666+00:00"}
+{"event_type": "tool.execution.started", "status": "running", "turn": 3, "tool": "read_file", "timestamp": "2026-10-05T15:38:26.869058+00:00"}
+{"event_type": "tool.started", "status": "running", "tool": "read_file", "timestamp": "2026-10-05T15:38:26.870053+00:00"}
+{"event_type": "tool.execution.settled", "status": "completed", "turn": 3, "tool": "read_file", "timestamp": "2026-10-05T15:38:26.878444+00:00"}
+{"event_type": "tool.result.committed", "status": "completed", "turn": 3, "tool": "read_file", "timestamp": "2026-10-05T15:38:26.879465+00:00"}
+{"event_type": "tool.completed", "status": "completed", "tool": "read_file", "timestamp": "2026-10-05T15:38:26.880447+00:00"}
+{"event_type": "step.settled", "status": "completed", "turn": 3, "timestamp": "2026-10-05T15:38:26.883999+00:00"}
+{"event_type": "turn.settled", "status": "completed", "turn": 3, "timestamp": "2026-10-05T15:38:26.921876+00:00"}
+{"event_type": "agent.turn.completed", "status": "running", "turn": 3, "timestamp": "2026-10-05T15:38:26.921876+00:00"}
+{"event_type": "turn.started", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:26.925877+00:00"}
+{"event_type": "step.started", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:26.925877+00:00"}
+{"event_type": "model.attempt.started", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:26.926875+00:00"}
+{"event_type": "agent.turn.started", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:26.927876+00:00"}
+{"event_type": "thinking.started", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:26.927876+00:00"}
+{"event_type": "agent.model.requested", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:26.928873+00:00"}
+{"event_type": "model.attempt.settled", "status": "completed", "turn": 4, "timestamp": "2026-10-05T15:38:36.066461+00:00"}
+{"event_type": "agent.model.responded", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:36.067455+00:00"}
+{"event_type": "assistant.summary", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:36.067455+00:00"}
+{"event_type": "tool.pending", "status": "running", "turn": 4, "tool": "read_file", "timestamp": "2026-10-05T15:38:36.070468+00:00"}
+{"event_type": "tool.invocation.admitted", "status": "running", "turn": 4, "tool": "read_file", "timestamp": "2026-10-05T15:38:36.072992+00:00"}
+{"event_type": "tool.execution.started", "status": "running", "turn": 4, "tool": "read_file", "timestamp": "2026-10-05T15:38:36.074331+00:00"}
+{"event_type": "tool.started", "status": "running", "tool": "read_file", "timestamp": "2026-10-05T15:38:36.075434+00:00"}
+{"event_type": "tool.execution.settled", "status": "completed", "turn": 4, "tool": "read_file", "timestamp": "2026-10-05T15:38:36.084753+00:00"}
+{"event_type": "tool.result.committed", "status": "completed", "turn": 4, "tool": "read_file", "timestamp": "2026-10-05T15:38:36.085751+00:00"}
+{"event_type": "tool.completed", "status": "completed", "tool": "read_file", "timestamp": "2026-10-05T15:38:36.085751+00:00"}
+{"event_type": "step.settled", "status": "completed", "turn": 4, "timestamp": "2026-10-05T15:38:36.089266+00:00"}
+{"event_type": "turn.settled", "status": "completed", "turn": 4, "timestamp": "2026-10-05T15:38:36.119447+00:00"}
+{"event_type": "agent.turn.completed", "status": "running", "turn": 4, "timestamp": "2026-10-05T15:38:36.120454+00:00"}
+{"event_type": "turn.started", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:36.124740+00:00"}
+{"event_type": "step.started", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:36.124740+00:00"}
+{"event_type": "model.attempt.started", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:36.125720+00:00"}
+{"event_type": "agent.turn.started", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:36.127049+00:00"}
+{"event_type": "thinking.started", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:36.127568+00:00"}
+{"event_type": "agent.model.requested", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:36.129587+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.420182+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.421659+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.423643+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.423643+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.425023+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.426374+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.426374+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.427814+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.428835+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.429831+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.432346+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.433344+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.434823+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.435826+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.436824+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.437818+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.438964+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.439966+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.440965+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.440965+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.442489+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.443507+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.443507+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.445165+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.446476+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.446476+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.447900+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.448902+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.450231+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.451234+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.452231+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.452231+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.453751+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.454774+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.455772+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.456774+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.458773+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.460775+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.462082+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.462082+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.463974+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.465998+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.466992+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.468000+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.468992+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.468992+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.471097+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.472086+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.474290+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.475296+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.476291+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.476291+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.477616+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.478606+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.480611+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.480611+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.481725+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.482729+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.484156+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.485155+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.486528+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.487529+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.490528+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.491520+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.493524+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.495526+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.496052+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.497385+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.498874+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.498874+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.500139+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.501364+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.502357+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.502357+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.503845+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.504851+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.507394+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.508417+00:00"}
+{"event_type": "assistant.content.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.509396+00:00"}
+{"event_type": "assistant.summary.delta", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.510962+00:00"}
+{"event_type": "model.attempt.settled", "status": "completed", "turn": 5, "timestamp": "2026-10-05T15:38:47.516468+00:00"}
+{"event_type": "agent.model.responded", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.517457+00:00"}
+{"event_type": "assistant.summary", "status": "running", "turn": 5, "timestamp": "2026-10-05T15:38:47.518533+00:00"}
+{"event_type": "step.settled", "status": "completed", "turn": 5, "timestamp": "2026-10-05T15:38:47.519525+00:00"}
+{"event_type": "turn.settled", "status": "completed", "turn": 5, "timestamp": "2026-10-05T15:38:47.519525+00:00"}
+{"event_type": "agent.turn.completed", "status": "completed", "turn": 5, "timestamp": "2026-10-05T15:38:47.521039+00:00"}

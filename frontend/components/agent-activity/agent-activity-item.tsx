@@ -22,6 +22,10 @@ function compactSummary(activity: ActivityRecord): string | null {
 
 function titleFor(activity: ActivityRecord, count: number) {
   const live = activity.status === "running" || activity.status === "queued";
+  if (["cancelled", "interrupted", "warning"].includes(activity.status) && !["thinking", "summary", "approval"].includes(activity.kind)) {
+    const action = {build: "Build", command: "Command", "file.edit": "File edit", "file.read": "File read", search: "Search", test: "Test", "build.repair": "Repair", "project.repair": "Repair", plan: "Plan", subagent: "Specialist"}[activity.kind] ?? "Task step";
+    return `${action} ${activity.status === "cancelled" ? "stopped" : activity.status === "warning" ? "needs attention" : "interrupted"}`;
+  }
   if (count > 1) return activity.kind === "file.read" ? `Read ${count} files` : `Inspected ${count} project items`;
   const path = typeof activity.details.path === "string" ? activity.details.path : "";
   if (activity.kind === "file.read" && path) return `Reading ${path}`;
@@ -51,7 +55,7 @@ function titleFor(activity: ActivityRecord, count: number) {
   return activity.title;
 }
 
-export function AgentActivityItem({ activities, children, onViewFile, onApprove, onCancel, onReview, collapseLiveThinking = false }: {
+export function AgentActivityItem({ activities, children, onViewFile, onApprove, onCancel, onReview, collapseLiveThinking = false, verbose = false }: {
   activities: ActivityRecord[];
   children?: ReactNode;
   onViewFile?: (path: string) => void;
@@ -59,9 +63,11 @@ export function AgentActivityItem({ activities, children, onViewFile, onApprove,
   onCancel?: () => void;
   onReview?: () => void;
   collapseLiveThinking?: boolean;
+  verbose?: boolean;
 }) {
   const activity = activities[0];
   const summary = typeof activity.details.summary === "string" ? activity.details.summary : null;
+  const title = titleFor(activity, activities.length);
   let content: ReactNode;
   if (activity.kind === "thinking" || activity.kind === "summary") content = <ThinkingBlock activity={activity} />;
   else if (activity.kind === "context") content = <ContextRecallBlock activity={activity} />;
@@ -72,8 +78,8 @@ export function AgentActivityItem({ activities, children, onViewFile, onApprove,
   else if (activity.kind === "approval") content = <ApprovalCard activity={activity} onApprove={onApprove} onCancel={onCancel} onReview={onReview} />;
   else content = <ToolCallCard activities={activities} />;
   return (
-    <ActivityCard activity={activity} title={titleFor(activity, activities.length)} subtitle={activity.kind === "subagent" ? String(activity.details.assignment ?? "") : null} defaultOpen={["plan", "approval"].includes(activity.kind)} autoOpenActive={!(collapseLiveThinking && ["thinking", "summary"].includes(activity.kind))}>
-      {summary && !["thinking", "summary", "context", "approval"].includes(activity.kind) ? <p className="fx-progress-summary">{summary}</p> : null}
+    <ActivityCard activity={activity} title={title} subtitle={activity.kind === "subagent" ? String(activity.details.assignment ?? "") : null} defaultOpen={verbose || ["plan", "approval"].includes(activity.kind)} autoOpenActive={!(collapseLiveThinking && ["thinking", "summary"].includes(activity.kind))}>
+      {summary && summary.trim() !== title && !["thinking", "summary", "context", "approval"].includes(activity.kind) ? <p className="fx-progress-summary">{summary}</p> : null}
       {content}
       {children}
     </ActivityCard>

@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,6 +202,8 @@ class PlatformIOService:
         timeout_s: float = 180.0,
         env: Mapping[str, str] | None = None,
         session_id: str | None = None,
+        artifact_store: str | Path | None = None,
+        native_test_runner: Any | None = None,
     ) -> None:
         if not callable(getattr(subprocess_mgr, "run", None)):
             raise ValueError("subprocess_mgr must provide an async run method")
@@ -221,6 +224,14 @@ class PlatformIOService:
         self._timeout_s = float(timeout_s)
         self._env = _validate_env(env or {})
         self._session_id = session_id
+        self._artifact_store = Path(artifact_store) if artifact_store else None
+        # Host code injection only. The runner must isolate workspace writes,
+        # network and physical devices; a process group/job is insufficient.
+        self._native_test_runner = native_test_runner
+        self._dependency_validation_cache: dict[str, tuple[str, ...]] = {}
+        self._status_task: asyncio.Task | None = None
+        self._cached_status: PlatformIOStatus | None = None
+        self._status_checked_at = 0.0
 
     @property
     def executable(self) -> str:
@@ -230,6 +241,50 @@ class PlatformIOService:
 
     async def status(self, *, timeout_s: float = 8.0) -> PlatformIOStatus:
         """Return host PlatformIO readiness without requiring a project."""
+
+        if self._status_fresh():
+            return self._cached_status
+        return await asyncio.shield(self._start_status_probe(timeout_s))
+
+    def _status_fresh(self) -> bool:
+        return self._cached_status is not None and time.monotonic() - self._status_checked_at < (
+            30.0 if self._cached_status.available else 5.0)
+
+    def _start_status_probe(self, timeout_s: float = 8.0) -> asyncio.Task:
+        if self._status_task is None or self._status_task.done():
+            async def refresh():
+                result = await self._probe_status(timeout_s=timeout_s)
+                self._cached_status = result
+                self._status_checked_at = time.monotonic()
+                return result
+            self._status_task = asyncio.create_task(refresh())
+            # Health probes may have no waiter. Retrieve failures without
+            # altering the exception delivered to an explicit status caller.
+            self._status_task.add_done_callback(lambda task: None if task.cancelled() else task.exception())
+        return self._status_task
+
+    async def health_status(self) -> PlatformIOStatus:
+        """Liveness never waits for a compiler process or starts duplicate probes."""
+        if not self._base_status.available:
+            return self._base_status
+        if not self._status_fresh():
+            self._start_status_probe()
+        if self._cached_status is not None:
+            return self._cached_status
+        return PlatformIOStatus(available=self._base_status.available,
+            executable=self._base_status.executable, version=None, reason="checking",
+            message="PlatformIO executable detected; readiness verification is pending.")
+
+    async def close_status_probe(self) -> None:
+        task = self._status_task
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def _probe_status(self, *, timeout_s: float = 8.0) -> PlatformIOStatus:
 
         if not self._base_status.available or not self._base_status.executable:
             return self._base_status
@@ -332,7 +387,91 @@ class PlatformIOService:
                 env=dict(self._env),
                 session_id=self._session_id,
             )
-        return await FirmwareBuilder(self._subprocess_mgr).build(config)
+        from .partition_preflight import PartitionPreflightError, partition_input
+        from ..runtime.result import ResultStatus, FailureResult
+        import tempfile
+        started = time.monotonic()
+        preflight = None
+        preflight_executed = False
+        validated_partitions = []
+        try:
+            _, _, parser = _load_project(config.project_dir)
+            names = [item.name for item in self.discover_environments(config.project_dir)]
+            defaults = re.split(r"[,\s]+", parser.get("platformio", "default_envs", fallback="", raw=True).strip())
+            selected = [config.environment] if config.environment else ([name for name in defaults if name] or names)
+            for name in selected:
+                preflight = partition_input(config.project_dir, parser, name,
+                    config.env.get("PLATFORMIO_CORE_DIR") or os.getenv("PLATFORMIO_CORE_DIR") or Path.home() / ".platformio")
+                if preflight:
+                    preflight_executed = True
+                    with tempfile.TemporaryDirectory(prefix="forgex-partitions-") as temporary:
+                        process = await self._subprocess_mgr.run(ProcessConfig(
+                            args=[sys.executable, preflight["tool"], "--flash-size", preflight["flash_size"],
+                                  "--offset", preflight["offset"], preflight["source"], str(Path(temporary) / "partitions.bin")],
+                            cwd=str(config.project_dir), env=dict(config.env), session_id=config.session_id,
+                            timeout_s=max(0.001, min(30.0, config.timeout_s - (time.monotonic() - started)))))
+                    if not process.success:
+                        raise PartitionPreflightError("PARTITION_TABLE_INVALID", (process.stderr_text or "Partition validation failed")[:2000])
+                    validated_partitions.append(name)
+        except PartitionPreflightError as exc:
+            return BuildResult(success=False, status=ResultStatus.FAILED, message=str(exc),
+                metadata={"error_code": exc.code, "preflight": {"success": False, "environment": config.environment}},
+                failure=FailureResult(category="configuration_error", message=str(exc), retryable=False, stage="build",
+                    metadata={"error_code": exc.code}))
+        remaining = config.timeout_s - (time.monotonic() - started)
+        if remaining <= 0:
+            return BuildResult(success=False, status=ResultStatus.TIMEOUT, message="Build deadline expired during preflight",
+                metadata={"error_code": "BUILD_TIMEOUT"})
+        from dataclasses import replace
+        result = await FirmwareBuilder(self._subprocess_mgr).build(replace(config, timeout_s=remaining) if preflight_executed else config)
+        result.metadata["partition_preflight"] = {"success": bool(result.success or len(validated_partitions) == len(selected)),
+            "environment": config.environment, "validated_environments": validated_partitions,
+            "validation": "espressif_tool" if preflight_executed else "canonical_platformio_build"}
+        metadata = dict(result.metadata)
+        metadata["toolchain"] = {"executable": config.executable, "version": getattr(result, "toolchain_version", None),
+                                  "environment": config.environment, "board": result.board}
+        result.metadata.update(metadata)
+        if result.success and self._artifact_store is not None:
+            from .firmware_manifest import seal_platformio_build
+            try:
+                result.metadata["artifact_manifest"] = seal_platformio_build(
+                    result, config.project_dir, config.environment, self._artifact_store,
+                    core_dir=self._env.get("PLATFORMIO_CORE_DIR"))
+                result.metadata["flash_ready"] = True
+            except (OSError, ValueError) as exc:
+                result.metadata.update(flash_ready=False, flash_readiness_error=str(exc))
+        return result
+
+    async def validate_dependencies(self, project: Path) -> dict[str, object]:
+        """Resolve declared registry IDs before compiling, without guessing owners."""
+        _, _, parser = _load_project(project)
+        from backend.security.build_policy import validate_build_configuration
+        validate_build_configuration(parser)
+        declared = sorted({line.strip() for section in parser.sections()
+            for line in parser.get(section, "lib_deps", fallback="", raw=True).splitlines() if line.strip()})
+        if len(declared) > 32:
+            raise ValueError("BUILD_DEPENDENCY_LIMIT")
+        checked, missing = [], []
+        for dependency in declared:
+            identity = dependency.split("@", 1)[0].strip()
+            if identity not in self._dependency_validation_cache:
+                candidates = await self.search_libraries(identity, limit=5)
+                # Network failures must not poison subsequent requests, and a
+                # long-running backend must keep this cache bounded.
+                if candidates:
+                    if len(self._dependency_validation_cache) >= 128:
+                        self._dependency_validation_cache.clear()
+                    self._dependency_validation_cache[identity] = candidates
+            else:
+                candidates = self._dependency_validation_cache[identity]
+            matches = [candidate for candidate in candidates if
+                       (candidate if "/" in identity else candidate.split("/", 1)[-1]).casefold() == identity.casefold()]
+            if len(matches) != 1:
+                missing.append({"requested": dependency, "candidates": list(candidates)})
+            else:
+                checked.append(dependency)
+        return {"valid": not missing, "dependencies": checked, "missing": missing,
+                "source": "platformio_registry", "versions_verified": False}
 
     async def search_libraries(self, query: str, *, limit: int = 5) -> tuple[str, ...]:
         """Return bounded registry package IDs without trusting registry prose."""
@@ -344,7 +483,7 @@ class PlatformIOService:
             [self._executable, "pkg", "search", query], timeout_s=10.0
         )
         if not result.success:
-            return ()
+            raise RuntimeError("DEPENDENCY_REGISTRY_UNAVAILABLE")
         packages: list[str] = []
         for line in result.stdout_text.splitlines():
             candidate = line.strip()
@@ -355,6 +494,40 @@ class PlatformIOService:
             if len(packages) >= max(1, min(limit, 5)):
                 break
         return tuple(packages)
+
+    async def test_native(self, project_path, *, environment, trusted=False):
+        """Run project-controlled native code only through an isolated runner."""
+        import shutil
+        from backend.security.build_policy import validate_build_configuration
+        if trusted is not True:
+            raise ValueError("AGENT_PROJECT_TRUST_REQUIRED")
+        root, _, parser = _load_project(project_path)
+        validate_build_configuration(parser)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", environment):
+            raise ValueError("TEST_ENVIRONMENT_INVALID")
+        section = "env:" + environment
+        if not parser.has_section(section) or parser.get(section, "platform", fallback="").strip() != "native":
+            raise ValueError("DEVICE_TEST_REQUIRES_SEPARATE_HARDWARE_APPROVAL")
+        if self._native_test_runner is None:
+            return {"success": False, "available": False,
+                    "error": "NATIVE_TEST_SANDBOX_UNAVAILABLE",
+                    "message": "Native tests require an isolated runner that denies host device and network access."}
+        if not shutil.which("gcc"):
+            return {"success":False,"available":False,"error":"NATIVE_TOOLCHAIN_UNAVAILABLE"}
+        if not root.joinpath("test").is_dir() or not any(root.joinpath("test").rglob("*.cpp")):
+            return {"success":False,"available":True,"error":"NO_NATIVE_TESTS"}
+        result = await self._native_test_runner.run(
+            [self.executable, "test", "-e", environment], cwd=str(root), timeout_s=180)
+        output = result.stdout_text + result.stderr_text
+        # Exit zero also occurs when no tests run. Require the runner's result
+        # summary before recording evidence of successful execution.
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+        summaries = re.findall(r"(\d+)\s+test cases?:\s*(?:(\d+)\s+failed,?\s*)?(?:(\d+)\s+skipped,?\s*)?(\d+)\s+succeeded", plain, flags=re.I)
+        executed,failed,skipped,succeeded = (map(lambda item:int(item or 0),summaries[-1]) if summaries else (0,0,0,0))
+        return {"success":result.returncode == 0 and not result.timed_out and executed > 0 and succeeded == executed and not failed and not skipped,"available":True,
+                "test_cases_executed":executed,"test_cases_succeeded":succeeded,
+                "environment":environment,"exit_code":result.returncode,"timed_out":result.timed_out,
+                "output":output[-6000:],"hardware_used":False}
 
     async def clean(
         self,
@@ -636,39 +809,11 @@ def _resolve_option(
     option: str,
     seen: set[str] | None = None,
 ) -> str:
-    section = f"env:{environment}"
-    visited = set(seen or ())
-    if section in visited:
-        raise PlatformIOProjectError(
-            f"cyclic environment inheritance involving {section}"
-        )
-    visited.add(section)
-    if parser.has_option(section, option):
-        return parser.get(section, option, raw=True).strip()
-    if parser.has_option(section, "extends"):
-        parents = parser.get(section, "extends", raw=True)
-        for parent in re.split(r"[\s,]+", parents):
-            parent = parent.strip()
-            if not parent:
-                continue
-            parent_name = parent[4:] if parent.startswith("env:") else parent
-            parent_section = f"env:{parent_name}"
-            if not parser.has_section(parent_section):
-                raise PlatformIOProjectError(
-                    f"environment {environment!r} extends undefined "
-                    f"environment {parent_name!r}"
-                )
-            value = _resolve_option(
-                parser,
-                parent_name,
-                option,
-                visited,
-            )
-            if value:
-                return value
-    if parser.has_option("env", option):
-        return parser.get("env", option, raw=True).strip()
-    return ""
+    from .partition_preflight import PartitionPreflightError, resolve_option
+    try:
+        return resolve_option(parser, environment, option)
+    except PartitionPreflightError as exc:
+        raise PlatformIOProjectError(str(exc).lower()) from exc
 
 
 def _validate_source_directory(

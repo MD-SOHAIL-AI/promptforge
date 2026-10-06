@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "source": "installed desktop live-runtime.jsonl; September 27 incidents",
+  "cases": [
+    {
+      "timestamp": "2026-09-27T13:04:01.232688Z",
+      "event": "agent.run.failed",
+      "classification": "AGENT_RUNTIME_MAX_TURNS"
+    },
+    {
+      "timestamp": "2026-09-27T13:04:20.635533Z",
+      "event": "provider.stream.retrying",
+      "error_code": "PROVIDER_UNAVAILABLE"
+    },
+    {
+      "timestamp": "2026-09-27T13:04:33.779513Z",
+      "event": "provider.stream.retrying",
+      "error_code": "PROVIDER_UNAVAILABLE"
+    },
+    {
+      "timestamp": "2026-09-27T13:04:36.898534Z",
+      "event": "provider.stream.retrying",
+      "error_code": "PROVIDER_UNAVAILABLE"
+    },
+    {
+      "timestamp": "2026-09-27T13:04:41.428897Z",
+      "event": "provider.stream.retrying",
+      "error_code": "PROVIDER_UNAVAILABLE"
+    },
+    {
+      "timestamp": "2026-09-27T13:05:01.261442Z",
+      "event": "provider.stream.retrying",
+      "error_code": "PROVIDER_UNAVAILABLE"
+    },
+    {
+      "timestamp": "2026-09-27T13:05:14.653662Z",
+      "event": "agent.run.failed",
+      "classification": "MODEL_OUTPUT_NOT_JSON"
+    }
+  ]
+}

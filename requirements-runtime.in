@@ -1,0 +1,12 @@
+# Desktop backend and PlatformIO runtime; development/test tools are separate.
+fastapi==0.141.1
+starlette==1.3.1
+httpx==0.28.1
+pydantic==2.13.4
+python-dotenv==1.2.2
+pyserial==3.5
+pywinpty==3.0.5; platform_system == "Windows"
+uvicorn[standard]==0.48.0
+websockets==16.0
+platformio==6.2.0
+esptool==5.4.0

@@ -4,10 +4,14 @@ from __future__ import annotations
 from backend.runtime.process_owner import owned_operation
 
 import asyncio
+import hashlib
+from .checkpoint_files import copy_checkpoint_tree
 import json
 import logging
+import os
 import shutil
 import threading
+import time
 import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -18,21 +22,23 @@ from backend.observability.diagnostics import emit_diagnostic_event
 from backend.tools.board_detector import BoardDetector
 from backend.hardware.action_binding import finalize_hardware_binding
 
+from backend.contracts.diagnostics import apply_provider_diagnostics, safe_provider_diagnostics
 from .activity import run_activity_fields
 from .approvals import ApprovalService
 from .capabilities import ToolPolicyEngine
 from .capability_profiles import profile_for_autonomy
 from .memory import ProjectMemoryService
+from .jobs import AgentJobStore, TRANSIENT_PROVIDER_ERRORS, recovery_time_reserve
 from .orchestration_graph import AgentTaskNode
 from .orchestration_store import AgentOrchestrationStore, LeaseGrant, utc_now
-from .projection import SessionProjectionEngine, PROJECTION_REDUCER_VERSION
+from .projection import SessionProjection, SessionProjectionEngine, PROJECTION_REDUCER_VERSION
 from .risk import RiskAssessment, RiskAssessmentService
 from .tool_contracts import RuntimeClassification, ToolName
 from .tool_policy import product_agent_policy, subagent_policy
 from .tool_runtime import ForgeXToolRuntime, ProductRuntimeLimits, ToolRuntimeResult
 
 
-TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "blocked", "timed_out"})
+TERMINAL_STATUSES = frozenset({"completed", "completed_with_warning", "failed", "cancelled", "blocked", "timed_out"})
 AUTONOMOUS_AUTONOMIES = frozenset({"build_only", "build_then_confirm_flash"})
 logger = logging.getLogger(__name__)
 
@@ -86,6 +92,13 @@ class AgentOrchestrator:
         self.policy_engine = ToolPolicyEngine()
         self.risk_service = RiskAssessmentService()
         self.memory = ProjectMemoryService(store)
+        self.jobs = AgentJobStore(store)
+        from .intake import AgentIntakeStore
+        self.intakes = AgentIntakeStore(store)
+        self.auto_recovery_enabled = os.getenv("FORGEX_ENABLE_SAFE_AUTO_RECOVERY", "1") == "1"
+        self._closing = False
+        self._attempt_clocks = {}
+        self._retry_tasks = {}
         self.approvals = ApprovalService(store)
         self.projections = SessionProjectionEngine()
         self._runs: dict[str, Any] = {}
@@ -97,6 +110,10 @@ class AgentOrchestrator:
         self._transient_events: dict[str, list[dict[str, object]]] = {}
         self._transient_sequence: dict[str, int] = {}
         self._recovery_context: dict[str, dict[str, object]] = {}
+        self._checkpoint_payloads: dict[str, dict[str, object]] = {}
+        self._cancel_locks: dict[str, asyncio.Lock] = {}
+        self._cancelling_runs: set[str] = set()
+        self._recovery_locks: dict[str, asyncio.Lock] = {}
         self._lock = threading.RLock()
         self._run_listeners: list[object] = []
         self._restore_runs()
@@ -123,9 +140,15 @@ class AgentOrchestrator:
         session_id: str | None = None,
         explicit_edit_authorized: bool = False,
         retry_of_run_id: str | None = None,
+        reserved_run_id: str | None = None,
+        resume_checkpoint: Mapping[str, object] | None = None,
+        job_id: str | None = None,
+        execution_profile: str = "standard",
     ) -> Any:
         workspace = Path(active_workspace_root).resolve(strict=True)
-        run_id = f"agent-run-{uuid.uuid4().hex}"
+        run_id = reserved_run_id or f"agent-run-{uuid.uuid4().hex}"
+        if run_id in self._runs:
+            return self._runs[run_id]
         session_key = session_id or f"run:{run_id}"
         run = self.run_factory(
             run_id,
@@ -141,12 +164,30 @@ class AgentOrchestrator:
             retry_of_run_id=retry_of_run_id,
         )
         run.active_workflow_task_id = f"task-{run_id}"
+        contract = (active_workspace or {}).get("task_contract")
+        if isinstance(contract, Mapping):
+            if contract.get("project_id") != project_id or contract.get("workspace_root") != str(workspace) or contract.get("session_id") != session_id:
+                raise ValueError("TASK_WORKSPACE_BINDING_MISMATCH")
+            run.task_contract = dict(contract)
         nodes = self._initial_graph(autonomy)
         lease = self.store.acquire_lease(
             session_key,
             run_id,
             ttl_seconds=self._lease_ttl_seconds,
         )
+        job = self.jobs.attach(job_id, run_id) if job_id else self.jobs.create(
+            project_id=project_id, session_id=session_key, workspace_root=workspace,
+            run_id=run_id, execution_profile=execution_profile)
+        run.job_id = job["job_id"]
+        intake_id = (active_workspace or {}).get("agent_intake_id")
+        if intake_id and not retry_of_run_id:
+            job = self.intakes.attach(intake_id, job["job_id"])
+        run.job = self.jobs.public(job)
+        if run.task_contract and session_id:
+            self.memory.remember_choices(project_id=project_id,session_id=session_id,
+                contract=run.task_contract,board_id=board_type)
+        import time
+        self._attempt_clocks[run_id] = (time.monotonic(),job["consumed"]["elapsed_seconds"])
         with self._lock:
             self._runs[run_id] = run
             self._nodes[run_id] = {node.node_id: node for node in nodes}
@@ -158,12 +199,22 @@ class AgentOrchestrator:
                 "instruction": instruction,
                 "explicit_edit_authorized": bool(explicit_edit_authorized),
                 "active_workspace": _json_safe_mapping(active_workspace or {}),
+                "resume_checkpoint": dict(resume_checkpoint) if resume_checkpoint else None,
             }
         self._persist_graph(run)
         self._event(run, "runtime.queued", stage="planning", message="Action run queued")
 
         async def execute_workflow() -> None:
-            if autonomy in AUTONOMOUS_AUTONOMIES:
+            # Existing firmware edits use the same asynchronous loop as generation
+            # and repair. Read-only and legacy overlay callers keep their seam.
+            contract = (active_workspace or {}).get("task_contract") or {}
+            shared_edit = (autonomy in {"staged_changes", "review_changes"}
+                and (bool(contract) or (active_workspace or {}).get("agent_requires_build") is True) and ((workspace / "platformio.ini").is_file()
+                    or (active_workspace or {}).get("agent_requires_build") is True)
+                and not {"build", "execute"}.intersection(contract.get("prohibited_actions", ()))
+                and ((active_workspace or {}).get("agent_requires_build") is True
+                     or os.getenv("FORGEX_ENABLE_SHARED_EDIT_LOOP", "1") == "1"))
+            if autonomy in AUTONOMOUS_AUTONOMIES or shared_edit:
                 await self._execute_autonomous(
                     run,
                     workspace=workspace,
@@ -206,6 +257,8 @@ class AgentOrchestrator:
                         self.store.release_lease(grant)
                     except ValueError:
                         pass
+                if not self._closing:
+                    self._schedule_retry(run.job_id)
 
         async def execute_owned() -> None:
             # Create the inner execution coroutine only after the scheduled task
@@ -233,6 +286,14 @@ class AgentOrchestrator:
             if heartbeat_task in done:
                 heartbeat_error = heartbeat_task.exception()
                 if heartbeat_error is not None:
+                    self._runs[run_id].cancel_event.set()
+                    self.policy_engine.fence_run(run_id)
+                    if self.cancel_executor:
+                        try:
+                            await asyncio.wait_for(self.cancel_executor(self._runs[run_id]), timeout=5.0)
+                        except Exception:
+                            logger.exception("Lease-loss cleanup could not be confirmed for %s", run_id)
+                    self.store.interrupt_operations(run_id)
                     operation_task.cancel()
                     await asyncio.gather(operation_task, return_exceptions=True)
                     if isinstance(heartbeat_error, AgentSessionLeaseLost):
@@ -283,6 +344,11 @@ class AgentOrchestrator:
                 continue
 
     async def retry(self, run_id: str) -> Any:
+        async with self._recovery_locks.setdefault(run_id, asyncio.Lock()):
+            return await self._retry_locked(run_id)
+
+    async def _retry_locked(self, run_id: str, *, request_key: str = "retry", checkpoint: Mapping[str, object] | None = None,
+                            selection: Mapping[str, str] | None = None, verify_only: bool = False) -> Any:
         """Create one explicit replacement run for an interrupted action."""
         previous_task = self._tasks.get(run_id)
         if previous_task is not None and not previous_task.done():
@@ -294,42 +360,79 @@ class AgentOrchestrator:
             run = self._runs.get(run_id)
             if run is None:
                 raise KeyError(run_id)
-            replacement_id = getattr(run, "recovered_by_run_id", None)
+            replacement_id = self.store.recovery_replacement(run_id) or getattr(run, "recovered_by_run_id", None)
             if replacement_id and replacement_id in self._runs:
                 return self._runs[replacement_id]
+            self.store.require_healthy_journal(self._session_for_run[run_id])
+            if run.change_set_id and self.change_service.get(run.change_set_id).status == "discarded":
+                raise ValueError("AGENT_RECOVERY_DRAFT_DISCARDED")
+            if any(item["status"] in {"started", "unknown"} for item in self.store.operations(run_id)):
+                raise ValueError("AGENT_RECOVERY_OUTCOME_UNKNOWN")
             recoverable_classification = (
                 run.classification == "AGENT_RUNTIME_INTERRUPTED"
+                or run.classification in {"provider_smoke_toolplan_unsafe", "provider_smoke_call_count_invalid"}
                 or run.status == "paused_model_unavailable"
-                or (run.status in {"failed", "blocked", "timed_out"} and bool(run.change_set_id)
+                or (checkpoint is not None and run.classification in {"AGENT_PROVIDER_BUDGET_EXCEEDED","AGENT_JOB_BUDGET_EXHAUSTED","AGENT_RUNTIME_TOOL_BUDGET_EXCEEDED","AGENT_RUNTIME_LIMIT_EXCEEDED"})
+                or (run.status in {"failed", "blocked", "timed_out", "completed_with_warning", "cancelled"} and bool(run.change_set_id)
                     and self.change_service.get(run.change_set_id).status == "draft")
             )
             if not bool(getattr(run, "recoverable", False)) or not recoverable_classification:
                 raise ValueError("AGENT_RUNTIME_RUN_NOT_RECOVERABLE")
             context = dict(self._recovery_context.get(run_id, {}))
+            workspace_error = self._recovery_workspace_error(run_id)
+            if workspace_error:
+                if workspace_error == "AGENT_RESUME_WORKSPACE_UNAVAILABLE":
+                    self._record_unavailable_workspace(run)
+                raise ValueError(workspace_error)
+            job = self.jobs.get(run.job_id)
+            if not verify_only and job.get("blocking_reason") == "AGENT_JOB_TIME_RESERVE_REQUIRED":
+                raise ValueError("AGENT_JOB_TIME_RESERVE_REQUIRED")
+            if verify_only and job["limits"]["elapsed_seconds"] - job["consumed"]["elapsed_seconds"] <= 5:
+                raise ValueError("AGENT_JOB_TIME_RESERVE_REQUIRED")
+            budget_dimensions = {"tool_calls_used", "elapsed_seconds"} if verify_only else set(job["limits"])
+            if any(job["consumed"][key] >= job["limits"][key] for key in budget_dimensions):
+                raise ValueError("AGENT_JOB_BUDGET_EXHAUSTED")
             if not context:
                 raise ValueError("AGENT_RUNTIME_RECOVERY_CONTEXT_MISSING")
-            run.recoverable = False
-            run.recovery_actions = []
-            self._persist_run(run)
+            if run.classification in {"provider_smoke_toolplan_unsafe", "provider_smoke_call_count_invalid"}:
+                # Upgrade an explicit retry of the old keyword-routing incident
+                # to today's requirement checks without changing its journal.
+                from .task_contract import create_task_contract
+                active = dict(context.get("active_workspace") or {})
+                if "task_contract" not in active and run.provider_id not in {"fake_planner", "verified_template"} and run.autonomy not in {"read_only", "plan_only"}:
+                    active["task_contract"] = create_task_contract(str(context["instruction"]),
+                        project_id=run.project_id, session_id=self._session_for_run[run_id],
+                        workspace=Path(str(context["workspace_root"])),
+                        intent=str(active.get("agent_turn_intent") or "generate"),
+                        prohibited=active.get("agent_prohibited_actions", ()))
+                context["active_workspace"] = active
+            fingerprint = hashlib.sha256(json.dumps({"run_id": run_id, "checkpoint": checkpoint}, sort_keys=True).encode()).hexdigest()
+            if selection or verify_only:
+                fingerprint = hashlib.sha256(json.dumps({"run_id": run_id, "checkpoint": checkpoint,
+                    "selection": selection, "verify_only": verify_only}, sort_keys=True).encode()).hexdigest()
+            replacement_id = self.store.reserve_recovery(run_id, request_key, fingerprint)
+            self.store.transfer_unacknowledged_guidance(run_id, replacement_id)
+            replacement_workspace = dict(context.get("active_workspace") or {})
+            replacement_workspace.pop("agent_verify_saved_draft", None)
+            continuation_autonomy = str(replacement_workspace.pop("agent_resume_autonomy", None) or run.autonomy)
+            if verify_only:
+                replacement_workspace["agent_verify_saved_draft"] = True
+                replacement_workspace["agent_resume_autonomy"] = continuation_autonomy
 
         try:
             replacement = await self.start_run(
                 project_id=run.project_id,
                 active_workspace_root=str(context["workspace_root"]),
                 instruction=str(context["instruction"]),
-                provider_id=run.provider_id,
-                model_id=run.model_id,
+                provider_id=selection["provider_id"] if selection else run.provider_id,
+                model_id=selection["model_id"] if selection else run.model_id,
                 fallback_provider_id=(
                     str(context["fallback_provider_id"])
                     if context.get("fallback_provider_id")
                     else None
                 ),
-                autonomy=run.autonomy,
-                active_workspace=(
-                    context["active_workspace"]
-                    if isinstance(context.get("active_workspace"), Mapping)
-                    else {}
-                ),
+                autonomy="build_only" if verify_only else continuation_autonomy,
+                active_workspace=replacement_workspace,
                 board_port=run.flash_port,
                 board_type=run.flash_board_type,
                 environment=run.flash_environment,
@@ -337,6 +440,9 @@ class AgentOrchestrator:
                 session_id=self._session_for_run[run_id],
                 explicit_edit_authorized=bool(context.get("explicit_edit_authorized")),
                 retry_of_run_id=run_id,
+                reserved_run_id=replacement_id,
+                resume_checkpoint=checkpoint,
+                job_id=run.job_id,
             )
         except Exception:
             with self._lock:
@@ -347,15 +453,392 @@ class AgentOrchestrator:
 
         with self._lock:
             run.recovered_by_run_id = replacement.run_id
+            run.recoverable = False
+            run.recovery_actions = []
             self._persist_run(run)
+        self.store.complete_recovery(run_id, replacement.run_id)
         self._event(run, "runtime.retried", status=run.status, replacement_run_id=replacement.run_id)
         return replacement
+
+    def _recovery_checkpoint(self, run_id: str):
+        checkpoint = self.store.latest_run_checkpoint(run_id)
+        # The event and projection commit atomically. Rebuild a derived checkpoint
+        # if the process stopped between that transaction and checkpoint storage.
+        sealed = self._recovery_context.get(run_id, {}).get("sealed_resume_boundary")
+        if isinstance(sealed, dict):
+            boundaries = [event for event in self.store.snapshot_events(self._session_for_run[run_id], run_id=run_id)
+                          if event.get("event_type") in {"runtime.admitted", "turn.settled", "tool.checkpoint"}]
+            event = boundaries[-1] if boundaries else None
+            if event and event.get("event_type") == sealed.get("event_type") and int(event.get("turn") or 0) == int(sealed.get("turn") or 0):
+                if checkpoint is None or int(checkpoint["session_seq"]) < int(event["sequence"]):
+                    self.store.require_healthy_journal(self._session_for_run[run_id])
+                    checkpoint = self.store.save_run_checkpoint(run_id, self._session_for_run[run_id],
+                        turn=0 if event["event_type"] == "runtime.admitted" else int(event["turn"]),
+                        session_seq=int(event["sequence"]), payload={"resume": sealed["resume"]})
+        if checkpoint:
+            return checkpoint
+        # Older continuations did not seal admission. Use only their verified
+        # parent seal, and only when this attempt executed no tools/effects.
+        run = self._runs[run_id]
+        parent_id = getattr(run, "retry_of_run_id", None)
+        inherited = self._recovery_context.get(run_id, {}).get("resume_checkpoint")
+        parent = self._runs.get(parent_id)
+        if not parent or not inherited or parent.job_id != run.job_id or self._session_for_run[parent_id] != self._session_for_run[run_id]:
+            return None
+        if self.store.operations(run_id) or any(
+            str(event.get("event_type", "")).startswith(("tool.", "build.", "turn.settled", "changeset."))
+            for event in self.store.snapshot_events(self._session_for_run[run_id], run_id=run_id)
+        ):
+            return None
+        parent_checkpoint = self.store.latest_run_checkpoint(parent_id)
+        if parent_checkpoint and parent_checkpoint.get("checkpoint_id") == inherited.get("checkpoint_id"):
+            return parent_checkpoint
+        return None
+
+    def _recovery_workspace_error(self, run_id: str) -> str | None:
+        workspace = self._recovery_context.get(run_id, {}).get("workspace_root")
+        if not isinstance(workspace, (str, Path)) or not workspace:
+            return "AGENT_RUNTIME_RECOVERY_CONTEXT_MISSING"
+        try:
+            if not Path(workspace).resolve(strict=True).is_dir():
+                return "AGENT_RESUME_WORKSPACE_UNAVAILABLE"
+        except (OSError, ValueError):
+            return "AGENT_RESUME_WORKSPACE_UNAVAILABLE"
+        return None
+
+    def _record_unavailable_workspace(self, run: Any) -> None:
+        """Pause the current job without altering its history, seal or budget."""
+        from .jobs import _finish_wait
+        changed = False
+        def pause(value):
+            nonlocal changed
+            if value["current_run_id"] != run.run_id:
+                return
+            changed = value.get("blocking_reason") != "AGENT_RESUME_WORKSPACE_UNAVAILABLE"
+            _finish_wait(value)
+            value.update(blocking_reason="AGENT_RESUME_WORKSPACE_UNAVAILABLE", retry_due_at=None)
+            if value["status"] not in {"completed", "completed_with_warning", "cancelled"}:
+                value["status"] = "blocked"
+        if run.job_id:
+            self.jobs.mutate(run.job_id, pause)
+        if changed:
+            logger.info("Recovery paused: project folder unavailable run_id=%s; sealed checkpoint preserved", run.run_id)
+
+    def recovery_info(self, run_id: str) -> dict[str, object]:
+        run = self._runs[run_id]
+        try:
+            checkpoint = self._recovery_checkpoint(run_id)
+        except ValueError:
+            return self._recovery_action_info(run, {"eligible": False, "blocking_reason": "AGENT_CHECKPOINT_CORRUPT", "checkpoint_id": None, "uncertain_operations": []}, None)
+        unknown = [item for item in self.store.operations(run_id) if item["status"] in {"started", "unknown"}]
+        stage_paths = ()
+        reason = None
+        if not self.store.verify_journal(self._session_for_run[run_id])["healthy"]:
+            reason = "AGENT_JOURNAL_QUARANTINED"
+        elif unknown or run.classification == "AGENT_RECOVERY_OUTCOME_UNKNOWN":
+            reason = "AGENT_RECOVERY_OUTCOME_UNKNOWN"
+        elif not run.recoverable:
+            reason = "AGENT_RUNTIME_RUN_NOT_RECOVERABLE"
+        elif run.change_set_id and self.change_service.get(run.change_set_id).status == "discarded":
+            reason = "AGENT_RECOVERY_DRAFT_DISCARDED"
+        elif not checkpoint or not isinstance(checkpoint.get("resume"), dict):
+            reason = "AGENT_RESUME_CHECKPOINT_UNAVAILABLE"
+        else:
+            saved = checkpoint["resume"]
+            reason = self._recovery_workspace_error(run_id)
+            if reason is None:
+                try:
+                    workspace = self._recovery_context[run_id]["workspace_root"]
+                    if self.change_service.inspect_workspace(workspace).revision != saved["workspace_revision"]:
+                        reason = "AGENT_RESUME_WORKSPACE_CHANGED"
+                    stage = Path(saved["stage_path"]).absolute()
+                    if reason is None:
+                        if stage.parent != self.change_service.staging_root:
+                            reason = "AGENT_RESUME_STAGE_CHANGED"
+                        else:
+                            stage_snapshot = self.change_service.inspect_workspace(stage)
+                            stage_paths = tuple(stage_snapshot.files)
+                            if stage_snapshot.revision != saved["stage_revision"]:
+                                reason = "AGENT_RESUME_STAGE_CHANGED"
+                except (OSError, ValueError, KeyError):
+                    reason = self._recovery_workspace_error(run_id) or "AGENT_RESUME_STAGE_UNAVAILABLE"
+        return self._recovery_action_info(run, {"eligible": reason is None, "blocking_reason": reason,
+                "checkpoint_id": checkpoint.get("checkpoint_id") if checkpoint else None,
+                "uncertain_operations": [{key: item[key] for key in ("operation_id", "kind", "status")} for item in unknown]}, checkpoint, stage_paths=stage_paths)
+
+    def _recovery_action_info(self, run, info, checkpoint, *, stage_paths=()):
+        """One permission/budget projection used by the API and its controls."""
+        from backend.contracts.recovery import RecoveryActions
+        job = self.jobs.get(run.job_id) if run.job_id else None
+        context = self._recovery_context.get(run.run_id, {})
+        draft = self.change_service.get(run.change_set_id) if run.change_set_id else None
+        continuation_reason = info["blocking_reason"]
+        verification_reason = info["blocking_reason"]
+        if job and continuation_reason is None:
+            if any(job["consumed"][key] >= limit for key, limit in job["limits"].items()):
+                continuation_reason = "AGENT_JOB_BUDGET_EXHAUSTED"
+            elif job.get("blocking_reason") == "AGENT_JOB_TIME_RESERVE_REQUIRED":
+                continuation_reason = "AGENT_JOB_TIME_RESERVE_REQUIRED"
+        if verification_reason is None:
+            if not draft or draft.status != "draft":
+                verification_reason = "AGENT_RECOVERY_DRAFT_UNAVAILABLE"
+            elif not self.jobs.is_trusted(run.project_id, context.get("workspace_root")):
+                verification_reason = "AGENT_PROJECT_TRUST_REQUIRED"
+            elif job and (job["limits"]["elapsed_seconds"] - job["consumed"]["elapsed_seconds"] <= 5
+                          or job["consumed"]["tool_calls_used"] >= job["limits"]["tool_calls_used"]):
+                verification_reason = "AGENT_JOB_BUDGET_EXHAUSTED"
+            else:
+                from .deliverables import has_firmware_source
+                if "platformio.ini" in stage_paths and not has_firmware_source(stage_paths):
+                    verification_reason = "AGENT_RECOVERY_DRAFT_INCOMPLETE"
+        inspect_reason = None if draft and draft.status != "discarded" else "AGENT_RECOVERY_DRAFT_UNAVAILABLE"
+        action = lambda reason: {"allowed": reason is None, "blocking_reason": reason}
+        actions = RecoveryActions.model_validate({"inspect": action(inspect_reason),
+            "continue_generation": action(continuation_reason), "verify_locally": action(verification_reason)})
+        return {**info, "actions": actions.model_dump(mode="json")}
+
+    async def resume(self, run_id: str, *, checkpoint_id: str, idempotency_key: str,
+                     provider_id: str | None = None, model_id: str | None = None, automatic: bool = False) -> Any:
+        async with self._recovery_locks.setdefault(run_id, asyncio.Lock()):
+            previous = self.store.recovery_replacement(run_id)
+            checkpoint = self._recovery_checkpoint(run_id)
+            if not checkpoint or checkpoint.get("checkpoint_id") != checkpoint_id:
+                raise ValueError("AGENT_RESUME_CHECKPOINT_CHANGED")
+            fingerprint = hashlib.sha256(json.dumps({"run_id": run_id, "checkpoint": checkpoint}, sort_keys=True).encode()).hexdigest()
+            selection = None
+            if provider_id is not None or model_id is not None:
+                if not provider_id or not model_id:
+                    raise ValueError("AGENT_RECOVERY_SELECTION_INVALID")
+                selected = self.provider_registry.resolve(provider_id, model_id=model_id,
+                    session_id=self._session_for_run[run_id])
+                router = getattr(selected, "router", None)
+                if router is not None:
+                    from backend.model_router.models import ModelRequest
+                    from backend.services.llm_service import LLMError
+                    try:
+                        router.resolver.resolve(ModelRequest(prompt="Continue saved work", task_type="planning",
+                            provider_id=provider_id, model_id=model_id, allow_fallback=False))
+                    except LLMError as exc:
+                        raise ValueError(str(exc.code)) from exc
+                selection = {"provider_id": provider_id, "model_id": model_id}
+                fingerprint = hashlib.sha256(json.dumps({"run_id": run_id, "checkpoint": checkpoint,
+                    "selection": selection, "verify_only": False}, sort_keys=True).encode()).hexdigest()
+            if previous and previous in self._runs:
+                self.store.reserve_recovery(run_id, idempotency_key, fingerprint)
+                return self._runs[previous]
+            info = self.recovery_info(run_id)
+            action = info["actions"]["continue_generation"]
+            if not action["allowed"]:
+                raise ValueError(str(action["blocking_reason"]))
+            self.store.invalidate_pending_approvals(run_id, "explicit_resume")
+            if not automatic and not previous:
+                self.jobs.begin_manual_recovery(self.get_run(run_id).job_id)
+            replacement = await self._retry_locked(run_id, request_key=idempotency_key, checkpoint=checkpoint, selection=selection)
+            self._event(replacement, "runtime.resumed", source_run_id=run_id, checkpoint_id=checkpoint_id)
+            if selection:
+                self._event(replacement, "recovery.model_selected", source_run_id=run_id,
+                    provider_id=provider_id, model_id=model_id, authorization="explicit_selection")
+            return replacement
+
+    async def verify_saved_draft(self, run_id: str, *, idempotency_key: str) -> Any:
+        """Compile the sealed draft locally without requesting another model turn."""
+        async with self._recovery_locks.setdefault(run_id, asyncio.Lock()):
+            run = self.get_run(run_id)
+            checkpoint = self._recovery_checkpoint(run_id)
+            fingerprint = hashlib.sha256(json.dumps({"run_id": run_id, "checkpoint": checkpoint,
+                "selection": None, "verify_only": True}, sort_keys=True).encode()).hexdigest()
+            previous = self.store.recovery_replacement(run_id)
+            if previous and previous in self._runs:
+                self.store.reserve_recovery(run_id, idempotency_key, fingerprint)
+                return self._runs[previous]
+            info = self.recovery_info(run_id)
+            action = info["actions"]["verify_locally"]
+            if not action["allowed"]:
+                raise ValueError(str(action["blocking_reason"]))
+            self.store.invalidate_pending_approvals(run_id, "verify_saved_draft")
+            replacement = await self._retry_locked(run_id, request_key=idempotency_key,
+                checkpoint=checkpoint, verify_only=True)
+            self._event(replacement, "runtime.resumed", source_run_id=run_id,
+                checkpoint_id=checkpoint["checkpoint_id"], verification_only=True)
+            return replacement
+
+    async def discard_draft(self, run_id: str) -> Any:
+        async with self._recovery_locks.setdefault(run_id, asyncio.Lock()):
+            run = self.get_run(run_id)
+            if run.status not in TERMINAL_STATUSES and run.status != "paused_model_unavailable":
+                raise ValueError("AGENT_RUNTIME_RUN_NOT_SETTLED")
+            if not run.change_set_id:
+                raise ValueError("AGENT_RECOVERY_DRAFT_UNAVAILABLE")
+            draft = self.change_service.get(run.change_set_id)
+            if draft.status not in {"draft", "discarded"}:
+                raise ValueError("AGENT_RECOVERY_DRAFT_UNAVAILABLE")
+            lease = self.store.acquire_lease(self._session_for_run[run_id], run_id, ttl_seconds=self._lease_ttl_seconds)
+            self._leases[run_id] = lease
+            try:
+                if draft.status == "draft":
+                    self.change_service.discard(draft.change_set_id)
+                run.recoverable = False
+                run.recovery_actions = []
+                self._event(run, "recovery.draft.discarded", message="Recovery draft explicitly discarded")
+                self._persist_run(run)
+                return run
+            finally:
+                self._leases.pop(run_id, None)
+                self.store.release_lease(lease)
+
+    async def recover_jobs(self, job_id: str | None = None) -> None:
+        """Startup-only recovery, never a new authorization or budget reset."""
+        if not self.auto_recovery_enabled or self._closing:
+            return
+        for job in (self.jobs.get(job_id),) if job_id else self.jobs.list():
+            if job["recovery_policy"] != "safe_auto" or job.get("paused_by") in {"user", "budget"}:
+                continue
+            run_id = job["current_run_id"]
+            run = self._runs.get(run_id)
+            if not run or not (run.classification == "AGENT_RUNTIME_INTERRUPTED" or
+                (run.status == "paused_model_unavailable" and run.classification in TRANSIENT_PROVIDER_ERRORS)):
+                continue
+            if self._recovery_workspace_error(run_id) == "AGENT_RESUME_WORKSPACE_UNAVAILABLE":
+                self._record_unavailable_workspace(run)
+                continue
+            if job.get("retry_due_at"):
+                from datetime import datetime, timezone
+                due = datetime.fromisoformat(job["retry_due_at"].replace("Z","+00:00"))
+                if due > datetime.now(timezone.utc):
+                    self._schedule_retry(job["job_id"])
+                    continue
+            if any(job["consumed"][key] >= limit for key, limit in job["limits"].items()):
+                job.update(status="paused", paused_by="budget", blocking_reason="AGENT_JOB_BUDGET_EXHAUSTED")
+                self.jobs.save(job)
+                continue
+            from .jobs import _outage_block
+            outage_reason = _outage_block(job)
+            if outage_reason:
+                self.jobs.mutate(job["job_id"], lambda value: value.update(blocking_reason=outage_reason))
+                continue
+            if run.status == "paused_model_unavailable" and (
+                job["limits"]["elapsed_seconds"] - job["consumed"]["elapsed_seconds"]
+                < recovery_time_reserve(job["limits"])
+            ):
+                job.update(status="paused", paused_by="budget",
+                    blocking_reason="AGENT_JOB_TIME_RESERVE_REQUIRED", retry_due_at=None)
+                self.jobs.save(job)
+                continue
+            if job.get("auto_recovery_count", 0) >= 3:
+                job.update(blocking_reason="AGENT_AUTO_RECOVERY_LIMIT", status="blocked")
+                self.jobs.save(job)
+                continue
+            if run.autonomy == "build_then_confirm_flash":
+                job.update(blocking_reason="AGENT_HARDWARE_REQUIRES_MANUAL_RESUME", status="blocked")
+                self.jobs.save(job)
+                continue
+            # Generation has no local build authority. Each execution boundary
+            # checks project trust; permission changes do not dispatch work.
+            saved_checkpoint = self._recovery_checkpoint(run_id)
+            next_operation = (saved_checkpoint or {}).get("resume", {}).get("next_operation")
+            context = self._recovery_context.get(run_id, {})
+            if next_operation != "generation" and not self.jobs.is_trusted(run.project_id, context.get("workspace_root")):
+                self.jobs.mutate(job["job_id"], lambda value: value.update(status="blocked", blocking_reason="AGENT_PROJECT_TRUST_REQUIRED"))
+                continue  # Older checkpoints have no operation-specific authority.
+            info = self.recovery_info(run_id)
+            if not info["eligible"]:
+                job.update(blocking_reason=info["blocking_reason"], status="blocked")
+                self.jobs.save(job)
+                continue
+            try:
+                if not self.jobs.claim_recovery(job["job_id"], uuid.uuid4().hex):
+                    continue
+                replacement = await self.resume(run_id, checkpoint_id=info["checkpoint_id"],
+                    idempotency_key="auto:" + info["checkpoint_id"], automatic=True)
+                self._event(replacement, "recovery.started", source_run_id=run_id, automatic=True)
+            except (ValueError, OSError):
+                self.jobs.mutate(job["job_id"], lambda value: value.update(status="blocked", blocking_reason="AGENT_AUTO_RECOVERY_BLOCKED"))
+
+    def project_trust_changed(self, project_id: str) -> None:
+        """Refresh eligibility without starting work or resetting an outage."""
+        for job in self.jobs.list(project_id):
+            run = self._runs.get(job["current_run_id"])
+            if run is None:
+                continue
+            if job.get("blocking_reason") == "AGENT_PROJECT_TRUST_REQUIRED" and self.jobs.is_trusted(project_id, job["workspace_root"]):
+                self.jobs.mutate(job["job_id"], lambda value: value.update(blocking_reason=None,
+                    status="paused" if value.get("paused_by") else run.status))
+            self._event(run, "job.permissions.changed", message="Project build permission updated; saved work is preserved.")
+
+    def _schedule_retry(self, job_id):
+        if not self.auto_recovery_enabled or self._closing:
+            return
+        job = self.jobs.get(job_id)
+        from .jobs import _outage_block
+        if job["recovery_policy"] != "safe_auto" or job.get("paused_by") in {"user","budget"} or not job.get("retry_due_at") or job.get("auto_recovery_count",0) >= 3 or _outage_block(job):
+            return
+        prior = self._retry_tasks.get(job_id)
+        if prior and not prior.done():
+            return
+        async def wake():
+            from datetime import datetime, timezone
+            due = datetime.fromisoformat(job["retry_due_at"].replace("Z","+00:00"))
+            await asyncio.sleep(max(0,(due-datetime.now(timezone.utc)).total_seconds()))
+            # A replacement may itself need a later wake; do not let this
+            # currently executing wake suppress its successor.
+            if self._retry_tasks.get(job_id) is asyncio.current_task():
+                self._retry_tasks.pop(job_id, None)
+            await self.recover_jobs(job_id)
+        self._retry_tasks[job_id] = asyncio.create_task(wake(),name="agent-retry:"+job_id)
+
+    async def pause_job(self, job_id: str, *, reason="user") -> dict:
+        job = self.jobs.get(job_id)
+        run = self.get_run(job["current_run_id"])
+        if run.status in TERMINAL_STATUSES and run.classification != "AGENT_RUNTIME_INTERRUPTED":
+            raise ValueError("AGENT_JOB_ALREADY_SETTLED")
+        job.update(paused_by=reason, status="paused")
+        self.jobs.save(job)
+        if run.status not in TERMINAL_STATUSES:
+            await self.cancel(run.run_id, pause_reason=reason)
+        if run.classification != "AGENT_RECOVERY_OUTCOME_UNKNOWN":
+            run.status = "failed"
+            run.classification = "AGENT_RUNTIME_INTERRUPTED"
+            run.recoverable = bool(self._recovery_context.get(run.run_id))
+            run.recovery_actions = ["resume"]
+            self._event(run, "job.paused", reason=reason)
+            self._event(run, "runtime.interrupted", status="failed", message="Task paused; settled work was saved", effect_replay_allowed=False)
+            self._persist_run(run)
+        return self.jobs.public(self.jobs.get(job_id))
+
+    async def resume_job(self, job_id: str, *, idempotency_key: str, provider_id: str | None = None,
+                         model_id: str | None = None, checkpoint_id: str | None = None) -> Any:
+        job = self.jobs.get(job_id)
+        if bool(provider_id) != bool(model_id):
+            raise ValueError("AGENT_RECOVERY_SELECTION_INVALID")
+        selection = {"provider_id": provider_id, "model_id": model_id} if provider_id else None
+        run_id = self.jobs.reserve_resume(job_id,idempotency_key,selection,checkpoint_id)
+        replacement = self.store.recovery_replacement(run_id)
+        if replacement and replacement in self._runs:
+            return self._runs[replacement]
+        info = self.recovery_info(run_id)
+        if checkpoint_id and checkpoint_id != info["checkpoint_id"]:
+            raise ValueError("AGENT_RESUME_CHECKPOINT_CHANGED")
+        if any(job["consumed"][key] >= limit for key, limit in job["limits"].items()):
+            raise ValueError("AGENT_JOB_BUDGET_EXHAUSTED")
+        if job.get("blocking_reason") == "AGENT_JOB_TIME_RESERVE_REQUIRED":
+            raise ValueError("AGENT_JOB_TIME_RESERVE_REQUIRED")
+        if not info["eligible"]:
+            raise ValueError(str(info["blocking_reason"]))
+        job.update(paused_by=None, blocking_reason=None)
+        self.jobs.save(job)
+        return await self.resume(run_id, checkpoint_id=info["checkpoint_id"], idempotency_key=idempotency_key,
+                                 provider_id=provider_id, model_id=model_id)
 
     def get_run(self, run_id: str) -> Any:
         with self._lock:
             if run_id not in self._runs:
                 raise KeyError(run_id)
-            return self._runs[run_id]
+            run = self._runs[run_id]
+            if getattr(run, "job_id", None):
+                run.job = self.jobs.public(self.jobs.get(run.job_id))
+            if hasattr(run, "recovery"):
+                run.recovery = self.recovery_info(run_id) if run.recoverable else None
+            return run
 
     def owns(self, run_id: str) -> bool:
         with self._lock:
@@ -382,8 +865,15 @@ class AgentOrchestrator:
         return self.store.events(session_id, after_sequence=after_sequence)
 
     def session_projection(self, session_id: str) -> dict[str, object]:
-        events = self.store.events(session_id, after_sequence=0)
-        state = self.projections.rebuild(session_id, events)
+        checkpoint = self.store.projection_checkpoint(session_id, "default")
+        state = SessionProjection.from_dict(checkpoint["payload"]) if checkpoint and checkpoint["reducer_version"] == PROJECTION_REDUCER_VERSION else SessionProjection(session_id=session_id)
+        previous_sequence = state.session_seq
+        for event in self.store.snapshot_events(session_id, after_sequence=state.session_seq, observation=True):
+            self.projections.apply_event(state, event)
+        if state.session_seq != previous_sequence or checkpoint is None:
+            self.store.save_projection_checkpoint(session_id, "default", session_seq=state.session_seq,
+                reducer_version=PROJECTION_REDUCER_VERSION, payload=state.to_dict())
+        # Transient frames are applied to this response, never to a durable cursor.
         with self._lock:
             run_ids = [
                 run_id for run_id, owner_session in self._session_for_run.items()
@@ -393,13 +883,6 @@ class AgentOrchestrator:
                 for frame in self._transient_events.get(run_id, ()):
                     self.projections.apply_transient(state, frame)
         payload = state.to_dict()
-        self.store.save_projection_checkpoint(
-            session_id,
-            "default",
-            session_seq=state.session_seq,
-            reducer_version=PROJECTION_REDUCER_VERSION,
-            payload=payload,
-        )
         return payload
 
     def transient_events(self, run_id: str, *, after_transient_sequence: int = 0) -> tuple[dict[str, object], ...]:
@@ -451,20 +934,33 @@ class AgentOrchestrator:
     def append_chat_event(self, session_id: str, payload: Mapping[str, object]) -> dict[str, object]:
         return self.store.append_event(session_id, payload)
 
-    async def cancel(self, run_id: str) -> Any:
+    async def cancel(self, run_id: str, *, pause_reason: str | None = None) -> Any:
+        async with self._cancel_locks.setdefault(run_id, asyncio.Lock()):
+            return await self._cancel_locked(run_id, pause_reason=pause_reason)
+
+    async def _cancel_locked(self, run_id: str, *, pause_reason: str | None = None) -> Any:
         run = self.get_run(run_id)
         if run.status in TERMINAL_STATUSES:
             return run
         run.status = "cancelling"
+        self._cancelling_runs.add(run_id)
         run.cancel_event.set()
         self._event(run, "cancellation.requested", message="Cancellation requested")
         # Fence future host capabilities before touching the active task.
-        self.policy_engine.revoke_run(run_id)
+        self.policy_engine.fence_run(run_id)
+        cleanup_failed = False
         if self.cancel_executor is not None:
             try:
-                await self.cancel_executor(run)
+                cleanup = asyncio.create_task(self.cancel_executor(run))
+                done, _ = await asyncio.wait({cleanup}, timeout=5.0)
+                if done:
+                    await cleanup
+                else:
+                    cleanup.cancel()
+                    cleanup_failed = True
             except Exception:
                 logger.exception("ForgeX cancellation executor failed for %s", run_id)
+                cleanup_failed = True
         task = self._tasks.get(run_id)
         if task and not task.done() and task is not asyncio.current_task():
             try:
@@ -472,19 +968,55 @@ class AgentOrchestrator:
             except asyncio.TimeoutError:
                 task.cancel()
                 try:
-                    await task
+                    done, _ = await asyncio.wait({task}, timeout=2.0)
+                    if not done:
+                        cleanup_failed = True
                 except (asyncio.CancelledError, Exception):
                     pass
             except (asyncio.CancelledError, Exception):
                 pass
-        run.status = "cancelled"
-        run.classification = "AGENT_RUNTIME_CANCELLED"
+        self.store.interrupt_operations(run_id)
+        uncertain = cleanup_failed or any(item["status"] == "unknown" for item in self.store.operations(run_id))
+        run.status = "blocked" if uncertain else ("failed" if pause_reason else "cancelled")
+        run.classification = "AGENT_RECOVERY_OUTCOME_UNKNOWN" if uncertain else ("AGENT_RUNTIME_INTERRUPTED" if pause_reason else "AGENT_RUNTIME_CANCELLED")
+        self._retain_sealed_checkpoint(run)
+        if uncertain:
+            run.recoverable = False
+            run.recovery_actions = []
+        if pause_reason and not uncertain:
+            run.recoverable = bool(self._recovery_context.get(run_id))
+            run.recovery_actions = ["resume"]
         self._cancel_active_nodes(run_id)
-        self._event(run, "runtime.cancelled", message="Action run cancelled after safe drain")
+        self._cancelling_runs.discard(run_id)
+        self._event(run, "runtime.blocked" if uncertain else ("runtime.interrupted" if pause_reason else "runtime.cancelled"), message="Cancellation needs outcome review" if uncertain else ("Task paused after safe drain" if pause_reason else "Action run cancelled after safe drain"))
         self._persist_run(run)
         return run
 
+    def _apply_changes(self, run: Any, change_set_id: str) -> Any:
+        operation_id = f"{run.run_id}:apply:{change_set_id}"
+        payload = {"change_set_id": change_set_id}
+        self.store.operation(operation_id, run.run_id, "workspace.apply", status="prepared", payload=payload)
+        if run.cancel_event.is_set():
+            raise ValueError("AGENT_RUNTIME_CANCELLED")
+        self.store.operation(operation_id, run.run_id, "workspace.apply", status="started", payload=payload)
+        try:
+            result = self.change_service.apply(change_set_id)
+        except BaseException:
+            self.store.operation(operation_id, run.run_id, "workspace.apply", status="unknown", payload=payload)
+            raise
+        self.store.operation(operation_id, run.run_id, "workspace.apply", status="completed", payload=payload)
+        return result
+
     def apply_pending_changes(self, run_id: str) -> Any:
+        grant = self.store.acquire_lease(self._session_for_run[run_id], run_id, ttl_seconds=self._lease_ttl_seconds)
+        self._leases[run_id] = grant
+        try:
+            return self._apply_pending_changes_impl(run_id)
+        finally:
+            self._leases.pop(run_id, None)
+            self.store.release_lease(grant)
+
+    def _apply_pending_changes_impl(self, run_id: str) -> Any:
         """Apply a reviewed/staged ChangeSet after explicit local user approval."""
 
         run = self.get_run(run_id)
@@ -512,7 +1044,7 @@ class AgentOrchestrator:
         try:
             self.policy_engine.validate_service(grant, "workspace_stage", workspace)
             self._start_node(run, "apply")
-            applied = self.change_service.apply(change_set.change_set_id)
+            applied = self._apply_changes(run, change_set.change_set_id)
             fresh = self.change_service.inspect_workspace(workspace)
             changed_paths = [item.path for item in applied.changed_files]
             self.memory.invalidate_for_change(
@@ -597,6 +1129,8 @@ class AgentOrchestrator:
         if _approved_artifact_hash(run) is None:
             raise ValueError("AGENT_RUNTIME_VERIFIED_BUILD_NOT_FOUND")
         build = run.build_result if isinstance(run.build_result, Mapping) else {}
+        if not isinstance(build.get("artifact_manifest"), Mapping):
+            raise ValueError("SEALED_UPLOAD_REQUIRED")
         expected_revision = build.get("workspace_revision")
         if isinstance(expected_revision, str) and expected_revision:
             current_revision = self.change_service.inspect_workspace(self._capability_root(run)).revision
@@ -629,7 +1163,31 @@ class AgentOrchestrator:
         self._persist_run(run)
         return run
 
-    async def confirm_flash(
+    async def confirm_flash(self, run_id: str, **kwargs: object) -> Any:
+        async with self._recovery_locks.setdefault(run_id, asyncio.Lock()):
+            run = self.get_run(run_id)
+            if run.status != "awaiting_flash_confirmation":
+                raise ValueError("AGENT_RUNTIME_FLASH_CONFIRMATION_NOT_READY")
+            prior = self._tasks.get(run_id)
+            if prior and not prior.done():
+                await asyncio.wait_for(asyncio.shield(prior), timeout=5)
+            return await self._acquire_flash(run_id, **kwargs)
+
+    async def _acquire_flash(self, run_id: str, **kwargs: object) -> Any:
+        run = self.get_run(run_id)
+        if run.status != "awaiting_flash_confirmation":
+            raise ValueError("AGENT_RUNTIME_FLASH_CONFIRMATION_NOT_READY")
+        grant = self.store.acquire_lease(self._session_for_run[run_id], run_id, ttl_seconds=self._lease_ttl_seconds)
+        self._leases[run_id] = grant
+        try:
+            return await self._confirm_flash_impl(run_id, **kwargs)
+        except BaseException:
+            self.policy_engine.revoke_run(run_id)
+            self._leases.pop(run_id, None)
+            self.store.release_lease(grant)
+            raise
+
+    async def _confirm_flash_impl(
         self,
         run_id: str,
         *,
@@ -670,6 +1228,11 @@ class AgentOrchestrator:
         for service in flash_services:
             self.policy_engine.validate_service(flash_grant, service, capability_root)
         current_revision = self.change_service.inspect_workspace(capability_root).revision
+        flash_operation = f"{run_id}:flash:{run.approval_id}"
+        flash_payload = _flash_binding(run, port=proposed_port, board_type=proposed_board_type,
+            environment=proposed_environment, start_monitor_after_flash=proposed_monitor,
+            workspace_revision=current_revision)
+        self.store.operation(flash_operation, run_id, "hardware.flash", status="prepared", payload=flash_payload)
         self.approvals.consume(
             run.approval_id,
             action_type="flash",
@@ -698,6 +1261,9 @@ class AgentOrchestrator:
 
         async def execute() -> None:
             try:
+                if run.cancel_event.is_set():
+                    raise asyncio.CancelledError()
+                self.store.operation(flash_operation, run_id, "hardware.flash", status="started", payload=flash_payload)
                 result = await self.flash_executor(_FlashRequest(
                     run_id=run.run_id,
                     project_id=run.project_id,
@@ -707,10 +1273,13 @@ class AgentOrchestrator:
                     start_monitor_after_flash=run.start_monitor_after_flash,
                     expected_artifact_hash=_approved_artifact_hash(run),
                     progress_callback=progress,
+                    artifact_manifest=run.build_result.get("artifact_manifest") if run.build_result else None,
                 ))
                 run.flash_result = _safe_mapping(result.get("flash_result"))
                 run.monitor_result = _safe_mapping(result.get("monitor_result"))
-                run.build_result = _safe_mapping(result.get("build_result")) or run.build_result
+                run.build_result = {**(run.build_result or {}), **(_safe_mapping(result.get("build_result")) or {})}
+                self.store.operation(flash_operation, run_id, "hardware.flash",
+                    status="completed" if result.get("success") is True else "unknown", payload=flash_payload)
                 if result.get("success") is True:
                     run.status = "completed"
                     run.classification = str(result.get("classification") or "FLASH_COMPLETED")
@@ -725,6 +1294,7 @@ class AgentOrchestrator:
                     self._event(run, "runtime.failed", status="failed", message="Flash failed")
                 self._persist_run(run)
             except asyncio.CancelledError:
+                self.store.interrupt_operations(run_id)
                 run.status = "cancelled"
                 run.classification = "AGENT_RUNTIME_CANCELLED"
                 _set_run_stage(run, "flash", "cancelled", "Flash cancelled")
@@ -732,6 +1302,7 @@ class AgentOrchestrator:
                 self._event(run, "runtime.cancelled", message="Flash cancelled")
                 raise
             except Exception as exc:
+                self.store.interrupt_operations(run_id)
                 run.status = "failed"
                 run.classification = type(exc).__name__
                 _set_run_stage(run, "flash", "failed", str(exc) or type(exc).__name__)
@@ -741,10 +1312,40 @@ class AgentOrchestrator:
             finally:
                 self.policy_engine.revoke_run(run.run_id)
 
-        self._tasks[run_id] = asyncio.create_task(owned_operation(run_id, execute()), name=f"orchestrator:{run_id}:flash")
+        async def execute_owned_flash():
+            try:
+                await self._run_with_lease_heartbeat(run_id, execute())
+            except AgentSessionLeaseLost:
+                run.status = "blocked"
+                run.classification = "AGENT_RECOVERY_OUTCOME_UNKNOWN"
+                self.store.interrupt_operations(run_id)
+                self._persist_run(run)
+            finally:
+                grant = self._leases.pop(run_id, None)
+                if grant:
+                    try:
+                        self.store.release_lease(grant)
+                    except ValueError:
+                        pass
+        self._tasks[run_id] = asyncio.create_task(owned_operation(run_id, execute_owned_flash()), name=f"orchestrator:{run_id}:flash")
         return run
 
     async def close(self) -> None:
+        self._closing = True
+        retry_tasks = tuple(self._retry_tasks.values())
+        for retry_task in retry_tasks:
+            retry_task.cancel()
+        if retry_tasks:
+            await asyncio.gather(*retry_tasks,return_exceptions=True)
+        for run_id, task in tuple(self._tasks.items()):
+            if not task.done():
+                run = self._runs[run_id]
+                if run.status in TERMINAL_STATUSES:
+                    continue  # A terminal projection can precede lease cleanup.
+                if run.job_id:
+                    await self.pause_job(run.job_id, reason="shutdown")
+                else:
+                    await self.cancel(run_id)
         tasks = tuple(task for task in self._tasks.values() if not task.done())
         for task in tasks:
             task.cancel()
@@ -842,12 +1443,23 @@ class AgentOrchestrator:
                     requires_write=requires_write,
                     requires_build=requires_build,
                 )
-                return await asyncio.to_thread(
-                    runtime.run_product,
+                job = self.jobs.get(run.job_id)
+                from .lifecycle import bind_job_resources
+                bind_job_resources(selected_planner, self.jobs, job, run.run_id)
+                recovery_binder = getattr(selected_planner, "bind_recovery_events", None)
+                if callable(recovery_binder):
+                    recovery_binder(lambda event: self._runtime_event(run, event))
+                saved = (self._recovery_context[run.run_id].get("resume_checkpoint") or {}).get("resume",{})
+                job_limits = replace(self.limits,
+                    max_total_tool_calls=int(job["limits"]["tool_calls_used"]),
+                    max_runtime_seconds=float(job["limits"]["elapsed_seconds"]),
+                    max_turns=int(saved.get("turn",0))+self.limits.max_turns)
+                return await runtime.run_product_async(
                     task=instruction,
+                    environment=run.flash_environment,
                     planner=selected_planner,
                     policy=profile.policy(max_bytes_per_file=self.limits.max_bytes_per_file),
-                    limits=self.limits,
+                    limits=job_limits,
                     cancel_event=run.cancel_event,
                     event_callback=lambda event: self._runtime_event(run, event),
                     policy_engine=self.policy_engine,
@@ -864,10 +1476,13 @@ class AgentOrchestrator:
                     memory_entries=memories,
                     steering_callback=lambda: self._consume_steering(run.run_id),
                     allow_no_changes_success=profile.allow_no_changes,
+                    task_contract=run.task_contract if run.autonomy not in {"read_only", "plan_only"} else None,
+                    budget_consumed=job["consumed"],
                     retry_change_set_id=(
                         self.get_run(run.retry_of_run_id).change_set_id
-                        if run.retry_of_run_id else None
+                        if run.retry_of_run_id and not self._recovery_context[run.run_id].get("resume_checkpoint") else None
                     ),
+                    resume_checkpoint=(self._recovery_context[run.run_id].get("resume_checkpoint") or {}).get("resume"),
                     retry_context=(
                         {"classification": str(self.get_run(run.retry_of_run_id).classification or "")[:100],
                          "message": str(self.get_run(run.retry_of_run_id).assistant_message_override or "")[:1000]}
@@ -923,6 +1538,12 @@ class AgentOrchestrator:
                 return
             if result.classification is not RuntimeClassification.PASS or not result.change_set_id:
                 self._fail_node(run, "implementation", str(run.classification or result.classification.value))
+                if run.status not in TERMINAL_STATUSES:
+                    run.status = "failed"
+                self._skip_pending_nodes(run, "Not reached after planner failure")
+                self._event(run, "runtime.blocked" if run.status == "blocked" else "runtime.failed",
+                            status=run.status, classification=run.classification,
+                            message=run._assistant_message() or "Planner could not complete the request")
                 return
             self._complete_node(run, "implementation", "Staged ChangeSet created", artifact_id=result.change_set_id)
             self._start_node(run, "validation")
@@ -955,9 +1576,9 @@ class AgentOrchestrator:
             scoped_apply_allowed = assessment.scoped_auto_apply_allowed or (
                 explicit_edit_authorized and assessment.level == "medium" and reviewer_approved
             )
-            if scoped_apply_allowed:
+            if scoped_apply_allowed and run.autonomy != "review_changes":
                 self._start_node(run, "apply")
-                applied = self.change_service.apply(result.change_set_id)
+                applied = self._apply_changes(run, result.change_set_id)
                 run.active_workspace_unchanged = False
                 self._complete_node(run, "apply", "Scoped edit authorization applied the ChangeSet", artifact_id=applied.change_set_id)
                 fresh = self.change_service.inspect_workspace(workspace)
@@ -985,7 +1606,7 @@ class AgentOrchestrator:
             self._event(run, "runtime.completed", status="completed", message="Action run completed")
             self._persist_run(run)
         except asyncio.CancelledError:
-            if run.status != "cancelled":
+            if run.status not in {"cancelled", "cancelling"}:
                 run.status = "cancelled"
                 run.classification = "AGENT_RUNTIME_CANCELLED"
                 self._cancel_active_nodes(run.run_id)
@@ -1011,7 +1632,8 @@ class AgentOrchestrator:
         if self.autonomous_executor is None:
             run.status = "failed"
             run.classification = "AGENT_RUNTIME_AUTONOMOUS_WORKFLOW_UNAVAILABLE"
-            self._persist_run(run)
+            self._event(run, "runtime.failed", status="failed", classification=run.classification,
+                        message="Firmware workflow is unavailable")
             return
         stage: Path | None = None
         baseline = None
@@ -1023,9 +1645,18 @@ class AgentOrchestrator:
                 target = stage.joinpath(*relative.split("/"))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
+            saved_checkpoint = (self._recovery_context[run.run_id].get("resume_checkpoint") or {}).get("resume")
+            verify_only = active_workspace.get("agent_verify_saved_draft") is True
+            if saved_checkpoint and not verify_only:
+                copy_checkpoint_tree(saved_checkpoint["stage_path"], stage)
+                for relative in saved_checkpoint.get("deleted_paths", ()):
+                    target = stage.joinpath(*str(relative).split("/"))
+                    target.relative_to(stage)
+                    if target.is_file():
+                        target.unlink()
             if run.retry_of_run_id:
                 previous = self.get_run(run.retry_of_run_id)
-                if previous.change_set_id:
+                if previous.change_set_id and (not saved_checkpoint or verify_only):
                     previous_change_set = self.change_service.get(previous.change_set_id)
                     if previous_change_set.status == "draft":
                         self.change_service.materialize_review_draft(
@@ -1041,6 +1672,8 @@ class AgentOrchestrator:
                     "changed_paths": (previous.created_files + previous.modified_files + previous.deleted_files)[:100],
                 }
             sandbox_workspace = dict(active_workspace)
+            if saved_checkpoint:
+                sandbox_workspace["agent_resume_checkpoint"] = saved_checkpoint
             if run.retry_of_run_id:
                 sandbox_workspace["agent_retry_context"] = sandbox_retry_context
             sandbox_workspace["agent_skill_root"] = str(workspace)
@@ -1062,7 +1695,27 @@ class AgentOrchestrator:
             self._start_node(run, "implementation")
 
             async def progress(event: str, payload: Mapping[str, object]) -> None:
+                if event in {"turn.settled", "runtime.admitted", "tool.checkpoint"} and isinstance(payload.get("_resume_checkpoint"), dict):
+                    checkpoint = dict(payload["_resume_checkpoint"])
+                    snapshot = self.change_service.create_stage("checkpoint-" + uuid.uuid4().hex)
+                    copy_checkpoint_tree(stage, snapshot)
+                    checkpoint.update(stage_path=str(snapshot), stage_revision=self.change_service.inspect_workspace(snapshot).revision,
+                                      workspace_revision=baseline.revision, stage_mode="full")
+                    payload = {**payload, "_resume_checkpoint": checkpoint}
                 self._runtime_event(run, {"event_type": event.casefold(), **dict(payload)})
+
+            # Every attempt owns a sealed starting point, even if its first
+            # provider request fails before another turn can settle.
+            admission = dict(saved_checkpoint or {"turn": 0, "observations": [], "plan": [],
+                "tool_calls_used": 0, "elapsed_seconds": 0,
+                "deleted_paths": [], "authorized_paths": []})
+            job = self.jobs.get(run.job_id)
+            for counter in ("tool_calls_used", "elapsed_seconds"):
+                admission[counter] = max(admission.get(counter, 0), job["consumed"][counter])
+            admission["provider_budget"] = {key: job["consumed"][key]
+                for key in ("requests", "output_tokens", "input_bytes")}
+            await progress("runtime.admitted", {"turn": admission["turn"],
+                "tool_count": admission["tool_calls_used"], "_resume_checkpoint": admission})
 
             request = _WorkflowRequest(
                 run_id=run.run_id,
@@ -1079,7 +1732,8 @@ class AgentOrchestrator:
                 session_id=self._session_for_run[run.run_id],
             )
             workflow_services = ["workspace_stage", "build"]
-            requires_network = run.provider_id not in {"verified_template", "fake_planner"}
+            requires_network = (sandbox_workspace.get("agent_verify_saved_draft") is not True
+                and run.provider_id not in {"verified_template", "fake_planner"})
             if requires_network:
                 workflow_services.append("network")
             workflow_grant = self.policy_engine.issue_grant(
@@ -1098,22 +1752,25 @@ class AgentOrchestrator:
                 self.policy_engine.validate_service(workflow_grant, service, stage)
             run.status = "running"
             result = await self.autonomous_executor(request)
-            diagnostics = result.get("provider_diagnostics")
-            if isinstance(diagnostics, Mapping):
-                for name in (
-                    "outbound_request_count", "physical_request_count",
-                    "request_reached_provider", "http_status", "provider_request_id",
-                    "retry_after_ms", "last_turn", "response_mode",
-                    "last_failure_code", "last_repair_outcome",
-                    "last_parse_reason", "last_failure_origin", "last_response_shape", "last_response_tool_count", "stream_fallback_used",
-                ):
-                    value = diagnostics.get(name)
-                    if isinstance(value, (str, int, bool, type(None))) and hasattr(run, name):
-                        setattr(run, name, value)
+            if run.cancel_event.is_set():
+                # The cancellation owner seals the final projection. A worker
+                # returning late must not publish another outcome or live draft.
+                return
+            apply_provider_diagnostics(run, result.get("provider_diagnostics"))
+            if isinstance(result.get("budget_failure"), Mapping) and result["budget_failure"]:
+                run.budget_failure = dict(result["budget_failure"])
             run.build_result = _safe_mapping(result.get("build_result"))
+            run.build_verified = result.get("build_verified") is True and bool(run.build_result and run.build_result.get("success") is True)
+            run.tool_execution_count = max(run.tool_execution_count, int(result.get("tool_execution_count") or 0))
+            run.requirement_report = _safe_mapping(result.get("requirement_report"))
+            run.task_state = _safe_mapping(result.get("task_state"))
             run.simulation_result = _safe_mapping(result.get("simulation_result"))
             if run.build_result:
-                _set_run_stage(run, "build", "completed" if run.build_result.get("success") is True else "failed", str(run.build_result.get("message") or "Build completed"))
+                build_status = (
+                    "blocked" if run.build_result.get("error_code") == "AGENT_PROJECT_TRUST_REQUIRED"
+                    else "completed" if run.build_result.get("success") is True else "failed"
+                )
+                _set_run_stage(run, "build", build_status, str(run.build_result.get("message") or "Build completed"))
             raw_plan = result.get("plan")
             run.agent_plan = [
                 {"text": str(item.get("text") or ""), "status": str(item.get("status") or "pending")}
@@ -1123,6 +1780,8 @@ class AgentOrchestrator:
             run.validation_report = _safe_mapping(result.get("validation_report"))
             repair_count = result.get("repair_attempt_count")
             run.repair_attempt_count = repair_count if isinstance(repair_count, int) and not isinstance(repair_count, bool) else 0
+            history = result.get("repair_history")
+            run.repair_history = [dict(item) for item in history[-32:] if isinstance(item, Mapping)] if isinstance(history, list) else []
             run.pending_decision = result.get("pending_decision") is True
             alternatives = result.get("suggested_alternatives")
             run.suggested_alternatives = [str(item) for item in alternatives if isinstance(item, str)][:10] if isinstance(alternatives, list) else []
@@ -1130,6 +1789,7 @@ class AgentOrchestrator:
             if result.get("success") is not True:
                 failure_message = str(result.get("message") or "Workflow failed")
                 failure_code = str(result.get("classification") or "")
+                draft = None
                 if _recovery_draft_allowed(failure_code):
                     try:
                         draft = self.change_service.create_review_draft(
@@ -1163,18 +1823,61 @@ class AgentOrchestrator:
                         run.deleted_file_count = len(run.deleted_files)
                         run.recoverable = True
                         run.recovery_actions = ["retry"]
-                        failure_message += " Generated files were saved as an unverified recovery draft. Retry to repair and validate them."
+                verified_partial = (
+                    draft is not None
+                    and result.get("build_verified") is True
+                    and run.build_result is not None
+                    and run.build_result.get("success") is True
+                    and run.autonomy != "simulate"
+                    and failure_code in {
+                        "MODEL_OUTPUT_NOT_JSON", "TOOLPLAN_SCHEMA_INVALID",
+                        "TOOLPLAN_VERSION_INVALID", "TOOLPLAN_TOOL_UNKNOWN",
+                        "TOOL_ARGUMENTS_INVALID",
+                        "MODEL_OUTPUT_TRUNCATED", "PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE", "PROVIDER_BUSY",
+                        "DRAFT_BUILD_VERIFIED",
+                    }
+                )
+                if draft is not None:
+                    failure_message += (
+                        " Verified files and build were saved in a review draft. Review them or retry for a complete response."
+                        if run.build_verified
+                        else " Generated files were saved as an unverified recovery draft. Allow local builds, then verify the saved draft."
+                        if failure_code == "AGENT_PROJECT_TRUST_REQUIRED"
+                        else " Generated files were saved as an unverified recovery draft. Retry to repair and validate them."
+                    )
                 active_failure_node = "validation" if self._nodes[run.run_id]["validation"].status == "running" else "implementation"
-                self._fail_node(run, active_failure_node, failure_message)
-                run.status = "blocked" if result.get("blocked") is True else "failed"
+                if failure_code == "AGENT_PROJECT_TRUST_REQUIRED":
+                    node = self._nodes[run.run_id][active_failure_node]
+                    node.status = "waiting"
+                    node.message = failure_message[:512]
+                    self.store.save_node(run.run_id, node.node_id, node.status, node.to_dict())
+                else:
+                    self._fail_node(run, active_failure_node, failure_message)
+                run.status = "completed_with_warning" if verified_partial else (
+                    "blocked" if result.get("blocked") is True or failure_code == "AGENT_PROJECT_TRUST_REQUIRED"
+                    else "failed"
+                )
                 run.classification = str(result.get("classification") or "AUTONOMOUS_WORKFLOW_FAILED")
+                if run.classification in TRANSIENT_PROVIDER_ERRORS:
+                    run.status = "paused_model_unavailable"
+                    run.recoverable = True
+                    run.recovery_actions = ["resume"]
+                    node = self._nodes[run.run_id][active_failure_node]
+                    node.status = "waiting"
+                    node.message = ("Waiting for another ForgeX task to release this model endpoint"
+                                    if run.classification == "PROVIDER_BUSY" else "Waiting for the selected model endpoint")
+                    self.store.save_node(run.run_id, node.node_id, node.status, node.to_dict())
                 if run.pending_decision and run.suggested_alternatives:
                     failure_message += " Compatible options: " + ", ".join(run.suggested_alternatives) + "."
-                run.assistant_message_override = failure_message[:1000]
+                run.assistant_message_override = (
+                    "Firmware build verified. Changes are saved in a review draft; "
+                    "Task completion still needs verification. Review the draft or continue the task."
+                    if verified_partial else failure_message[:1000]
+                )
                 self._skip_pending_nodes(run, "Not reached after project validation stopped the workflow")
                 self._event(
                     run,
-                    "runtime.blocked" if run.status == "blocked" else "runtime.failed",
+                    "runtime.paused_model_unavailable" if run.status == "paused_model_unavailable" else ("runtime.completed_with_warning" if verified_partial else ("runtime.blocked" if run.status == "blocked" else "runtime.failed")),
                     status=run.status,
                     message=failure_message,
                     classification=run.classification,
@@ -1253,7 +1956,7 @@ class AgentOrchestrator:
                 scoped_apply = assessment.scoped_auto_apply_allowed or (
                     explicit_edit_authorized and assessment.level == "medium" and reviewer_approved
                 )
-                if not scoped_apply:
+                if not scoped_apply or run.autonomy == "review_changes":
                     run.status = "completed"
                     run.classification = "CHANGESET_APPROVAL_REQUIRED"
                     self._skip_node(run, "apply", "Staged changes require explicit approval")
@@ -1262,7 +1965,7 @@ class AgentOrchestrator:
                     self._persist_run(run)
                     return
                 self._start_node(run, "apply")
-                applied = self.change_service.apply(change_set.change_set_id)
+                applied = self._apply_changes(run, change_set.change_set_id)
                 run.active_workspace_unchanged = False
                 self._complete_node(run, "apply", "Scoped edit authorization applied the built ChangeSet", artifact_id=applied.change_set_id)
                 fresh = self.change_service.inspect_workspace(workspace)
@@ -1291,7 +1994,7 @@ class AgentOrchestrator:
                 self.memory.add_verified(
                     project_id=run.project_id,
                     kind="verified_build",
-                    value=str(result.get("message") or "Build completed"),
+                    value=_verified_build_memory_value(run.build_result),
                     source_type="build_result",
                     source_id=run.run_id,
                     source_payload=json.dumps(run.build_result, ensure_ascii=True, sort_keys=True),
@@ -1304,7 +2007,7 @@ class AgentOrchestrator:
                     board_id=run.flash_board_type,
                 )
             if run.autonomy == "build_then_confirm_flash":
-                if _approved_artifact_hash(run) is None:
+                if _approved_artifact_hash(run) is None or not (run.build_result or {}).get("artifact_manifest"):
                     run.status = "failed"
                     run.classification = "BUILD_ARTIFACT_DIGEST_UNAVAILABLE"
                     self._fail_node(run, "flash", "A verified firmware digest is required before flash approval")
@@ -1339,12 +2042,15 @@ class AgentOrchestrator:
                 self._event(run, "runtime.completed", status="completed", message=("Simulation completed" if run.autonomy == "simulate" else "Build completed"))
             self._persist_run(run)
         except asyncio.CancelledError:
-            run.status = "cancelled"
-            run.classification = "AGENT_RUNTIME_CANCELLED"
-            self._cancel_active_nodes(run.run_id)
-            self._event(run, "runtime.cancelled", message="Action run cancelled")
+            if run.status not in TERMINAL_STATUSES and run.status != "cancelling":
+                run.status = "cancelled"
+                run.classification = "AGENT_RUNTIME_CANCELLED"
+                self._cancel_active_nodes(run.run_id)
+                self._event(run, "runtime.cancelled", message="Action run cancelled")
             raise
         except Exception as exc:
+            if run.cancel_event.is_set():
+                return
             logger.exception(
                 "agent autonomous workflow finalization failed run_id=%s",
                 run.run_id,
@@ -1391,7 +2097,43 @@ class AgentOrchestrator:
                 if run.change_set_id:
                     retained_stage = Path(self.change_service.get(run.change_set_id).staging_root)
                 if retained_stage is None or retained_stage.resolve() != stage.resolve():
-                    shutil.rmtree(stage, ignore_errors=True)
+                    if run.cancel_event.is_set() or run.classification == "AGENT_RECOVERY_OUTCOME_UNKNOWN":
+                        self._recovery_context[run.run_id]["quarantined_stage_path"] = str(stage)
+                    else:
+                        shutil.rmtree(stage, ignore_errors=True)
+
+    def _retain_sealed_checkpoint(self, run: Any) -> None:
+        """Idempotent finalization from a sealed boundary, never a live worker stage."""
+        if run.change_set_id:
+            return
+        try:
+            from .recovery_draft import retain_checkpoint_draft
+            checkpoint = self._recovery_checkpoint(run.run_id)
+            context = self._recovery_context.get(run.run_id, {})
+            if not checkpoint or not isinstance(checkpoint.get("resume"), dict):
+                return
+            self.store.require_healthy_journal(self._session_for_run[run.run_id])
+            workspace_error = self._recovery_workspace_error(run.run_id)
+            if workspace_error:
+                if workspace_error == "AGENT_RESUME_WORKSPACE_UNAVAILABLE":
+                    self._record_unavailable_workspace(run)
+                return
+            draft = retain_checkpoint_draft(self.change_service, provider_id=run.provider_id,
+                workspace_root=context["workspace_root"], checkpoint=checkpoint["resume"],
+                authorization_id=run.run_id + ":" + str(checkpoint.get("checkpoint_id")))
+            if draft is None:
+                return
+            run.change_set_id = draft.change_set_id
+            for kind in ("created", "modified", "deleted"):
+                paths = [item.path for item in draft.changed_files if item.change_type == kind]
+                setattr(run, kind + "_files", paths)
+                setattr(run, kind + "_file_count", len(paths))
+            unknown = any(item["status"] in {"started", "unknown"} for item in self.store.operations(run.run_id))
+            run.recoverable = not unknown
+            run.recovery_actions = ["resume"] if not unknown else []
+            context["last_safe_checkpoint"] = checkpoint
+        except (ChangeSetError, OSError, ValueError, KeyError):
+            logger.warning("Cannot retain sealed recovery draft run_id=%s", run.run_id, exc_info=True)
 
     def _retain_draft_after_unexpected_failure(
         self, run: Any, *, workspace: Path, stage: Path, baseline: Any,
@@ -1419,6 +2161,9 @@ class AgentOrchestrator:
         run.recovery_actions = ["retry"]
 
     async def _review(self, run: Any, change_set: Mapping[str, object], assessment: RiskAssessment) -> str:
+        clock = self._attempt_clocks.get(run.run_id)
+        if clock:
+            self.jobs.record_elapsed(run.job_id, clock[1] + time.monotonic() - clock[0])
         self._start_node(run, "review")
         if self.reviewer is None:
             self._complete_node(run, "review", "Reviewer unavailable; explicit approval required")
@@ -1440,6 +2185,7 @@ class AgentOrchestrator:
             "routing": {
                 "provider_id": run.provider_id, "model_id": run.model_id,
                 "session_id": self._session_for_run[run.run_id],
+                "run_id": run.run_id, "job_id": run.job_id,
             },
         })
         verdict = str(response.get("verdict") or "block").casefold()
@@ -1466,18 +2212,10 @@ class AgentOrchestrator:
         run.modified_file_count = result.modified_file_count
         run.deleted_file_count = result.deleted_file_count
         run.tool_execution_count = result.tool_execution_count
+        run.requirement_report = dict(result.requirement_report) if result.requirement_report else None
         run.agent_plan = [dict(item) for item in result.plan]
         run.active_workspace_unchanged = result.active_workspace_unchanged
-        diagnostics = result.provider_diagnostics
-        run.outbound_request_count = int(diagnostics.get("outbound_request_count", 0) or 0)
-        run.physical_request_count = int(diagnostics.get("physical_request_count", 0) or 0)
-        run.request_reached_provider = diagnostics.get("request_reached_provider") is True
-        http_status = diagnostics.get("http_status")
-        run.http_status = http_status if isinstance(http_status, int) and not isinstance(http_status, bool) else None
-        request_id = diagnostics.get("provider_request_id")
-        run.provider_request_id = request_id if isinstance(request_id, str) else None
-        retry_after = diagnostics.get("retry_after_ms")
-        run.retry_after_ms = retry_after if isinstance(retry_after, int) and retry_after >= 0 else None
+        apply_provider_diagnostics(run, result.provider_diagnostics)
         if run.classification in {
             "API_RATE_LIMITED",
             "PROVIDER_RATE_LIMITED",
@@ -1582,8 +2320,50 @@ class AgentOrchestrator:
                 self._skip_node(run, node.node_id, message)
 
     def _runtime_event(self, run: Any, event: Mapping[str, object]) -> None:
+        if run.cancel_event.is_set() and run.status in TERMINAL_STATUSES:
+            return
+        if run.cancel_event.is_set() and str(event.get("event_type") or "").casefold() not in {
+            "runtime.cancelled", "cancellation.requested", "turn.settled", "tool.checkpoint",
+            "tool.result.committed", "tool.execution.settled", "tool_completed", "tool_failed",
+            "tool_outcome_unknown", "build_completed", "build_failed"}:
+            return
         payload = dict(event)
+        if payload.get("event_type") == "model.request.progress":
+            for key in ("physical_attempt_id", "response_headers_received", "request_reached_provider", "http_status", "first_event_ms", "last_event_ms", "stream_event_count"):
+                if key in payload:
+                    setattr(run, key, payload[key])
+        if str(payload.get("event_type", "")).startswith("model.retry.") and run.job_id:
+            run.job = self.jobs.public(self.jobs.record_retry(run.job_id, run.run_id, payload))
+        resume_payload = payload.pop("_resume_checkpoint", None)
+        if isinstance(resume_payload, dict):
+            self._checkpoint_payloads[run.run_id] = resume_payload
+            self._recovery_context[run.run_id]["sealed_resume_boundary"] = {
+                "event_type": str(payload.get("event_type")), "turn": int(payload.get("turn") or 0),
+                "resume": resume_payload}
+            if isinstance(resume_payload.get("task_state"), dict):
+                run.task_state = dict(resume_payload["task_state"])
+        kind = str(payload.get("tool") or payload.get("name") or ("build" if str(payload.get("event_type", "")).casefold().startswith("build_") else "tool"))
+        call_id = str(payload.get("call_id") or payload.get("tool_call_id") or payload.get("build_id") or "")
+        operation_id = f"{run.run_id}:{call_id}"
+        operation_payload = {"call_id": call_id, "kind": kind}
+        event_name = str(payload.get("event_type") or "").casefold()
+        if call_id and event_name in {"tool.execution.started", "tool_started", "build_started"}:
+            if run.job_id:
+                self.jobs.charge_tool(run.job_id,operation_id)
+            self.store.operation(operation_id, run.run_id, kind, status="started", payload=operation_payload)
+        elif call_id and event_name == "tool_outcome_unknown":
+            self.store.operation(operation_id,run.run_id,kind,status="unknown",payload=operation_payload)
+        elif call_id and event_name in {"tool.result.committed", "tool.execution.settled", "tool_completed", "tool_failed", "build_completed", "build_failed"}:
+            existing = next((item for item in self.store.operations(run.run_id) if item["operation_id"] == operation_id), None)
+            if existing and existing["status"] not in {"completed", "failed", "unknown"}:
+                self.store.operation(operation_id, run.run_id, existing["kind"],
+                    status="failed" if payload.get("status") == "failed" or event_name in {"tool_failed", "build_failed"} else "completed", payload=existing["payload"])
         payload.setdefault("event_type", "tool.updated")
+        updated_contract = payload.pop("_task_contract", None)
+        if isinstance(updated_contract, dict):
+            run.task_contract = updated_contract
+            run.requirement_report = None
+            self._recovery_context[run.run_id]["active_workspace"]["task_contract"] = updated_contract
         event_type = str(payload.pop("event_type"))
         normalized = event_type.upper()
         artifact_delta = payload.pop("_context_artifact_delta", None)
@@ -1655,7 +2435,7 @@ class AgentOrchestrator:
                 self._complete_node(run, "validation", message or "Complete project validated")
         elif stage is not None and status is not None:
             _set_run_stage(run, stage, status, message)
-            if stage == "build" and normalized in {"BUILD_COMPLETED", "BUILD_FAILED"}:
+            if stage == "build" and normalized in {"BUILD_COMPLETED", "BUILD_FAILED", "BUILD_BLOCKED"}:
                 run.build_result = _safe_mapping(payload) or run.build_result
             if normalized == "BUILD_REPAIR_COMPLETED":
                 _set_run_stage(run, "build", "completed", message)
@@ -1672,7 +2452,27 @@ class AgentOrchestrator:
             safe.setdefault("port", run.flash_port)
             safe.setdefault("board", run.flash_board_type)
             safe.setdefault("environment", run.flash_environment)
-        if event_type in {"runtime.completed", "runtime.failed", "runtime.cancelled"}:
+        if event_type in {"runtime.completed", "runtime.completed_with_warning", "runtime.failed", "runtime.cancelled", "runtime.blocked", "runtime.interrupted"}:
+            if run.run_id in self._cancelling_runs:
+                run.status = "cancelling"
+                return {}
+            # Repeated cleanup/cancellation must not publish another settlement.
+            for prior in reversed(run.events):
+                if prior.get("event_type") == "runtime.awaiting_flash_confirmation":
+                    break  # A newly confirmed hardware phase has its own settlement.
+                if prior.get("event_type") in {"runtime.completed", "runtime.completed_with_warning", "runtime.failed", "runtime.cancelled", "runtime.blocked", "runtime.interrupted"}:
+                    return dict(prior)
+            if event_type != "runtime.completed":
+                self._retain_sealed_checkpoint(run)
+            if run.classification == "AGENT_RECOVERY_OUTCOME_UNKNOWN":
+                run.recoverable = False
+                run.recovery_actions = []
+            self._transient_events.pop(run.run_id, None)
+            for node in self._nodes.get(run.run_id, {}).values():
+                if node.status in {"running", "pending"}:
+                    node.status = "skipped" if node.status == "pending" else ("completed" if run.status.startswith("completed") else "failed")
+                    node.message = "Run settled: " + run.status
+                    self.store.save_node(run.run_id, node.node_id, node.status, node.to_dict())
             safe["changed_files"] = sum(int(getattr(run, key, 0) or 0) for key in ("created_file_count", "modified_file_count", "deleted_file_count"))
             if isinstance(run.build_result, dict):
                 safe["build_passed"] = run.build_result.get("success")
@@ -1698,19 +2498,24 @@ class AgentOrchestrator:
                 if len(frames) > 2048:
                     del frames[:-2048]
             _emit_orchestrator_diagnostic(run, event, session_id=self._session_for_run[run.run_id])
+            self.store.notify_observers(self._session_for_run[run.run_id])
             return event
         event = self.store.append_event(
             self._session_for_run[run.run_id],
             safe,
             grant=self._leases.get(run.run_id),
+            run_projection={**run.to_safe_dict(), "session_id": self._session_for_run[run.run_id],
+                            "_recovery_context": self._recovery_context.get(run.run_id, {})},
         )
         run.events.append(dict(event))
-        if event_type == "turn.settled":
+        if event_type in {"turn.settled", "runtime.admitted", "tool.checkpoint"}:
             try:
                 self.store.save_run_checkpoint(
                     run.run_id,
                     self._session_for_run[run.run_id],
-                    turn=int(safe.get("turn") or 1),
+                    # Admission is turn zero of this attempt. The inherited
+                    # reasoning turn remains in resume["turn"].
+                    turn=0 if event_type == "runtime.admitted" else int(safe.get("turn") or 1),
                     session_seq=int(event["sequence"]),
                     payload={
                         "step": int(safe.get("step") or safe.get("turn") or 1),
@@ -1719,6 +2524,7 @@ class AgentOrchestrator:
                         "tool_count": int(safe.get("tool_count") or 0),
                         "run_status": str(getattr(run, "status", "running")),
                         "stage_statuses": dict(getattr(run, "stage_statuses", {}) or {}),
+                        "resume": self._checkpoint_payloads.get(run.run_id),
                     },
                 )
             except Exception:
@@ -1744,6 +2550,27 @@ class AgentOrchestrator:
 
     def _persist_run(self, run: Any) -> None:
         run.updated_at = utc_now()
+        if getattr(run, "job_id", None):
+            clock = self._attempt_clocks.get(run.run_id)
+            if clock:
+                import time
+                self.jobs.record_elapsed(run.job_id,clock[1]+time.monotonic()-clock[0])
+                if run.status in TERMINAL_STATUSES or run.status == "paused_model_unavailable":
+                    self._attempt_clocks.pop(run.run_id,None)
+            checkpoint = self._checkpoint_payloads.get(run.run_id)
+            run.job = self.jobs.public(self.jobs.update_run(run.job_id, run, checkpoint))
+            if run.job.get("paused_by") == "budget" and run.status not in {"completed","completed_with_warning"}:
+                run.assistant_message_override = (
+                    "Task paused because its remaining budget cannot cover another attempt. "
+                    "Your settled work is saved. Add budget, then continue from the saved work."
+                )
+                try:
+                    saved = self.store.latest_run_checkpoint(run.run_id)
+                except ValueError:
+                    saved = None
+                if saved and saved.get("resume"):
+                    run.recoverable = True
+                    run.recovery_actions = ["resume","extend_budget"]
         payload = run.to_safe_dict()
         payload["session_id"] = self._session_for_run[run.run_id]
         recovery = self._recovery_context.get(run.run_id)
@@ -1771,6 +2598,7 @@ class AgentOrchestrator:
             try:
                 run_id = str(payload["run_id"])
                 session_id = str(payload.get("session_id") or f"run:{run_id}")
+                journal_healthy = bool(self.store.verify_journal(session_id)["healthy"])
                 run = self.run_factory(
                     run_id,
                     str(payload["project_id"]),
@@ -1782,40 +2610,53 @@ class AgentOrchestrator:
                 )
                 for name in (
                     "change_set_id", "created_file_count", "modified_file_count", "deleted_file_count",
+                    "created_at", "updated_at",
                     "tool_execution_count", "active_workspace_unchanged", "active_workflow_task_id",
-                    "build_result", "simulation_result", "flash_result", "monitor_result", "flash_port", "flash_board_type",
+                    "build_result", "build_verified", "simulation_result", "flash_result", "monitor_result", "flash_port", "flash_board_type",
                     "flash_environment", "start_monitor_after_flash", "approval_id", "approval_expires_at",
                     "assistant_message_override", "stage_statuses", "stage_messages",
                     "validation_report", "repair_attempt_count", "pending_decision", "suggested_alternatives",
+                    "repair_history", "budget_failure",
                     "agent_plan", "created_files", "modified_files", "deleted_files",
                     "actual_provider_id", "fallback_reason", "outbound_request_count",
-                    "physical_request_count", "request_reached_provider", "http_status",
+                    "physical_request_count", "request_reached_provider", "request_dispatched", "http_status",
                     "provider_request_id", "retry_after_ms",
                     "last_turn", "response_mode", "last_failure_code", "last_repair_outcome",
-                    "last_parse_reason", "last_failure_origin", "last_response_shape", "last_response_tool_count", "stream_fallback_used",
+                    "last_parse_reason", "last_failure_origin", "last_response_shape", "last_response_tool_count", "stream_fallback_used", "initial_failure_code", "recovery_failure_code",
+                    "requested_output_tokens", "effective_output_tokens", "finish_reason", "input_tokens", "output_tokens", "reasoning_tokens", "total_tokens",
+                    "text_event_count", "reasoning_event_count", "tool_event_count", "worker_exit_code", "worker_cleanup_incomplete",
+                    "repair_skip_reason", "initial_attempt_diagnostics", "repair_attempt_diagnostics",
+                    "physical_attempt_id", "response_headers_received", "first_event_ms", "last_event_ms", "stream_event_count", "completion_received", "timeout_stage", "duration_ms",
                     "retry_of_run_id", "recovered_by_run_id", "interrupted_at",
                     "recoverable", "recovery_actions",
+                    "task_contract", "task_state", "requirement_report",
+                    "job_id", "job",
                 ):
                     if name in payload and hasattr(run, name):
                         setattr(run, name, payload[name])
                 provider_diagnostics = payload.get("provider_diagnostics")
-                if isinstance(provider_diagnostics, Mapping):
-                    for name in (
-                        "outbound_request_count",
-                        "physical_request_count",
-                        "request_reached_provider",
-                        "http_status",
-                        "provider_request_id",
-                        "retry_after_ms",
-                        "last_turn", "response_mode", "last_failure_code", "last_repair_outcome",
-                        "last_parse_reason", "last_failure_origin", "last_response_shape", "last_response_tool_count", "stream_fallback_used",
-                    ):
-                        if name in provider_diagnostics and hasattr(run, name):
-                            setattr(run, name, provider_diagnostics[name])
+                apply_provider_diagnostics(run, provider_diagnostics)
                 recovery_context = payload.get("_recovery_context")
                 if isinstance(recovery_context, Mapping):
                     self._recovery_context[run_id] = _json_safe_mapping(recovery_context)
-                if run.status not in TERMINAL_STATUSES and run.status != "paused_model_unavailable":
+                    contract = (recovery_context.get("active_workspace") or {}).get("task_contract")
+                    if isinstance(contract, Mapping):
+                        run.task_contract = dict(contract)
+                if run.classification in {"provider_smoke_toolplan_unsafe", "provider_smoke_call_count_invalid"} and self._recovery_context.get(run_id) and not any(
+                    item["status"] in {"started", "unknown"} for item in self.store.operations(run_id)
+                ):
+                    run.recoverable = True
+                    run.recovery_actions = ["retry"]
+                if not journal_healthy:
+                    run.status = "blocked"
+                    run.classification = "AGENT_JOURNAL_QUARANTINED"
+                    run.recoverable = False
+                    run.recovery_actions = []
+                    run.approval_id = None
+                    run.approval_expires_at = None
+                    self.store.invalidate_pending_approvals(run_id, "journal_quarantined")
+                elif run.status not in TERMINAL_STATUSES and run.status != "paused_model_unavailable":
+                    self.store.interrupt_operations(run_id)
                     previous_status = run.status
                     run.status = "failed"
                     run.classification = "AGENT_RUNTIME_INTERRUPTED"
@@ -1844,11 +2685,37 @@ class AgentOrchestrator:
             except (KeyError, TypeError, ValueError):
                 continue
             self._runs[run_id] = run
+            legacy_job = not run.job_id
+            if legacy_job:
+                context = self._recovery_context.get(run_id, {})
+                job = self.jobs.create(project_id=run.project_id, session_id=session_id,
+                    workspace_root=context.get("workspace_root", ""), run_id=run_id, legacy=True)
+                run.job_id = job["job_id"]
+                run.job = self.jobs.public(job)
             self._nodes[run_id] = nodes or {node.node_id: node for node in self._initial_graph(run.autonomy)}
             self._session_for_run[run_id] = session_id
             self._steering[run_id] = []
-            if run.classification == "AGENT_RUNTIME_INTERRUPTED":
-                checkpoint = self.store.latest_run_checkpoint(run_id)
+            if journal_healthy and run.recoverable and self._recovery_workspace_error(run_id) == "AGENT_RESUME_WORKSPACE_UNAVAILABLE":
+                self._record_unavailable_workspace(run)
+            # Opening a terminal job must not reset its retirement clock.
+            if legacy_job:
+                self._persist_run(run)
+            if journal_healthy:
+                run.events = [dict(event) for event in self.store.snapshot_events(session_id, run_id=run_id)]
+                if run.status == "cancelled" and not run.change_set_id:
+                    self._retain_sealed_checkpoint(run)
+                    if run.change_set_id:
+                        self._event(run, "recovery.draft.retained", message="Retained the validated checkpoint from a stopped run")
+            if run.classification == "AGENT_RUNTIME_INTERRUPTED" and not any(
+                event.get("event_type") == "runtime.interrupted"
+                for event in self.store.snapshot_events(session_id, run_id=run_id)
+            ):
+                try:
+                    checkpoint = self.store.latest_run_checkpoint(run_id)
+                except ValueError:
+                    checkpoint = None
+                    run.recoverable = False
+                    run.classification = "AGENT_CHECKPOINT_CORRUPT"
                 if checkpoint and run_id in self._recovery_context:
                     self._recovery_context[run_id]["last_safe_checkpoint"] = checkpoint
                 self._event(
@@ -1862,6 +2729,30 @@ class AgentOrchestrator:
                     effect_replay_allowed=False,
                 )
                 self._persist_run(run)
+            elif journal_healthy and run.status in TERMINAL_STATUSES and not any(
+                event.get("event_type") in {"runtime.completed", "runtime.completed_with_warning", "runtime.failed", "runtime.cancelled", "runtime.blocked", "runtime.interrupted"}
+                for event in run.events
+            ):
+                self.store.backup_before_reconciliation()
+                try:
+                    lease = self.store.acquire_lease(session_id, run_id, ttl_seconds=self._lease_ttl_seconds)
+                except (AgentSessionLeaseLost, ValueError):
+                    continue
+                self._leases[run_id] = lease
+                try:
+                    terminal = "runtime." + (run.status if run.status in {"completed", "completed_with_warning", "cancelled", "blocked"} else "failed")
+                    self._event(run, terminal, status=run.status, classification=run.classification,
+                                message="Historical run status reconciled", reconciliation_version=1)
+                finally:
+                    self._leases.pop(run_id, None)
+                    self.store.release_lease(lease)
+        for source in tuple(self._runs):
+            replacement = self.store.recovery_replacement(source)
+            if replacement and replacement in self._runs:
+                self._runs[source].recovered_by_run_id = replacement
+                self._runs[source].recoverable = False
+                self._runs[source].recovery_actions = []
+                self._persist_run(self._runs[source])
 
 
 @dataclass(frozen=True, slots=True)
@@ -1890,6 +2781,7 @@ class _FlashRequest:
     start_monitor_after_flash: bool
     expected_artifact_hash: str | None
     progress_callback: Callable[[str, Mapping[str, object]], Awaitable[None]]
+    artifact_manifest: dict | None = None
 
 
 def _workflow_stage(event: str) -> str | None:
@@ -1913,6 +2805,8 @@ def _workflow_stage(event: str) -> str | None:
 
 
 def _workflow_stage_status(event: str) -> str | None:
+    if event == "BUILD_BLOCKED":
+        return "blocked"
     if event.endswith(("_FAILED", "_INCOMPLETE", "_BLOCKED")):
         return "failed"
     if event == "GENERATION_COMPLETED":
@@ -1962,7 +2856,7 @@ def _json_safe_mapping(value: Mapping[str, object]) -> dict[str, object]:
     """Return bounded, JSON-safe recovery metadata without failing a run."""
     try:
         encoded = json.dumps(dict(value), ensure_ascii=True, sort_keys=True)
-        if len(encoded) > 64_000:
+        if len(encoded) > 4_000_000:
             return {}
         decoded = json.loads(encoded)
     except (TypeError, ValueError):
@@ -1993,6 +2887,7 @@ def _flash_binding(
             "project_id",
             "workspace_revision",
             "source_manifest_hash",
+            "artifact_manifest",
         )
         if build.get(key) is not None
     }
@@ -2081,6 +2976,15 @@ def _approved_artifact_hash(run: Any) -> str | None:
     return str(value) if isinstance(value, str) and value else None
 
 
+def _verified_build_memory_value(build: Mapping[str, object]) -> str:
+    """Verified memory contains host facts, never the model's final prose."""
+    facts = {key: build[key] for key in (
+        "success", "environment", "board_id", "board_type", "firmware_hash",
+        "artifact_hash", "manifest_hash", "exit_code", "returncode", "hardware_verified",
+    ) if key in build and isinstance(build[key], (str, int, float, bool, type(None)))}
+    return "Build observation: " + json.dumps(facts, ensure_ascii=True, sort_keys=True)
+
+
 def _emit_orchestrator_diagnostic(run: Any, event: Mapping[str, object], *, session_id: str) -> None:
     event_type = str(event.get("event_type") or "agent.event").replace("_", ".")
     mapped = _diagnostic_event_name(event_type)
@@ -2127,6 +3031,7 @@ def _diagnostic_event_name(event_type: str) -> str:
     mapping = {
         "runtime.queued": "agent.run.started",
         "runtime.completed": "agent.run.completed",
+        "runtime.completed.with.warning": "agent.run.completed_with_warning",
         "runtime.failed": "agent.run.failed",
         "agent.context.prepared": "agent.context.prepared",
         "agent.turn.started": "agent.turn.started",

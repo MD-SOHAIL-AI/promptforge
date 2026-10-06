@@ -1,0 +1,47 @@
+{
+  "review_date": "2026-10-04",
+  "workspace": "D:/projects/ForgeX-Phase6-Final",
+  "application_logic_changed": false,
+  "python_version": "3.10.6",
+  "release_python_target_from_readme": "3.13.15",
+  "checks": [
+    {
+      "command": ".venv/Scripts/python.exe -m pytest -vv tests/unit/test_agent_jobs_and_tools.py",
+      "passed": 125,
+      "skipped": 0,
+      "seconds": 160.73
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m pytest -q --ignore=tests/unit/test_agent_jobs_and_tools.py",
+      "passed": 2075,
+      "skipped": 4,
+      "seconds": 416.73,
+      "skip_reason": "Windows directory symlink creation unavailable"
+    },
+    {"command": "npm run test:ui-state", "passed": 77},
+    {"command": "npm run test:electron", "passed": 41},
+    {"command": "npm run test:harness", "passed": 11},
+    {"command": "npm run test:release-scripts", "passed": 35},
+    {"command": "npm run typecheck:frontend", "result": "passed"},
+    {"command": "npm run lint:frontend", "result": "passed", "warnings": 0},
+    {"command": "npm run build (frontend)", "result": "passed", "dist_directory": ".next-review-build"},
+    {
+      "command": "npx playwright test --config playwright.config.ts (frontend)",
+      "passed": 48,
+      "reported_duration": "4.6 minutes",
+      "base_url": "http://127.0.0.1:3116",
+      "transport": "mock API and EventSource fixtures"
+    },
+    {"command": ".venv/Scripts/python.exe docs/review-evidence-2026-10-04/audit_probes.py", "result": "completed", "evidence": "probe-results.json"}
+  ],
+  "limits": [
+    "Tests were performed against the current dirty source checkout, not a packaged release candidate.",
+    "The Python suite was completed in two batches after an initial all-suite invocation was interrupted; only the completed batches are counted.",
+    "Browser tests mock provider/backend event transport; they do not establish real provider generation reliability.",
+    "No live paid generation, physical ESP32 upload, signed installer qualification or clean-machine installation was performed.",
+    "Four symlink checks were skipped; symlink-boundary qualification remains required on a capable host.",
+    "Native captures used temporary app state and were saved and inspected; no user job was resumed.",
+    "Observation performance at large history/project sizes was not benchmarked.",
+    "Accessibility tree and visual inspection do not certify full accessibility compliance."
+  ]
+}

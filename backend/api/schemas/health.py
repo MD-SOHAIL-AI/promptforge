@@ -20,6 +20,9 @@ class ToolchainHealth(APIModel):
 
 
 class HealthResponse(APIModel):
+    readiness_scope: str = "Local service composition; task and provider qualification are separate."
+    engine_ready: bool = False
+    provider_availability_scope: str = "Remote model availability is reported separately from local readiness."
     status: str
     service: str = "forgex-backend"
     version: str

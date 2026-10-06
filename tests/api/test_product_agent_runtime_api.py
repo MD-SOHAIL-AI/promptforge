@@ -13,6 +13,56 @@ from backend.runtime.subprocess_mgr import SubprocessManager
 from backend.tools.board_detector import BoardInfo, BoardType
 
 
+def test_verify_saved_draft_builds_without_resolving_an_unavailable_model(tmp_path, monkeypatch):
+    from tests.api.test_api_routes import successful_build
+    setup_env(monkeypatch, tmp_path, enabled=True)
+    client, project_id, builder = make_client(tmp_path)
+    with client as api:
+        owner = api.app.state.services.product_agent_service.orchestrator
+        owner.auto_recovery_enabled = False
+        original_executor = owner.autonomous_executor
+        async def executor(request):
+            if request.active_workspace.get("agent_verify_saved_draft"):
+                return await original_executor(request)
+            stage = Path(request.active_workspace_root)
+            (stage / "src" / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n")
+            await request.progress_callback("turn.settled", {"turn": 1, "_resume_checkpoint": {
+                "turn": 1, "observations": [], "plan": [], "tool_calls_used": 0, "elapsed_seconds": 0}})
+            return {"success": False, "classification": "PROVIDER_TIMEOUT", "message": "endpoint unavailable"}
+        async def build_stage(project, *, environment=None, **kwargs):
+            builder.calls.append((str(project), environment))
+            return successful_build(Path(project) / ".pio" / "build" / "esp32dev" / "firmware.bin")
+        monkeypatch.setattr(owner, "autonomous_executor", executor)
+        monkeypatch.setattr(builder, "build", build_stage)
+        reply = api.post("/agent-runtime/runs", json={"project_id": project_id,
+            "instruction": "update and build firmware", "provider_id": "fake_planner", "autonomy": "build_only"})
+        assert reply.status_code == 202, reply.text
+        first = wait_run_status(api, reply.json()["run"]["run_id"], {"paused_model_unavailable"})
+        assert first["change_set_id"] and first["recovery"]["eligible"]
+        assert first["recovery"]["actions"]["continue_generation"]["allowed"]
+        assert first["recovery"]["actions"]["verify_locally"]["blocking_reason"] == "AGENT_PROJECT_TRUST_REQUIRED"
+        path = f"/agent-runtime/runs/{first['run_id']}/verify-draft"
+        body = {"idempotency_key": "verify-api-draft-once"}
+        blocked = api.post(path, json=body)
+        assert blocked.status_code == 409
+        assert "Trust this project" in blocked.json()["message"]
+        assert api.post(f"/agent-runtime/projects/{project_id}/trust", json={"trusted": True}).status_code == 200
+        refreshed = api.get(f"/agent-runtime/jobs/{first['job_id']}").json()
+        assert refreshed["recovery"]["actions"]["verify_locally"]["allowed"]
+        def unavailable(*args, **kwargs):
+            raise AssertionError("local verification must not resolve a model")
+        monkeypatch.setattr(owner.provider_registry, "resolve", unavailable)
+        verified = api.post(path, json=body)
+        assert verified.status_code == 202, verified.text
+        final = wait_run_status(api, verified.json()["run"]["run_id"], {"completed_with_warning", "failed"})
+        assert final["classification"] == "DRAFT_BUILD_VERIFIED", final
+        assert final["build_verified"] and final["build_result"]["firmware_hash"]
+        assert final["change_set_id"] and final["active_workspace_unchanged"]
+        assert len(builder.calls) == 1
+        replay = api.post(path, json=body)
+        assert replay.status_code == 202 and replay.json()["run"]["run_id"] == final["run_id"]
+
+
 def setup_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, enabled: bool) -> None:
     monkeypatch.setenv("FORGEX_ROOT", str(tmp_path / "app-root"))
     monkeypatch.setenv("FORGEX_MODEL_ROUTER_SETTINGS_PATH", str(tmp_path / "model-settings.json"))
@@ -103,6 +153,56 @@ def test_agent_api_forwards_explicit_model_instead_of_provider_default(tmp_path,
         assert reply.status_code == 202, reply.text
         assert captured[0]["model_id"] == "explicit-model"
         assert captured[0]["active_workspace"]["model_id"] == "explicit-model"
+
+
+def test_direct_run_binds_latest_write_request_to_host_contract(tmp_path, monkeypatch):
+    from backend.agent_runtime.product_agent_service import ProductAgentRun
+    setup_env(monkeypatch, tmp_path, enabled=True)
+    api, project_id, _ = make_client(tmp_path)
+    with api:
+        service = api.app.state.services.product_agent_service
+        api.app.state.services.model_router_service.registry.configure_provider("ollama", {"enabled": True, "default_model": "model"})
+        captured = []
+        async def capture(**kwargs):
+            captured.append(kwargs)
+            return ProductAgentRun("captured", project_id, kwargs["provider_id"])
+        monkeypatch.setattr(service, "start_run", capture)
+        response = api.post("/agent-runtime/runs", json={"project_id": project_id, "instruction": "Create an ESP32 LED project", "provider_id": "ollama"})
+        assert response.status_code == 202, response.text
+        contract = captured[0]["active_workspace"]["task_contract"]
+        assert contract["project_id"] == project_id
+        assert contract["request"] == "Create an ESP32 LED project"
+
+
+def test_major_choices_wait_for_answer_before_starting_run(tmp_path, monkeypatch):
+    from backend.agent_runtime.product_agent_service import ProductAgentRun
+    setup_env(monkeypatch, tmp_path, enabled=True)
+    api, project_id, _ = make_client(tmp_path)
+    with api:
+        service = api.app.state.services.product_agent_service
+        api.app.state.services.model_router_service.registry.configure_provider("ollama", {"enabled": True, "default_model": "default-model"})
+        captured = []
+        async def capture(**kwargs):
+            captured.append(kwargs)
+            return ProductAgentRun("captured", project_id, kwargs["provider_id"])
+        monkeypatch.setattr(service, "start_run", capture)
+        session_id = api.post("/agent-runtime/sessions", json={"project_id": project_id, "provider_id": "ollama"}).json()["session"]["session_id"]
+        route = f"/agent-runtime/sessions/{session_id}/messages"
+        response = api.post(route, json={"content": "Create an ESP32 monitor with OLED or TFT and MQTT or ThingSpeak", "provider_id": "ollama", "environment": "esp32dev", "board_type": "esp32", "model_id": "selected-model"})
+        assert response.status_code == 202, response.text
+        assert not captured
+        assert response.json()["session"]["status"] == "awaiting_clarification"
+        response = api.post(route, json={"content": "OLED"})
+        assert response.status_code == 202 and not captured
+        response = api.post(route, json={"content": "Actually use TFT"})
+        assert response.status_code == 202 and not captured
+        response = api.post(route, json={"content": "MQTT"})
+        assert response.status_code == 202, response.text
+        assert len(captured) == 1
+        assert "Confirmed choices:" in captured[0]["instruction"]
+        assert "display: TFT" in captured[0]["instruction"]
+        assert captured[0]["environment"] == "esp32dev"
+        assert captured[0]["model_id"] == "selected-model"
 
 
 def test_agent_session_create_list_and_local_reply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+from backend.model_router.request_recovery import agent_stream
+from dataclasses import replace
+
+
+def recovered_stream(provider, request):
+    request = replace(request, metadata={**request.metadata, "forgex_managed_recovery": True})
+    return agent_stream(request, provider.generate_event_stream)
+
 from pathlib import Path
 
 import httpx
@@ -88,7 +96,7 @@ def test_nvidia_agent_stream_retries_transactionally_on_same_model(
     async def consume() -> list[CanonicalStreamEvent]:
         return [
             event
-            async for event in provider.generate_event_stream(
+            async for event in recovered_stream(provider,
                 ModelRequest(
                     prompt="create project",
                     task_type="planning",

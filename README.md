@@ -1,6 +1,17 @@
 # ForgeX
 
+The October reliability redesign is documented in [implementation report](docs/complete-redesign-implementation-2026-10-04.md), [regression ledger](docs/redesign-regression-ledger-2026-10-04.md) and [candidate qualification matrix](docs/redesign-qualification-2026-10-04.md).
+
 ForgeX is a desktop embedded-development workspace with an AI coding agent for inspecting, editing, building, repairing, flashing, and monitoring firmware projects.
+
+See [production-beta hardening and release gates](docs/production-beta-hardening.md)
+for durable-agent recovery, packaging, verification commands and the remaining
+signing, physical ESP32 and clean-Windows-machine qualification requirements.
+
+See [agent quality and durable jobs](docs/agent-quality-implementation.md) for
+the current job recovery, budgets, ESP32 tools and real-provider qualification.
+The [current verification report](docs/agent-quality-verification.md) records
+validation after the repository moved to D:.
 
 
 ## ForgeX Nexus V4 UI/UX
@@ -10,7 +21,7 @@ ForgeX V4 is enabled by default and replaces the permanent IDE-style Explorer â†
 V4 includes:
 
 - **Nexus Home** with the universal Forge composer, active project, recent tasks, projects, build state, and live hardware context
-- **Forge Task Canvas** with safe reasoning summaries, real agent activity, live plans, steering, Plan/Ask/Auto modes, staged-change artifacts, and hardware approvals
+- **Forge Task Canvas** with safe reasoning summaries, real agent activity, live plans, steering, Inspect/Plan/Review/Auto modes, staged-change artifacts, and hardware approvals
 - **Adaptive canvases** for code, ChangeSet review, structured build artifacts, connected hardware, serial telemetry, and the engineering console
 - **Forge Core** state visualization for idle, reasoning, working, building, approval, error, and verified states
 - **Command Center (`Ctrl+K`)** for natural-language Forge requests and direct project/hardware commands
@@ -37,12 +48,10 @@ Hardware remains host-controlled: verified firmware artifacts and one-time appro
 
 See [`FORGEX_AGENT_V3.md`](FORGEX_AGENT_V3.md) for the architecture and behavior.
 
-The desktop now also owns an authenticated TypeScript harness host inspired by
-the reviewed DeepSeek Harness architecture. It runs beside the Python hardware
-daemon in shadow mode, durably mirrors session events, and provides the new
-provider catalog, tool pipeline, plugin permissions, bounded subagents,
-workflows, and fail-closed sandbox boundary. Shadow mode deliberately keeps the
-proven Python orchestrator authoritative while compatibility is validated.
+The desktop can start an authenticated TypeScript shadow host with
+`FORGEX_ENABLE_SHADOW_HARNESS=1`. Python owns agent execution, durable jobs,
+budgets, workspace changes, builds, and hardware operations. Desktop and CLI
+clients use that same engine; normal startup does not require the shadow host.
 
 See [`FORGEX_HARNESS_ARCHITECTURE.md`](FORGEX_HARNESS_ARCHITECTURE.md) for the
 runtime boundary, migration stages, security invariants, and source provenance.
@@ -58,7 +67,7 @@ runtime boundary, migration stages, security invariants, and source provenance.
 
 Install these on the development machine:
 
-- Python 3.10+
+- Python 3.13.15 for release builds and the current verification environment
 - Node.js 22.19+
 - npm
 - PlatformIO / PlatformIO Core for real firmware builds and uploads
@@ -69,7 +78,7 @@ Install these on the development machine:
 From the repository root on Windows:
 
 ```bash
-py -3.11 -m venv .venv
+py -3.13 -m venv .venv
 .venv\Scripts\python.exe -m pip install --upgrade pip
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 npm ci
@@ -119,11 +128,13 @@ For environment-based development configuration, copy `.env.example` to
 defaults to `https://integrate.api.nvidia.com/v1`; a self-hosted NIM can be used
 by changing its Base URL in the same settings panel.
 
-NVIDIA requests use a strict 45-second deadline and Forge Agent applies a
-60-second whole-turn budget, including schema repair and fallback. Override the
-request deadline with `FORGEX_NVIDIA_NIM_TIMEOUT_SECONDS` (5-180 seconds) when a
-self-hosted deployment has different cold-start characteristics. ForgeX never
-disables the NIM deadline.
+Provider streams use separate connection, first-output, idle and total deadlines.
+Defaults are 10, 120, 60 and 300 seconds; a Forge turn defaults to 180 seconds and
+the remaining phase/job allowance can shorten it. A local turn deadline reports
+`AGENT_TURN_LIMIT_EXCEEDED`; it never opens a provider outage circuit. See the
+[generated runtime reference](docs/runtime-policy.generated.md) for current defaults.
+NIM transport overrides remain available for self-hosted cold starts. Every
+attempt is bounded and its redacted timings survive saved-run recovery.
 
 Long NIM turns are protected by a fenced session-lease heartbeat. The runtime
 renews ownership while a model or hardware step is active and fails closed if
@@ -139,11 +150,21 @@ in the operating-system credential store. A custom provider cannot be removed
 while any route still references it.
 
 To use Cerebras, open **Settings -> Models -> Cloud APIs -> Cerebras**, enter
-your API key, and select **Save provider**. ForgeX imports every model returned
-by Cerebras for that key from `/v1/models`; choose one under **Active model**
-and select **Use this model**. You can refresh the account's model list with
-**Models**. For environment configuration, set `CEREBRAS_API_KEY` and optionally
+your API key, and select **Save provider**. Cloud model lists come from the
+pinned provider catalog; they do not establish account-specific access.
+Choose a model under **Active model**, select **Use this model**, and use the
+provider health probe to verify a real request. Local Ollama and LM Studio
+model discovery queries their servers. Set `CEREBRAS_API_KEY` and optionally
 `CEREBRAS_MODEL` in a private `.env` file.
+
+SAP AI Core is quarantined because its SDK depends on an unpatched vulnerable
+cryptography package. Native unit tests fail closed unless a host-integrated
+isolated runner is supplied. MCP, Codex OAuth, and Google consumer-subscription
+OAuth are not implemented. The TypeScript Harness remains optional shadow
+infrastructure; the Python orchestrator owns production runs. See
+[the code audit](audit/2026-10-05/ForgeX-Complete-Code-Audit.md) for the original
+findings and [remediation status](remediation/2026-10-05/README.md) for fixes
+and current verification results.
 
 ## Agent modes
 
@@ -257,3 +278,38 @@ npm run scan:source-release
 ## Forge Agent redesign validation
 
 See [`FORGEX_AGENT_REDESIGN_VALIDATION.md`](FORGEX_AGENT_REDESIGN_VALIDATION.md) for the implemented capability model, final regression results, and local provider/frontend verification commands.
+
+The latest incident fixes, request-evidence contract and durable-agent release
+gates are documented in [the beta hardening runbook](docs/production-beta-hardening.md).
+An updated source checkout requires a backend restart. Beta distribution also
+requires recorded-prompt qualification with a real provider, a signed installer,
+ESP32 hardware evidence and clean Windows 10/11 checks for that exact artifact.
+Automated source evidence and a passing build do not prove physical behavior.
+
+Saved jobs, cumulative budgets, project trust, new ESP32 tools and the 30-scenario
+real-model release gate are covered in [the agent quality implementation runbook](docs/agent-quality-implementation.md).
+
+## Embedded agent desktop and CLI
+
+The desktop opens Agent by default and provides Inspect, Plan, Review changes,
+and Auto. Select the build environment for projects with multiple environments.
+Review saves a ChangeSet for explicit application; Auto can apply verified
+reversible source changes. Hardware actions still use bound one-time approval.
+The Evidence workspace shows source references, independent requirement review,
+compilation, tests, simulation, and device qualification separately.
+
+The CLI uses the same Python engine, durable jobs, model configuration, and
+ChangeSets. It runs without Electron or the optional TypeScript shadow harness.
+
+```powershell
+python -m backend.cli profile D:/firmware/controller --environment esp32dev
+python -m backend.cli run D:/firmware/controller "Repair the sampling logic and build it" --mode review --environment esp32dev --trust
+```
+
+`profile` is offline. `run` starts an authenticated loopback engine when no
+`--url` is supplied. To inspect or resume jobs across invocations, start
+`python -m backend.cli serve` with `FORGEX_LOCAL_TOKEN` set, then use
+`python -m backend.cli --url http://127.0.0.1:8000 jobs`.
+
+Implementation details, verification results, and the remaining release gates
+are in [the embedded agent implementation report](docs/embedded-agent-implementation-2026-10-02.md).

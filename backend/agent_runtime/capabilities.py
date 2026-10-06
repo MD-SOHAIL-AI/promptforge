@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable
 
@@ -56,6 +57,7 @@ class ToolPolicyEngine:
     def __init__(self, *, default_ttl_seconds: float = 300.0) -> None:
         self.default_ttl_seconds = max(1.0, min(float(default_ttl_seconds), 3600.0))
         self._revoked: set[str] = set()
+        self._fenced_runs: set[str] = set()
         self._usage: dict[str, int] = {}
         self._grants: dict[str, CapabilityGrant] = {}
         self._lock = threading.RLock()
@@ -112,6 +114,9 @@ class ToolPolicyEngine:
         )
         with self._lock:
             self._grants[grant.grant_id] = grant
+            if run_id in self._fenced_runs:
+                self._revoked.add(grant.grant_id)
+                raise ToolPolicyError(RuntimeClassification.POLICY_DENIED, "capability_run_fenced")
         return grant
 
     def validate_call(
@@ -176,7 +181,20 @@ class ToolPolicyEngine:
         with self._lock:
             return max(0, grant.max_calls - self._usage.get(grant.grant_id, 0))
 
+    def fence_run(self, run_id: str) -> None:
+        with self._lock:
+            self._fenced_runs.add(run_id)
+            self.revoke_run(run_id)
+
+    @contextmanager
+    def publication_guard(self, grant: CapabilityGrant, root: Path):
+        with self._lock:
+            self._validate_live_grant(grant, root)
+            yield
+
     def _validate_live_grant(self, grant: CapabilityGrant, root: Path) -> None:
+        if grant.run_id in self._fenced_runs:
+            raise ToolPolicyError(RuntimeClassification.POLICY_DENIED, "capability_run_fenced")
         issued = self._grants.get(grant.grant_id)
         if issued is None or issued != grant:
             raise ToolPolicyError(RuntimeClassification.POLICY_DENIED, "capability_not_issued")

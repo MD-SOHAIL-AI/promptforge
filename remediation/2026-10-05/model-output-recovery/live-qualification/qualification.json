@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-10-05T15:43:27.111511+00:00",
+  "status": "PASS",
+  "provider": "openrouter",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "physical_requests": 5,
+  "http_statuses": [
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "finish_reasons": [
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "tool-calls",
+    "stop"
+  ],
+  "provider_input_tokens": 20305,
+  "provider_output_tokens": 653,
+  "provider_reasoning_tokens": 312,
+  "job_output_budget_charge": 40448,
+  "tool_calls_executed": 4,
+  "semantic_repair_exercised_live": false,
+  "provider_switches": 0,
+  "all_workers_exited_cleanly": true,
+  "compile_success": true,
+  "source_unchanged_during_compile": true,
+  "active_workspace_empty": true,
+  "review_required": true,
+  "sealed_images_verified": 4,
+  "manifest_sha256": "b17b0a4af62b9c65d2e348bce9554444da547023091e0251e095ebd543dcb6f4",
+  "flash_performed": false,
+  "hardware_verified": false,
+  "files_changed_since_regression": []
+}

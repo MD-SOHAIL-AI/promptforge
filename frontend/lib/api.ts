@@ -1,3 +1,9 @@
+import { SingleFlight } from "./single-flight";
+import { RequestDeadlineError, withRequestDeadline } from "./request-deadline";
+import { rendererPolicy } from "./runtime-policy.generated";
+import type { ProjectProfile } from "@/types/engine-contracts";
+const agentReads = new SingleFlight();
+
 import type {
   ApiErrorBody,
   BuildHistoryResponse,
@@ -36,10 +42,28 @@ import type {
   WorkspaceLogsResponse,
   WorkspaceSearchResponse,
 } from "@/types";
-import { toErrorMessage } from "@/lib/errors";
+import { apiErrorCode, toErrorMessage } from "@/lib/errors";
 import { emitRuntimeDiagnostic, newRequestId, serializeError } from "@/lib/diagnostics";
 
 const API_BASE = "/api/forgex";
+export interface BuildOperation {
+  operation_id: string; project_id: string; environment: string | null;
+  source_revision: string; state: "queued" | "running" | "passed" | "failed" | "stale" | "interrupted" | "unavailable";
+  updated_at: string; result: BuildResponse | null; message?: string;
+}
+
+export async function observeBuildCompletion(operationId: string, signal?: AbortSignal): Promise<BuildResponse & { operation_state: BuildOperation["state"] }> {
+  const started = performance.now();
+  while (performance.now() - started < 300_000) {
+    const operation = await request<BuildOperation>(`/build/operations/${encodeURIComponent(operationId)}`, {signal});
+    if (!["queued", "running"].includes(operation.state)) {
+      if (operation.result) return {...operation.result, operation_state: operation.state};
+      throw new ForgeXApiError(operation.message ?? "Saved build result is unavailable.", 0, "BUILD_RESULT_UNAVAILABLE", operation);
+    }
+    await withRequestDeadline(() => new Promise<void>(resolve => setTimeout(resolve, 1000)), {timeoutMs: 1500, signal});
+  }
+  throw new ForgeXApiError("Build observation timed out. Refresh the saved operation to retrieve its result.", 0, "REQUEST_RESULT_UNKNOWN", {operation_id: operationId});
+}
 
 export class ForgeXApiError extends Error {
   constructor(
@@ -68,8 +92,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     path,
   });
   try {
+    return await withRequestDeadline(async (signal) => {
     const response = await fetch(url, {
       ...init,
+      signal,
       headers: withRequestHeaders(init?.headers, requestId),
       cache: "no-store",
     });
@@ -85,7 +111,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const apiError = new ForgeXApiError(
         errorBodyMessage(record) ?? `ForgeX API request failed (${response.status})`,
         response.status,
-        record.code,
+        apiErrorCode(record),
         record,
         requestId,
       );
@@ -103,6 +129,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       throw apiError;
     }
 
+    const parsed = (await response.json()) as T;
+    if (signal.aborted) throw new RequestDeadlineError(method !== "GET");
     emitRuntimeDiagnostic({
       component: "renderer",
       event: "renderer.http.completed",
@@ -113,7 +141,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       status: response.status,
       duration_ms: Math.max(0, Math.round(performance.now() - started)),
     });
-    return (await response.json()) as T;
+    return parsed;
+    }, { signal: init?.signal, mutation: method !== "GET",
+      timeoutMs: path === "/build" || path === "/flash" ? 300_000 : 1000 * (method === "GET" ? rendererPolicy.read_seconds : rendererPolicy.mutation_seconds) });
   } catch (cause) {
     if (cause instanceof ForgeXApiError) throw cause;
     emitRuntimeDiagnostic({
@@ -126,12 +156,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       duration_ms: Math.max(0, Math.round(performance.now() - started)),
       error: serializeError(cause),
     });
+    if (cause instanceof RequestDeadlineError) {
+      throw new ForgeXApiError(cause.message, 0, cause.mutation ? "REQUEST_RESULT_UNKNOWN" : "REQUEST_TIMED_OUT", undefined, requestId);
+    }
     throw cause;
   }
 }
 
 export const forgeXApi = {
   health: () => request<HealthResponse>("/health"),
+  runtimeDiagnostics: (signal?: AbortSignal) => request<{backend_instance_id:string; runtime_contract:string; source_fingerprint:string; data_profile:string | null; observed_at:string; packaged:boolean}>("/diagnostics/runtime", {signal}),
+  runDiagnostics: (runId: string) => request<Record<string, unknown>>(`/diagnostics/runs/${encodeURIComponent(runId)}/export`),
+  agentBuildEvidence: (runId: string, environment: string | null, signal?: AbortSignal) => request<{state:"idle" | "failed" | "passed" | "stale" | "unavailable"; scope:"workspace" | "saved_draft"}>(`/agent-runtime/runs/${encodeURIComponent(runId)}/build-evidence${environment ? `?environment=${encodeURIComponent(environment)}` : ""}`, {signal}),
 
   settings: () => request<ForgeXSettingsResponse>("/settings"),
   settingsSchema: () => request<ForgeXSettingsSchemaResponse>("/settings/schema"),
@@ -152,6 +188,15 @@ export const forgeXApi = {
     }),
 
   projects: () => request<ProjectListResponse>("/projects"),
+  projectProfile: (projectId: string, environment?: string | null) =>
+    request<ProjectProfile>(`/projects/${encodeURIComponent(projectId)}/profile${environment ? `?environment=${encodeURIComponent(environment)}` : ""}`),
+  projectReadiness: (projectId: string, providerId?: string, modelId?: string, environment?: string | null, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    if (providerId) query.set("provider_id", providerId);
+    if (modelId) query.set("model_id", modelId);
+    if (environment) query.set("environment", environment);
+    return request<{observed_at: string; provider: {configured: boolean; cached_status?: string; checked_at?: string | null; fresh?: boolean} | null; toolchain: {available: boolean} | null; environment: {selection_required: boolean}; permissions: {local_builds: boolean}; capabilities: {generate: boolean; build: boolean}}>(`/projects/${encodeURIComponent(projectId)}/readiness?${query}`, {signal});
+  },
   importProject: (body: { path: string }) =>
     request<ProjectImportResponse>("/projects/import", {
       method: "POST",
@@ -192,11 +237,18 @@ export const forgeXApi = {
     ),
   deleteProject: (projectId: string) =>
     request<{ project_id: string; deleted: boolean }>(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
+  forgetRecentProject: (projectId: string) =>
+    request<{ project_id: string; deleted: boolean }>(`/projects/${encodeURIComponent(projectId)}/recent`, { method: "DELETE" }),
+  locateRecentProject: (projectId: string, path: string) =>
+    request<ProjectResponse>(`/projects/${encodeURIComponent(projectId)}/locate`, { method: "POST", body: JSON.stringify({ path }) }),
 
   buildHistory: () => request<BuildHistoryResponse>("/build-history"),
   detectedBoards: () => request<DetectedBoardsResponse>("/devices/boards"),
-  buildProject: (body: { project_id: string; environment?: string | null }) =>
-    request<BuildResponse>("/build", { method: "POST", body: JSON.stringify(body) }),
+  buildProject: async (body: { project_id: string; environment?: string | null }, operationId = crypto.randomUUID(), signal?: AbortSignal) => {
+    await request<BuildOperation>("/build/operations", {method: "POST", headers: {"Idempotency-Key": operationId}, body: JSON.stringify(body), signal});
+    return observeBuildCompletion(operationId, signal);
+  },
+  buildOperation: (operationId: string, signal?: AbortSignal) => request<BuildOperation>(`/build/operations/${encodeURIComponent(operationId)}`, {signal}),
   flashProject: (body: {
     project_id: string;
     board_type: string;
@@ -246,7 +298,7 @@ export const forgeXApi = {
   }) => request<{ selection: ModelSelectionResponse }>("/models/selection", { method: "PUT", body: JSON.stringify(body) }),
   configureModelProvider: (
     providerId: string,
-    body: { api_key?: string | null; base_url?: string; default_model?: string; enabled?: boolean },
+    body: { api_key?: string | null; base_url?: string; default_model?: string; enabled?: boolean; options?: Record<string, unknown> | null },
   ) => request<{ provider: ModelProviderResponse }>(`/models/providers/${encodeURIComponent(providerId)}/configure`, { method: "POST", body: JSON.stringify(body) }),
   createModelProvider: (body: {
     provider_id: string;
@@ -289,22 +341,43 @@ export const forgeXApi = {
     instruction: string;
     provider_id: string;
     autonomy?: "staged_changes" | "build_only" | "simulate" | "build_then_confirm_flash";
+    execution_profile?: "standard" | "advanced";
     board_port?: string | null;
     board_type?: string | null;
     environment?: string | null;
     start_monitor_after_flash?: boolean;
   }) =>
     request<{ run: ProductAgentRun }>("/agent-runtime/runs", { method: "POST", body: JSON.stringify(body) }),
-  agentRuntimeRun: (runId: string) =>
-    request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}`),
+  agentRuntimeRun: (runId: string, signal?: AbortSignal) => {
+    const pending = agentReads.run(`run:${runId}`, () => request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}`));
+    return signal ? withRequestDeadline(() => pending, {signal, timeoutMs:1000 * rendererPolicy.read_seconds}) : pending;
+  },
   cancelAgentRuntimeRun: (runId: string) =>
     request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", body: JSON.stringify({}) }),
   retryAgentRuntimeRun: (runId: string) =>
     request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/retry`, { method: "POST", body: JSON.stringify({}) }),
+  resumeAgentRuntimeRun: (runId: string, checkpointId: string, idempotencyKey: string, selection?: {provider_id: string; model_id: string}) =>
+    request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/resume`, {
+      method: "POST", body: JSON.stringify({ checkpoint_id: checkpointId, idempotency_key: idempotencyKey, ...selection }),
+    }),
+  verifyAgentRuntimeDraft: (runId: string, idempotencyKey: string) =>
+    request<{run: ProductAgentRun}>(`/agent-runtime/runs/${encodeURIComponent(runId)}/verify-draft`, {
+      method: "POST", body: JSON.stringify({idempotency_key: idempotencyKey}),
+    }),
+  discardAgentRuntimeDraft: (runId: string) =>
+    request<{run: ProductAgentRun}>(`/agent-runtime/runs/${encodeURIComponent(runId)}/discard-draft`, { method: "POST", body: JSON.stringify({}) }),
+  agentJobAction: (jobId: string, action: "pause" | "resume" | "budget" | "recovery-policy", body: Record<string, unknown> = {}) =>
+    request<{job?: import("@/types").AgentJob; run?: ProductAgentRun}>(`/agent-runtime/jobs/${encodeURIComponent(jobId)}/${action}`, {method: "POST", body: JSON.stringify(body)}),
+  agentJob: (jobId: string) => request<{job: import("@/types").AgentJob; recovery: ProductAgentRun["recovery"]}>(`/agent-runtime/jobs/${encodeURIComponent(jobId)}`),
+  projectAgentTrust: (projectId: string) => request<{trusted: boolean}>(`/agent-runtime/projects/${encodeURIComponent(projectId)}/trust`),
+  setProjectAgentTrust: (projectId: string, trusted: boolean) =>
+    request<{trusted: boolean}>(`/agent-runtime/projects/${encodeURIComponent(projectId)}/trust`, {method: "POST", body: JSON.stringify({trusted})}),
   steerAgentRuntimeRun: (runId: string, content: string) =>
     request<{ run: ProductAgentRun; steering_queued: boolean }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/steer`, { method: "POST", body: JSON.stringify({ content }) }),
   agentRuntimeGuidanceQueue: (runId: string) =>
-    request<{ items: import("@/types").AgentGuidanceQueueItem[] }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/queue`),
+    agentReads.run(`queue:${runId}`, () =>
+      request<{ items: import("@/types").AgentGuidanceQueueItem[] }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/queue`),
+    ),
   editAgentRuntimeGuidance: (runId: string, itemId: string, content: string) =>
     request<{ item: import("@/types").AgentGuidanceQueueItem }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/queue/${encodeURIComponent(itemId)}`, { method: "PATCH", body: JSON.stringify({ content }) }),
   removeAgentRuntimeGuidance: (runId: string, itemId: string) =>
@@ -318,16 +391,16 @@ export const forgeXApi = {
     request<{ run: ProductAgentRun }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/confirm-flash`, { method: "POST", body: JSON.stringify(body) }),
   agentRuntimeEventsUrl: (runId: string) => `${API_BASE}/agent-runtime/runs/${encodeURIComponent(runId)}/events`,
   agentRuntimeGraph: (runId: string) =>
-    request<{ graph: import("@/types").AgentExecutionGraph }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/graph`),
+    agentReads.run(`graph:${runId}`, () => request<{ graph: import("@/types").AgentExecutionGraph }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/graph`)),
   agentRuntimeSessionActivityUrl: (sessionId: string, afterSequence = 0) =>
     `${API_BASE}/agent-runtime/sessions/${encodeURIComponent(sessionId)}/activity?after_sequence=${encodeURIComponent(String(Math.max(0, afterSequence)))}`,
   agentRuntimeSessionEventsUrl: (sessionId: string, afterSequence = 0) =>
     `${API_BASE}/agent-runtime/sessions/${encodeURIComponent(sessionId)}/events?after_sequence=${encodeURIComponent(String(Math.max(0, afterSequence)))}`,
   agentRuntimeChanges: (runId: string) =>
     request<{ change_set: ChangeSetResponse }>(`/agent-runtime/runs/${encodeURIComponent(runId)}/changes`),
-  chatSessions: () => request<{ sessions: import("@/types").ForgeChatSession[] }>("/v1/chat/sessions"),
+  chatSessions: () => agentReads.run("chat:sessions", () => request<{ sessions: import("@/types").ForgeChatSession[] }>("/v1/chat/sessions")),
   createChatSession: () => request<{ session: import("@/types").ForgeChatSession }>("/v1/chat/sessions", { method: "POST", body: JSON.stringify({}) }),
-  chatSession: (id: string) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}`),
+  chatSession: (id: string) => agentReads.run(`chat:session:${id}`, () => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}`)),
   sendChatMessage: (id: string, body: { content: string; provider_id?: string; model_id?: string; context_project_id?: string; context_paths?: string[]; retry?: boolean }) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}/messages`, { method: "POST", body: JSON.stringify(body) }),
   chatSessionEventsUrl: (id: string) => `${API_BASE}/v1/chat/sessions/${encodeURIComponent(id)}/events`,
   cancelChatSession: (id: string) => request<{ session: import("@/types").ForgeChatSession }>(`/v1/chat/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({}) }),
@@ -336,20 +409,25 @@ export const forgeXApi = {
   configureConversation: (id: string, body: { title?: string; provider_id?: string; model_id?: string }) => request<{ session: import("@/types").ForgeChatSession }>(`/agent-runtime/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteConversation: (id: string) => request<{ deleted: boolean }>(`/agent-runtime/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   agentRuntimeSessions: (projectId?: string | null) =>
-    request<{ sessions: ForgeAgentSession[]; count: number }>(
-      projectId ? `/agent-runtime/sessions?project_id=${encodeURIComponent(projectId)}` : "/agent-runtime/sessions",
+    agentReads.run(`sessions:${projectId ?? ""}`, () =>
+      request<{ sessions: ForgeAgentSession[]; count: number }>(
+        projectId ? `/agent-runtime/sessions?project_id=${encodeURIComponent(projectId)}` : "/agent-runtime/sessions",
+      ),
     ),
   createAgentRuntimeSession: (body: { project_id: string; title?: string | null }) =>
     request<{ session: ForgeAgentSession }>("/agent-runtime/sessions", { method: "POST", body: JSON.stringify(body) }),
   agentRuntimeSession: (sessionId: string) =>
-    request<{ session: ForgeAgentSession }>(`/agent-runtime/sessions/${encodeURIComponent(sessionId)}`),
+    agentReads.run(`session:${sessionId}`, () =>
+      request<{ session: ForgeAgentSession }>(`/agent-runtime/sessions/${encodeURIComponent(sessionId)}`),
+    ),
   sendAgentRuntimeSessionMessage: (
     sessionId: string,
     body: {
       content: string;
       provider_id?: string | null;
       model_id?: string | null;
-      autonomy?: "auto" | "read_only" | "staged_changes" | "plan_only" | "build_only_strict" | "build_only" | "simulate" | "build_then_confirm_flash";
+      autonomy?: "auto" | "read_only" | "staged_changes" | "review_changes" | "plan_only" | "build_only_strict" | "build_only" | "simulate" | "build_then_confirm_flash";
+      execution_profile?: "standard" | "advanced";
       board_port?: string | null;
       board_type?: string | null;
       environment?: string | null;

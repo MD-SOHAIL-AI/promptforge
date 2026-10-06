@@ -1,3 +1,4 @@
+import { desktopLog } from "./desktop-logging";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import http from "node:http";
 
@@ -83,8 +84,8 @@ export class HarnessManager {
       this.fail(`Failed to start Forge Harness: ${message(error)}`);
       throw new Error(this.lastError);
     }
-    this.process.stdout.on("data", (chunk: Buffer) => console.log(`[forgex-harness] ${safe(chunk)}`));
-    this.process.stderr.on("data", (chunk: Buffer) => console.error(`[forgex-harness] ${safe(chunk)}`));
+    this.process.stdout.on("data", (chunk: Buffer) => desktopLog.log(`[forgex-harness] ${safe(chunk)}`));
+    this.process.stderr.on("data", (chunk: Buffer) => desktopLog.error(`[forgex-harness] ${safe(chunk)}`));
     this.process.once("error", (error) => this.fail(error.message));
     this.process.once("exit", (code, signal) => {
       if (this.state !== "stopped") this.fail(`Harness exited with code ${code ?? "null"} and signal ${signal ?? "null"}`);

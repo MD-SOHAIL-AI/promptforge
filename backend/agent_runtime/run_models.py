@@ -26,9 +26,12 @@ from .run_reporting import (
     detect_workspace_mode,
     normalize_provider_error,
     runtime_failure_message,
+    model_recovery_message,
 )
 
 from .activity import run_activity_fields
+from .failure_contract import failure_details
+from backend.contracts.diagnostics import run_provider_diagnostics
 from .capability_profiles import profile_for_autonomy
 from .product_provider_registry import ProductProviderRegistry
 from .tool_contracts import RuntimeClassification
@@ -36,7 +39,7 @@ from .tool_policy import product_agent_policy
 from .tool_runtime import ForgeXToolRuntime, ProductRuntimeLimits, ToolRuntimeResult
 
 TERMINAL_AGENT_STATUSES = frozenset(
-    {"completed", "failed", "cancelled", "blocked", "timed_out"}
+    {"completed", "completed_with_warning", "failed", "cancelled", "blocked", "timed_out"}
 )
 AUTONOMY_READ_ONLY = "read_only"
 AUTONOMY_STAGED_CHANGES = "staged_changes"
@@ -112,6 +115,7 @@ def _provider_failure_message(
     provider_id: str,
     request_reached_provider: bool,
     http_status: int | None,
+    request_dispatched: bool = False,
 ) -> str | None:
     if classification in {"API_RATE_LIMITED", "PROVIDER_RATE_LIMITED"} and http_status == 429:
         return f"{provider_id} returned HTTP 429 for this request. Wait until the provider reset window, then retry the same model, or explicitly choose another model."
@@ -132,10 +136,12 @@ def _provider_failure_message(
         )
     if classification == "PROVIDER_BUSY":
         return (
-            f"{provider_id} is already handling another ForgeX model turn. "
-            "This run is paused before sending project data and can be retried safely."
+            "Another ForgeX task is using this model endpoint. "
+            "This task paused locally before sending a provider request. Stop the other task or retry when it finishes."
         )
     if classification in {"API_NETWORK_ERROR", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT"} and not request_reached_provider:
+        if request_dispatched:
+            return f"ForgeX dispatched a request to {provider_id} but received no response before the transport deadline. The provider may have received it; saved tool work is preserved."
         return f"ForgeX could not reach {provider_id}, so no provider request was recorded. Check DNS, proxy, firewall, and connectivity."
     if classification in {"API_MODEL_UNAVAILABLE", "PROVIDER_UNAVAILABLE"}:
         return f"{provider_id} could not route the selected model. Choose an available model and retry."
@@ -201,6 +207,7 @@ class ProductAgentRun:
     outbound_request_count: int = 0
     physical_request_count: int = 0
     request_reached_provider: bool = False
+    request_dispatched: bool = False
     http_status: int | None = None
     provider_request_id: str | None = None
     retry_after_ms: int | None = None
@@ -210,9 +217,35 @@ class ProductAgentRun:
     last_repair_outcome: str | None = None
     last_parse_reason: str | None = None
     last_failure_origin: str | None = None
+    budget_failure: dict[str, object] | None = None
     last_response_shape: str | None = None
     last_response_tool_count: int | None = None
     stream_fallback_used: bool = False
+    initial_failure_code: str | None = None
+    recovery_failure_code: str | None = None
+    physical_attempt_id: str | None = None
+    response_headers_received: bool = False
+    first_event_ms: int | None = None
+    last_event_ms: int | None = None
+    stream_event_count: int = 0
+    completion_received: bool = False
+    timeout_stage: str | None = None
+    duration_ms: int | None = None
+    requested_output_tokens: int | None = None
+    effective_output_tokens: int | None = None
+    finish_reason: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    total_tokens: int | None = None
+    text_event_count: int = 0
+    reasoning_event_count: int = 0
+    tool_event_count: int = 0
+    worker_exit_code: int | None = None
+    worker_cleanup_incomplete: bool = False
+    repair_skip_reason: str | None = None
+    initial_attempt_diagnostics: dict[str, object] | None = None
+    repair_attempt_diagnostics: dict[str, object] | None = None
     assistant_message_override: str | None = None
     autonomy: str = AUTONOMY_STAGED_CHANGES
     stage_statuses: dict[str, str] = field(
@@ -221,13 +254,18 @@ class ProductAgentRun:
     stage_messages: dict[str, str] = field(default_factory=dict)
     active_workflow_task_id: str | None = None
     build_result: dict[str, object] | None = None
+    build_verified: bool = False
     simulation_result: dict[str, object] | None = None
     flash_result: dict[str, object] | None = None
     monitor_result: dict[str, object] | None = None
     validation_report: dict[str, object] | None = None
     repair_attempt_count: int = 0
+    repair_history: list[dict[str, object]] = field(default_factory=list)
     agent_plan: list[dict[str, str]] = field(default_factory=list)
     pending_decision: bool = False
+    task_contract: dict[str, object] | None = None
+    task_state: dict[str, object] | None = None
+    requirement_report: dict[str, object] | None = None
     suggested_alternatives: list[str] = field(default_factory=list)
     flash_port: str | None = None
     flash_board_type: str | None = None
@@ -240,6 +278,9 @@ class ProductAgentRun:
     interrupted_at: str | None = None
     recoverable: bool = False
     recovery_actions: list[str] = field(default_factory=list)
+    recovery: dict[str, object] | None = None
+    job_id: str | None = None
+    job: dict[str, object] | None = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     events: list[dict[str, object]] = field(default_factory=list, repr=False)
@@ -270,6 +311,7 @@ class ProductAgentRun:
         summary = ForgeXRunSummary(
             run_id=self.run_id,
             requested_provider=self.provider_id,
+            selected_model=self.model_id,
             actual_provider=actual_provider,
             provider_type=provider_type,
             generation_source=source,
@@ -277,8 +319,7 @@ class ProductAgentRun:
             generation_status=_summary_generation_status(self),
             content_verification_status=(
                 "verified"
-                if self.stage_statuses.get("generation") == "completed"
-                or self.status == "completed"
+                if self.requirement_report and self.requirement_report.get("valid") is True
                 else "pending"
             ),
             build_status=self.stage_statuses.get("build", "not_started"),
@@ -303,7 +344,7 @@ class ProductAgentRun:
                 if self.status == "awaiting_flash_confirmation"
                 else (
                     "Review generated changes before applying them."
-                    if self.status == "completed"
+                    if self.status in {"completed", "completed_with_warning"}
                     and (
                         self.created_file_count
                         + self.modified_file_count
@@ -336,6 +377,20 @@ class ProductAgentRun:
         ).to_safe_dict()
         return {
             "schema_version": 1,
+            "task_revision": self.task_contract.get("revision") if self.task_contract else None,
+            "task_state": self.task_state,
+            "requirement_report": self.requirement_report,
+            "failure": failure_details(
+                self.classification, status=self.status, actions=self.recovery_actions,
+                evidence={"run_id": self.run_id, "build_id": (self.build_result or {}).get("build_id"),
+                          "initial_failure_code": self.initial_failure_code, "recovery_failure_code": self.recovery_failure_code,
+                          "physical_request_count": self.physical_request_count, "http_status": self.http_status,
+                          "job_id": self.job_id, "diagnostics": run_provider_diagnostics(self),
+                          "remaining_allowances": (self.job or {}).get("budget", {}).get("remaining", {}),
+                          **({"budget": self.budget_failure} if self.budget_failure else {})}),
+            "recovery": dict(self.recovery) if self.recovery else None,
+            "job_id": self.job_id,
+            "job": self.job,
             "run_id": self.run_id,
             "project_id": self.project_id,
             "provider_id": self.provider_id,
@@ -347,6 +402,7 @@ class ProductAgentRun:
             "stage_statuses": dict(self.stage_statuses),
             "stage_messages": dict(self.stage_messages),
             "active_workflow_task_id": self.active_workflow_task_id,
+            "build_verified": self.build_verified,
             "build_result": (
                 dict(self.build_result)
                 if isinstance(self.build_result, Mapping)
@@ -373,6 +429,7 @@ class ProductAgentRun:
                 else None
             ),
             "repair_attempt_count": self.repair_attempt_count,
+            "repair_history": [dict(item) for item in self.repair_history],
             "agent_plan": [dict(item) for item in self.agent_plan],
             "pending_decision": self.pending_decision,
             "suggested_alternatives": list(self.suggested_alternatives),
@@ -399,29 +456,20 @@ class ProductAgentRun:
             "updated_at": self.updated_at,
             "execution_mode": "tool_planner",
             "assistant_message": self._assistant_message(),
-            "provider_diagnostics": {
-                "outbound_request_count": self.outbound_request_count,
-                "physical_request_count": self.physical_request_count,
-                "request_reached_provider": self.request_reached_provider,
-                "http_status": self.http_status,
-                "provider_request_id": self.provider_request_id,
-                "retry_after_ms": self.retry_after_ms,
-                "last_turn": self.last_turn,
-                "response_mode": self.response_mode,
-                "last_failure_code": self.last_failure_code,
-                "last_repair_outcome": self.last_repair_outcome,
-                "last_parse_reason": self.last_parse_reason,
-                "last_failure_origin": self.last_failure_origin,
-                "last_response_shape": self.last_response_shape,
-                "last_response_tool_count": self.last_response_tool_count,
-                "stream_fallback_used": self.stream_fallback_used,
-            },
+            "provider_diagnostics": run_provider_diagnostics(self),
             "summary": summary,
         }
 
     def _assistant_message(self) -> str | None:
+        if self.status in {"failed", "timed_out"}:
+            detail = model_recovery_message(self.initial_failure_code, self.classification,
+                self.recovery_failure_code, self.repair_skip_reason)
+            if detail:
+                return detail
         if self.assistant_message_override:
             return self.assistant_message_override
+        if self.classification == "FORGEX_REQUEST_INVALID":
+            return "ForgeX could not prepare the model request locally. No request was sent for this attempt. Your saved work is preserved."
         if self.classification in {
             "CHANGESET_REVIEW_REQUIRED",
             "CHANGESET_APPROVAL_REQUIRED",
@@ -435,11 +483,14 @@ class ProductAgentRun:
             return "Plan mode completed without modifying the workspace."
         if self.status == "awaiting_flash_confirmation":
             return "Firmware generated and built successfully. Confirm flash when the target board is connected."
+        if self.status == "completed_with_warning":
+            return "Firmware build verified. Review the saved draft or retry for a complete model response."
         if self.status == "paused_model_unavailable":
             detail = _provider_failure_message(
                 self.classification,
                 provider_id=self.actual_provider_id or self.provider_id,
                 request_reached_provider=self.request_reached_provider,
+                request_dispatched=self.request_dispatched,
                 http_status=self.http_status,
             )
             if detail:
@@ -473,6 +524,7 @@ class ProductAgentRun:
                 self.classification,
                 provider_id=self.actual_provider_id or self.provider_id,
                 request_reached_provider=self.request_reached_provider,
+                request_dispatched=self.request_dispatched,
                 http_status=self.http_status,
             )
             return (
@@ -485,7 +537,7 @@ class ProductAgentRun:
 def _summary_generation_status(run: ProductAgentRun) -> str:
     if run.stage_statuses.get("generation") == "completed":
         return GenerationStatus.CONTENT_VERIFIED.value
-    if run.status in TERMINAL_AGENT_STATUSES and run.status != "completed":
+    if run.status in TERMINAL_AGENT_STATUSES and run.status not in {"completed", "completed_with_warning"}:
         error = normalize_provider_error(run.classification)
         if error in {ProviderErrorCode.FORGEX_RUNTIME_ERROR, ProviderErrorCode.FILE_NOT_FOUND, ProviderErrorCode.PATH_UNSAFE, ProviderErrorCode.POLICY_DENIED}:
             return GenerationStatus.RUNTIME_FAILED.value

@@ -45,7 +45,7 @@ export interface SessionEvent {
 export interface ProviderDescriptor {
   id: string;
   displayName: string;
-  protocol: "deepseek" | "openai-completions" | "openai-responses" | "anthropic-messages";
+  protocol: string;
   baseUrl: string;
   local: boolean;
   credentialRequired: boolean;

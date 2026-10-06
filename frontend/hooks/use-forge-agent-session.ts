@@ -1,18 +1,24 @@
 "use client";
 
+// @refresh reset
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { mergeActivityEvents } from "@/lib/activity-stream";
 import { promptForgeApi } from "@/lib/api";
+import { recoveryRequestKey } from "@/lib/agent-recovery";
 import {
   RUN_POLL_INTERVAL_MS,
   SSE_OPEN_FALLBACK_MS,
+  JOB_POLL_INTERVAL_MS,
+  OBSERVATION_FRESHNESS_MS,
+  shouldObserveJob,
   isStableRunStatus,
   shouldPollAfterSseEvent,
   shouldStartPollingAfterSseDisconnect,
 } from "@/lib/agent-stream-policy";
 import { emitRuntimeDiagnostic, serializeError } from "@/lib/diagnostics";
-import { toErrorMessage } from "@/lib/errors";
+import { apiErrorCode, toErrorMessage } from "@/lib/errors";
 import {
   remainingActivityMs,
   shouldAcceptActivity,
@@ -33,7 +39,7 @@ import type {
 const stable = isStableRunStatus;
 
 export type ForgeAgentConnectionState =
-  "idle" | "connecting" | "live" | "polling";
+  "idle" | "connecting" | "live" | "polling" | "stale";
 
 function activeSessionKey(projectId: string) {
   return `forgex-agent-active-session:${projectId}`;
@@ -57,17 +63,30 @@ export function useForgeAgentSession(projectId: string | null) {
   const [connectionState, setConnectionState] =
     useState<ForgeAgentConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [lastObservedAt, setLastObservedAt] = useState<string | null>(null);
   const [currentActivity, setCurrentActivity] =
     useState<ForgeAgentActivitySnapshot | null>(null);
+  const lastObservedRef = useRef<number>(0);
   const source = useRef<EventSource | null>(null);
+  const observationController = useRef<AbortController | null>(null);
+  const resetObservation = useCallback(() => {
+    observationController.current?.abort();
+    observationController.current = new AbortController();
+    setLastObservedAt(null);
+  }, []);
   const activitySource = useRef<EventSource | null>(null);
   const poll = useRef<number | null>(null);
   const streamOpenFallback = useRef<number | null>(null);
   const activitySequences = useRef<Record<string, number>>({});
   const activityClearTimer = useRef<number | null>(null);
   const runRef = useRef<ProductAgentRun | null>(null);
+  const recoveryPending = useRef(false);
+  const cancellationPending = useRef(false);
   const activeSessionRef = useRef<ForgeAgentSession | null>(null);
   const selectedSessionRef = useRef<string | null>(null);
+  const selectionGenerationRef = useRef(0);
+  const settledRunRef = useRef<string | null>(null);
+  const followRecoveredRun = useRef<((runId: string) => void) | null>(null);
   const projectRef = useRef(projectId);
   projectRef.current = projectId;
 
@@ -206,14 +225,10 @@ export function useForgeAgentSession(projectId: string | null) {
           )
             return;
           if (event.run_id) {
+            if (event.event_type === "runtime.resumed" && event.source_run_id && event.source_run_id === runRef.current?.run_id)
+              followRecoveredRun.current?.(event.run_id);
             setEvents((current) => mergeActivityEvents(current, event));
             showActivity(snapshotFromRunEvent(event, sessionId));
-            if (event.node_id || event.event_type.startsWith("node.")) {
-              void promptForgeApi
-                .agentRuntimeGraph(event.run_id)
-                .then((result) => setGraph(result.graph))
-                .catch(() => null);
-            }
           }
         } catch {
           // Activity is presentation-only; malformed transient updates are ignored.
@@ -233,7 +248,7 @@ export function useForgeAgentSession(projectId: string | null) {
       setGraph(result.graph);
       return result.graph;
     } catch {
-      setGraph(null);
+      if (runRef.current?.run_id === runId) setGraph(null);
       return null;
     }
   }, []);
@@ -263,8 +278,10 @@ export function useForgeAgentSession(projectId: string | null) {
 
   const refreshSession = useCallback(
     async (sessionId: string) => {
+      const generation = selectionGenerationRef.current;
       const result = await promptForgeApi.agentRuntimeSession(sessionId);
       if (
+        selectionGenerationRef.current !== generation ||
         projectRef.current !== projectId ||
         (selectedSessionRef.current && selectedSessionRef.current !== sessionId)
       )
@@ -277,10 +294,14 @@ export function useForgeAgentSession(projectId: string | null) {
           activeSessionKey(projectId),
           result.session.session_id,
         );
-      void refreshSessions().catch(() => null);
+      setSessions((current) => {
+        const index = current.findIndex((item) => item.session_id === sessionId);
+        if (index < 0) return [result.session, ...current];
+        return current.map((item, position) => position === index ? result.session : item);
+      });
       return result.session;
     },
-    [connectActivity, projectId, refreshSessions],
+    [connectActivity, projectId],
   );
 
   const createSession = useCallback(
@@ -291,6 +312,7 @@ export function useForgeAgentSession(projectId: string | null) {
         title,
       });
       if (projectRef.current !== projectId) return null;
+      resetObservation();
       selectedSessionRef.current = created.session.session_id;
       activeSessionRef.current = created.session;
       setActiveSession(created.session);
@@ -308,7 +330,7 @@ export function useForgeAgentSession(projectId: string | null) {
       void refreshSessions().catch(() => null);
       return created.session;
     },
-    [connectActivity, projectId, refreshSessions, stopStream],
+    [connectActivity, projectId, refreshSessions, resetObservation, stopStream],
   );
 
   const refreshGuidanceQueue = useCallback(async (runId?: string | null) => {
@@ -356,30 +378,45 @@ export function useForgeAgentSession(projectId: string | null) {
   }, [refreshGuidanceQueue]);
 
   const refreshRun = useCallback(
-    async (runId: string) => {
+    async (runId: string, refreshSessionOnSettle = true) => {
+      const generation = selectionGenerationRef.current;
       const sessionIdAtRequest = activeSessionRef.current?.session_id;
-      const result = await promptForgeApi.agentRuntimeRun(runId);
+      const activeRunAtRequest = runRef.current?.run_id;
+      const result = await promptForgeApi.agentRuntimeRun(runId, observationController.current?.signal);
       if (
+        selectionGenerationRef.current !== generation ||
         activeSessionRef.current?.session_id !== sessionIdAtRequest ||
         (selectedSessionRef.current &&
-          selectedSessionRef.current !== sessionIdAtRequest)
+          selectedSessionRef.current !== sessionIdAtRequest) ||
+        (runRef.current?.run_id !== activeRunAtRequest && runRef.current?.run_id !== runId)
       )
         return result.run;
       runRef.current = result.run;
       setRun(result.run);
-      void refreshGraph(runId);
-      void refreshGuidanceQueue(runId);
+      lastObservedRef.current = Date.now();
+      setLastObservedAt(new Date().toISOString());
+      setConnectionState((value) => value === "stale" ? "polling" : value);
+      const alreadySettled = settledRunRef.current === runId;
+      if (!alreadySettled) {
+        void refreshGraph(runId);
+        void refreshGuidanceQueue(runId);
+      }
       setError(null);
       if (stable(result.run.status)) {
         stopStream();
         clearActivity();
-        const sessionId = activeSessionRef.current?.session_id;
-        if (sessionId) {
-          window.setTimeout(
-            () => void refreshSession(sessionId).catch(() => null),
-            150,
-          );
+        if (!alreadySettled) {
+          settledRunRef.current = runId;
+          const sessionId = activeSessionRef.current?.session_id;
+          if (sessionId && refreshSessionOnSettle) {
+            window.setTimeout(
+              () => void refreshSession(sessionId).catch(() => null),
+              150,
+            );
+          }
         }
+      } else if (settledRunRef.current === runId) {
+        settledRunRef.current = null;
       }
       return result.run;
     },
@@ -394,7 +431,8 @@ export function useForgeAgentSession(projectId: string | null) {
       );
       poll.current = window.setInterval(() => {
         void refreshRun(runId).catch((cause) => {
-          setConnectionState("polling");
+          if (runRef.current?.run_id !== runId) return;
+          setConnectionState("stale");
           setError(
             toErrorMessage(cause, "Agent status could not be refreshed."),
           );
@@ -404,8 +442,28 @@ export function useForgeAgentSession(projectId: string | null) {
     [refreshRun],
   );
 
+  useEffect(() => {
+    const runId = run?.run_id;
+    if (!runId || stable(run.status)) return;
+    let pending = false;
+    const timer = window.setInterval(() => {
+      if (pending || poll.current !== null || Date.now() - lastObservedRef.current < OBSERVATION_FRESHNESS_MS) return;
+      pending = true;
+      void refreshRun(runId).catch(cause => {
+        if (runRef.current?.run_id !== runId) return;
+        setConnectionState("stale");
+        setError(toErrorMessage(cause, "Agent status could not be refreshed."));
+      }).finally(() => { pending = false; });
+    }, OBSERVATION_FRESHNESS_MS / 2);
+    return () => window.clearInterval(timer);
+  }, [refreshRun, run?.run_id, run?.status]);
+
   const connect = useCallback(
     (runId: string) => {
+      if (runRef.current?.run_id === runId && stable(runRef.current.status)) {
+        stopStream();
+        return;
+      }
       stopStream();
       setConnectionState("connecting");
       streamOpenFallback.current = window.setTimeout(() => {
@@ -425,6 +483,8 @@ export function useForgeAgentSession(projectId: string | null) {
         try {
           const event = JSON.parse(message.data) as ProductAgentEvent;
           if (source.current !== stream || event.run_id !== runId) return;
+          lastObservedRef.current = Date.now();
+          setLastObservedAt(new Date().toISOString());
           setEvents((current) => mergeActivityEvents(current, event));
           if (event.event_type.startsWith("agent.inbox."))
             void refreshGuidanceQueue(runId);
@@ -449,8 +509,8 @@ export function useForgeAgentSession(projectId: string | null) {
             void refreshGraph(runId).catch(() => null);
           }
           if (
-            event.event_type.startsWith("runtime.") &&
-            shouldPollAfterSseEvent(event.status)
+            (event.event_type.startsWith("runtime.") && shouldPollAfterSseEvent(event.status)) ||
+            event.event_type.startsWith("model.retry.")
           ) {
             void refreshRun(runId).catch(() => setConnectionState("polling"));
           }
@@ -483,8 +543,63 @@ export function useForgeAgentSession(projectId: string | null) {
     ],
   );
 
+  const discardDraft = useCallback(async () => {
+    const current = runRef.current;
+    if (!current) return null;
+    try {
+      await promptForgeApi.discardAgentRuntimeDraft(current.run_id);
+      return await refreshRun(current.run_id, false);
+    } catch (cause) {
+      setError(toErrorMessage(cause, "Recovery draft could not be discarded."));
+      throw cause;
+    }
+  }, [refreshRun]);
+
+  const refreshRecovery = useCallback(async () => {
+    const current = runRef.current;
+    if (current) await refreshRun(current.run_id, false);
+  }, [refreshRun]);
+
+  useEffect(() => {
+    if (!run?.job_id || !shouldObserveJob(run.status, run.job?.status)) return;
+    const jobId = run.job_id;
+    const sessionId = activeSessionRef.current?.session_id;
+    const generation = selectionGenerationRef.current;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = JOB_POLL_INTERVAL_MS;
+    const tick = async () => {
+      const requestedRunId = runRef.current?.run_id;
+      try {
+        const result = await promptForgeApi.agentJob(jobId);
+        if (disposed || selectionGenerationRef.current !== generation || activeSessionRef.current?.session_id !== sessionId || runRef.current?.job_id !== jobId || runRef.current?.run_id !== requestedRunId) return;
+        delay = JOB_POLL_INTERVAL_MS;
+        if (result.job.current_run_id !== runRef.current.run_id) {
+          followRecoveredRun.current?.(result.job.current_run_id);
+        } else {
+          setRun(current => {
+            if (!current || current.job_id !== jobId) return current;
+            const next = {...current, job: result.job, recovery: result.recovery};
+            runRef.current = next;
+            return next;
+          });
+        }
+      } catch {
+        delay = Math.min(30_000, delay * 2);
+      } finally {
+        if (!disposed) timer = setTimeout(tick, document.hidden ? 30_000 : delay);
+      }
+    };
+    timer = setTimeout(tick, delay);
+    return () => {disposed = true; if (timer) clearTimeout(timer);};
+  }, [run?.job_id, run?.status, run?.job?.status]);
+
   const resumeSession = useCallback(
     async (sessionId: string) => {
+      const generation = ++selectionGenerationRef.current;
+      // Rotate before starting the read. A state-change effect would cancel
+      // this same restore request after refreshSession sets activeSession.
+      resetObservation();
       selectedSessionRef.current = sessionId;
       stopStream();
       setRestoring(true);
@@ -494,13 +609,15 @@ export function useForgeAgentSession(projectId: string | null) {
       try {
         const session = await refreshSession(sessionId);
         if (
+          selectionGenerationRef.current !== generation ||
           selectedSessionRef.current !== sessionId ||
           session.project_id !== projectRef.current
         )
           return null;
         if (session.active_run_id) {
-          const nextRun = await refreshRun(session.active_run_id);
+          const nextRun = await refreshRun(session.active_run_id, false);
           if (
+            selectionGenerationRef.current !== generation ||
             selectedSessionRef.current !== sessionId ||
             session.project_id !== projectRef.current
           )
@@ -514,10 +631,27 @@ export function useForgeAgentSession(projectId: string | null) {
         }
         return session;
       } catch (cause) {
+        if (selectionGenerationRef.current !== generation || selectedSessionRef.current !== sessionId) return null;
+        if (apiErrorCode(cause) === "AGENT_SESSION_NOT_FOUND") {
+          const currentProject = projectRef.current;
+          if (currentProject && window.localStorage.getItem(activeSessionKey(currentProject)) === sessionId) {
+            window.localStorage.removeItem(activeSessionKey(currentProject));
+          }
+          selectedSessionRef.current = null;
+          activeSessionRef.current = null;
+          runRef.current = null;
+          setActiveSession(null);
+          setRun(null);
+          setGraph(null);
+          stopStream();
+          stopActivityStream();
+          clearActivity(true);
+          void refreshSessions().catch(() => null);
+        }
         setError(toErrorMessage(cause, "Agent session could not be loaded."));
         return null;
       } finally {
-        setRestoring(false);
+        if (selectionGenerationRef.current === generation) setRestoring(false);
       }
     },
     [
@@ -525,10 +659,29 @@ export function useForgeAgentSession(projectId: string | null) {
       connect,
       refreshRun,
       refreshSession,
+      refreshSessions,
+      resetObservation,
       stopStream,
       stopActivityStream,
     ],
   );
+
+  useEffect(() => {
+    let disposed = false;
+    let following: string | null = null;
+    followRecoveredRun.current = (runId) => {
+      if (following === runId) return;
+      following = runId;
+      const sessionId = activeSessionRef.current?.session_id;
+      void refreshRun(runId).then((next) => {
+        if (!disposed && activeSessionRef.current?.session_id === sessionId && runRef.current?.run_id === runId) {
+          connect(next.run_id);
+          if (sessionId) void refreshSession(sessionId).catch(() => null);
+        }
+      }).catch(() => setConnectionState("polling")).finally(() => { following = null; });
+    };
+    return () => { disposed = true; followRecoveredRun.current = null; };
+  }, [connect, refreshRun, refreshSession]);
 
   const ensureSession = useCallback(async () => {
     if (!projectId) return null;
@@ -546,11 +699,13 @@ export function useForgeAgentSession(projectId: string | null) {
           | "auto"
           | "read_only"
           | "staged_changes"
+          | "review_changes"
           | "plan_only"
           | "build_only_strict"
           | "build_only"
           | "simulate"
           | "build_then_confirm_flash";
+        executionProfile?: "standard" | "advanced";
         boardPort?: string | null;
         boardType?: string | null;
         environment?: string | null;
@@ -581,6 +736,7 @@ export function useForgeAgentSession(projectId: string | null) {
             provider_id: providerId ?? activeSessionRef.current?.provider_id ?? null,
             model_id: activeSessionRef.current?.model_id ?? null,
             autonomy: options.autonomy ?? "auto",
+            execution_profile: options.executionProfile ?? "standard",
             board_port: options.boardPort ?? undefined,
             board_type: options.boardType ?? undefined,
             environment: options.environment ?? undefined,
@@ -647,8 +803,10 @@ export function useForgeAgentSession(projectId: string | null) {
 
   const cancel = useCallback(async () => {
     const session = activeSessionRef.current;
-    if (!session || cancelling) return null;
+    if (!session || cancellationPending.current) return null;
+    cancellationPending.current = true;
     setCancelling(true);
+    setError(null);
     try {
       const result = await promptForgeApi.cancelAgentRuntimeSession(
         session.session_id,
@@ -661,17 +819,19 @@ export function useForgeAgentSession(projectId: string | null) {
       if (result.run) {
         runRef.current = result.run;
         setRun(result.run);
+        if (stable(result.run.status)) stopStream();
       }
-      clearActivity();
+      clearActivity(true);
       await refreshSession(session.session_id).catch(() => null);
       return result;
     } catch (cause) {
       setError(toErrorMessage(cause, "Agent session could not be cancelled."));
       return null;
     } finally {
+      cancellationPending.current = false;
       setCancelling(false);
     }
-  }, [cancelling, clearActivity, handleActivityEvent, refreshSession]);
+  }, [clearActivity, handleActivityEvent, refreshSession, stopStream]);
 
   const confirmFlash = useCallback(
     async (
@@ -710,12 +870,32 @@ export function useForgeAgentSession(projectId: string | null) {
     [connect],
   );
 
-  const retry = useCallback(async () => {
+  const recover = useCallback(async (action: "retry" | "resume" | "verify", selection?: {provider_id: string; model_id: string}) => {
     const current = runRef.current;
-    if (!current || current.status !== "paused_model_unavailable") return null;
+    if (!current || recoveryPending.current) return null;
+    const checkpoint = current.recovery?.checkpoint_id;
+    const useCheckpoint = action !== "retry" || current.recovery_actions?.includes("resume");
+    if (useCheckpoint && (!current.recovery?.eligible || !checkpoint)) {
+      setError("Saved work cannot continue yet. Review the recovery details above.");
+      return null;
+    }
+    if (!useCheckpoint && !current.recovery_actions?.includes("retry")) {
+      setError("This run has no available retry action.");
+      return null;
+    }
+    recoveryPending.current = true;
+    setSubmitting(true);
     setError(null);
     try {
-      const result = await promptForgeApi.retryAgentRuntimeRun(current.run_id);
+      const identity = await recoveryRequestKey(action, current.run_id, checkpoint ?? undefined, selection);
+      const result = action === "verify"
+        ? await promptForgeApi.verifyAgentRuntimeDraft(current.run_id, identity)
+        : useCheckpoint
+          ? current.job_id
+            ? {run: (await promptForgeApi.agentJobAction(current.job_id, "resume", {idempotency_key: identity, checkpoint_id: checkpoint, ...selection})).run!}
+            : await promptForgeApi.resumeAgentRuntimeRun(current.run_id, checkpoint!, identity, selection)
+          : await promptForgeApi.retryAgentRuntimeRun(current.run_id);
+      if (runRef.current?.run_id !== current.run_id) return result.run;
       runRef.current = result.run;
       setRun(result.run);
       const sessionId = activeSessionRef.current?.session_id;
@@ -723,10 +903,33 @@ export function useForgeAgentSession(projectId: string | null) {
       connect(result.run.run_id);
       return result.run;
     } catch (cause) {
-      setError(toErrorMessage(cause, "The selected model could not be retried yet."));
+      setError(toErrorMessage(cause, action === "verify" ? "The saved draft could not be built. Check project trust and task budget." : "Saved work could not be continued safely."));
       return null;
-    }
+    } finally { recoveryPending.current = false; setSubmitting(false); }
   }, [connect, refreshSession]);
+
+  const retry = useCallback(() => recover("retry"), [recover]);
+  const resume = useCallback((selection?: {provider_id: string; model_id: string}) => recover("resume", selection), [recover]);
+  const verifyDraft = useCallback(() => recover("verify"), [recover]);
+
+  const jobAction = useCallback(async (action: "pause" | "resume" | "budget" | "recovery-policy", policy?: "manual" | "safe_auto") => {
+    const current = runRef.current;
+    if (!current?.job_id || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      // Retrying a transport failure uses the same action identity until the
+      // server's updated job revision has been observed.
+      const body = action === "recovery-policy" ? {policy} : {idempotency_key: `${action}:${current.job_id}:${current.job?.updated_at ?? current.run_id}`};
+      const result = await promptForgeApi.agentJobAction(current.job_id, action, body);
+      const updated = result.run ?? {...current, job: result.job ?? current.job};
+      runRef.current = updated;
+      setRun(updated);
+      if (result.run) connect(result.run.run_id);
+    } catch (cause) {
+      setError(toErrorMessage(cause, "The saved task could not be updated."));
+    } finally {setSubmitting(false);}
+  }, [connect, submitting]);
 
   const applyChanges = useCallback(async () => {
     const current = runRef.current;
@@ -763,6 +966,8 @@ export function useForgeAgentSession(projectId: string | null) {
   }, [refreshProviders]);
 
   useEffect(() => {
+    selectionGenerationRef.current++;
+    resetObservation();
     stopStream();
     stopActivityStream();
     clearActivity(true);
@@ -771,6 +976,7 @@ export function useForgeAgentSession(projectId: string | null) {
     activeSessionRef.current = null;
     setRun(null);
     runRef.current = null;
+    settledRunRef.current = null;
     setEvents([]);
     setGraph(null);
     if (!projectId) {
@@ -804,12 +1010,14 @@ export function useForgeAgentSession(projectId: string | null) {
     projectId,
     refreshSessions,
     resumeSession,
+    resetObservation,
     stopActivityStream,
     stopStream,
   ]);
 
   useEffect(
     () => () => {
+      observationController.current?.abort();
       stopStream();
       stopActivityStream();
       cancelActivityClear();
@@ -818,6 +1026,7 @@ export function useForgeAgentSession(projectId: string | null) {
   );
 
   return {
+    projectId,
     enabled,
     providers,
     routeableProviders,
@@ -835,10 +1044,13 @@ export function useForgeAgentSession(projectId: string | null) {
     applyingChanges,
     restoring,
     connectionState,
+    lastObservedAt,
     error,
     refreshProviders,
     refreshSessions,
+    discardDraft,
     refreshSession,
+    refreshRecovery,
     createSession,
     resumeSession,
     sendMessage,
@@ -847,6 +1059,9 @@ export function useForgeAgentSession(projectId: string | null) {
     removeGuidance,
     confirmFlash,
     retry,
+    resume,
+    verifyDraft,
+    jobAction,
     applyChanges,
     cancel,
   };

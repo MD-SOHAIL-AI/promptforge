@@ -28,7 +28,8 @@ def _registry_only(section: str, key: str, value: str) -> None:
 def validate_build_configuration(parser: RawConfigParser) -> None:
     # Includes DEFAULT, base env, and inheritance source sections. Indirection is
     # rejected because validating only the local INI cannot establish its trust.
-    forbidden = {"extra_scripts", "extra_configs", "platform_packages", "upload_command"}
+    forbidden = {"extra_scripts", "extra_configs", "platform_packages", "upload_command",
+                 "lib_extra_dirs"}
     for section in [parser.default_section, *parser.sections()]:
         options = parser.defaults() if section == parser.default_section else dict(parser.items(section, raw=True))
         for key, value in options.items():
@@ -38,6 +39,11 @@ def validate_build_configuration(parser: RawConfigParser) -> None:
                 raise ValueError(f"BUILD_CONFIGURATION_REQUIRES_TRUST: {section}.{key}")
             if key.casefold() in {"platform", "board", "lib_deps"}:
                 _registry_only(section, key.casefold(), value)
+            if key.casefold() in {"build_flags", "build_unflags"}:
+                # Compiler plugins, response files and external include paths
+                # can read or execute outside the model-writable project stage.
+                if re.search(r"(?:-fplugin|@|(?:^|\s)-(?:I|L|include|imacros|specs|B)|[A-Za-z]:[\\/]|\.\.[\\/])", value):
+                    raise ValueError(f"BUILD_CONFIGURATION_REQUIRES_TRUST: {section}.{key}")
             if key.casefold() == "targets":
                 targets = value.replace(",", " ").split()
                 if any(target not in {"buildprog", "checkprogsize"} for target in targets):

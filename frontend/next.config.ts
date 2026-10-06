@@ -6,6 +6,7 @@ const backendUrl = process.env.FORGEX_API_URL ?? process.env.PROMPTFORGE_API_URL
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: { cpus: 2 },
   distDir: process.env.FORGEX_NEXT_DIST_DIR || ".next",
   outputFileTracingRoot: resolve(process.cwd(), ".."),
   async rewrites() {

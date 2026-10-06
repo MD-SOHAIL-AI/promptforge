@@ -8,6 +8,7 @@ import fnmatch
 import os
 import re
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -38,6 +39,7 @@ class ForgeXToolExecutor:
         capability_grant: CapabilityGrant | None = None,
         service_handlers: Mapping[ToolName, ToolHandler] | None = None,
         skill_registry: SkillRegistry | None = None,
+        environment: str | None = None,
     ) -> None:
         self.write_root = write_root.resolve(strict=True)
         self.read_root = (read_root or write_root).resolve(strict=True)
@@ -47,6 +49,7 @@ class ForgeXToolExecutor:
         self.service_handlers = dict(service_handlers or {})
         self.skill_registry = skill_registry or SkillRegistry(self.read_root)
         self.current_plan: tuple[dict[str, str], ...] = ()
+        self.environment = environment
         self.deleted_paths: set[str] = set()
 
     def validate(self, call: ToolCall, *, consume: bool = False) -> None:
@@ -71,6 +74,10 @@ class ForgeXToolExecutor:
     def execute(self, call: ToolCall) -> object:
         self.validate(call, consume=True)
         args = dict(call.arguments)
+        from .tool_registry import NEW_TOOLS, HOST_TOOLS
+        if call.tool in NEW_TOOLS and NEW_TOOLS[call.tool].handler == "local":
+            from .esp32_tools import local_tool
+            return local_tool(self, call.tool, args)
         if call.tool is ToolName.LIST_FILES:
             relative = str(args.get("path", "."))
             prefix = self._overlay_directory(relative)
@@ -258,6 +265,8 @@ class ForgeXToolExecutor:
             raise ToolPolicyError(
                 RuntimeClassification.POLICY_DENIED, "tool_host_handler_unavailable"
             )
+        if call.tool in HOST_TOOLS:
+            raise ToolPolicyError(RuntimeClassification.POLICY_DENIED, "tool_host_handler_unavailable")
         raise PermissionError("tool_not_executable")
 
     def _overlay_directory(self, relative: str) -> str:
@@ -377,9 +386,11 @@ class ForgeXToolExecutor:
                 os.fsync(handle.fileno())
             # Revalidate containment before publishing; failed writes leave the
             # prior staged content intact, never a partially truncated file.
-            path = self.policy.resolve_path(self.write_root, relative, must_exist=False)
-            os.replace(temporary, path)
-            self.deleted_paths = {old for old in self.deleted_paths if os.path.normcase(old) != os.path.normcase(relative)}
+            guard = self.policy_engine.publication_guard(self.capability_grant, self.read_root) if self.policy_engine and self.capability_grant else nullcontext()
+            with guard:
+                path = self.policy.resolve_path(self.write_root, relative, must_exist=False)
+                os.replace(temporary, path)
+                self.deleted_paths = {old for old in self.deleted_paths if os.path.normcase(old) != os.path.normcase(relative)}
         finally:
             temporary.unlink(missing_ok=True)
 

@@ -33,9 +33,10 @@
     "**/*.tsx",
     ".next-activity-check/types/**/*.ts",
     ".next-design-preview/types/**/*.ts",
+    ".next-e2e/types/**/*.ts",
+    ".next-hardening-check/types/**/*.ts",
     ".next/types/**/*.ts",
-    "next-env.d.ts",
-    ".next-hardening-check/types/**/*.ts"
+    "next-env.d.ts"
   ],
   "exclude": [
     "node_modules"

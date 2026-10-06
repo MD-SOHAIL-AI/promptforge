@@ -16,6 +16,8 @@ export interface SettingsSectionProps {
   schema: Record<string, ForgeXSettingSchemaItem>;
   saving: boolean;
   onUpdate: (key: string, value: ForgeXSettingValue) => Promise<Record<string, ForgeXSettingValue>>;
+  onBatch: (patch: Record<string, ForgeXSettingValue>) => Promise<Record<string, ForgeXSettingValue>>;
+  onPreview: (key: string, value: ForgeXSettingValue) => void;
 }
 
 export interface ModelSettingsSectionProps {

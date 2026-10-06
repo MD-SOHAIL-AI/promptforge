@@ -51,6 +51,11 @@ def bounded_tail(value: str, limit: int = 6000) -> str:
 
 def run_command(args: Sequence[str], cwd: Path, timeout: float | None, env: dict[str, str]) -> CommandResult:
     started = time.monotonic()
+    if args and str(args[0]).endswith("forgex-pio.py"):
+        runtime_python = env.get("FORGEX_PLATFORMIO_PYTHON")
+        if not runtime_python:
+            raise ValueError("FORGEX_PLATFORMIO_PYTHON is required for bundled PlatformIO sign-off")
+        args = [runtime_python, *args]
     completed = subprocess.run(
         list(args),
         cwd=str(cwd),
@@ -277,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--serial-timeout", type=float, default=DEFAULT_SERIAL_TIMEOUT)
     parser.add_argument("--pio", default="pio")
     parser.add_argument("--report", type=Path, default=Path("hardware-signoff-reports") / "esp32dev-signoff.json")
+    parser.add_argument("--installer", type=Path, help="Bind sign-off to this exact installer artifact")
     args = parser.parse_args(argv)
 
     try:
@@ -294,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"HARDWARE_SIGNOFF_INVALID: {exc}", file=sys.stderr)
         return 2
 
+    if args.installer:
+        report["release"] = {"installer_sha256": sha256_file(args.installer)}
     write_report(report, args.report)
     if report["success"]:
         print(f"HARDWARE_SIGNOFF_PASS: {args.report}")

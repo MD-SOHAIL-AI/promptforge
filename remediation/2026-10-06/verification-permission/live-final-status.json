@@ -1,0 +1,30 @@
+{
+  "observed_at": "2026-10-06T01:49:02.080Z",
+  "run_id": "agent-run-b9c0ec32c9034cc2b242efada2ba67fd",
+  "status": "completed_with_warning",
+  "classification": "DRAFT_BUILD_VERIFIED",
+  "build_verified": true,
+  "active_workspace_unchanged": true,
+  "hardware_verified": false,
+  "change_set_id": "changeset-fcdaec2ab25341918222c5c712a9a9d3",
+  "active_session_run": "agent-run-b9c0ec32c9034cc2b242efada2ba67fd",
+  "trusted": true,
+  "build_evidence": {
+    "state": "passed",
+    "scope": "saved_draft",
+    "environment": "esp32dev",
+    "source_revision": "workspace:2e9ceacc9546db1d9afa9e9c",
+    "observed_revision": "workspace:2e9ceacc9546db1d9afa9e9c"
+  },
+  "budget_consumed": {
+    "elapsed_seconds": 394.2350000000006,
+    "input_bytes": 435299,
+    "output_tokens": 13939,
+    "requests": 11,
+    "tool_calls_used": 10
+  },
+  "activity": [
+    "Agent activity\n3m 23s\nSummary\nNormal\nVerbose\nReasoning summary\n0s\nTHINKING.SUMMARY\nCOMPLETED\nTurn 1\nStep 1\n\nUsing ForgeX tools.\n\nPlan interrupted\n3m 11s\nPLAN.STEP.STARTED\nINTERRUPTED\n✓\nCreate Platform",
+    "Agent activity\n1m 23s\nSummary\nNormal\nVerbose\nBuilding staged firmware\n1m 11s\nBUILD.COMPLETED\nCOMPLETED\nOutput · latest 16 KB\nExit code 0\n0 warnings"
+  ]
+}

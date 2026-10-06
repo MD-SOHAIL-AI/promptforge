@@ -1,0 +1,40 @@
+{
+  "applied_at": null,
+  "authorization_id": null,
+  "authorization_source": "explicit_review",
+  "base_revision": "workspace:567db488e32369ec0d950c2d",
+  "base_workspace_hash": "567db488e32369ec0d950c2d4b61f0ee0caa14089028f671aeb633cf80c7af35",
+  "change_set_id": "changeset-07b40be6e46b436e9f9b7cdee1d7b199",
+  "changed_files": [
+    {
+      "change_type": "modified",
+      "diff_preview": "--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-before\r\n+after\r\n",
+      "new_hash": "1235f8f435b1d16f7aac442351f2e29ff1bd2b74652392c4accb5ec5565973da",
+      "path": "a.txt",
+      "preview_supported": true,
+      "previous_hash": "a6456ed3bde94789512c42c563637b929da22b9b5611962bd2c8ff63343d8195",
+      "safe": true,
+      "warning": null
+    },
+    {
+      "change_type": "modified",
+      "diff_preview": "--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-before\r\n+after\r\n",
+      "new_hash": "1235f8f435b1d16f7aac442351f2e29ff1bd2b74652392c4accb5ec5565973da",
+      "path": "b.txt",
+      "preview_supported": true,
+      "previous_hash": "a6456ed3bde94789512c42c563637b929da22b9b5611962bd2c8ff63343d8195",
+      "safe": true,
+      "warning": null
+    }
+  ],
+  "created_at": "2026-10-05T06:08:02.249010Z",
+  "provider_id": "audit-fake",
+  "review_required": true,
+  "risk_level": "unassessed",
+  "staged_manifest_hash": "1ccce4d5c04dbdf6e9fc8dca43a94ebf11ef72d8a7b5804dec9d872ffbc665e2",
+  "staging_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\probe-fixtures\\apply-crash\\stages\\stage-962d3763993b4bae9719e5622e303353",
+  "status": "conflicted",
+  "summary": "0 created, 2 modified, 0 deleted",
+  "undone_at": null,
+  "workspace_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\probe-fixtures\\apply-crash\\active"
+}

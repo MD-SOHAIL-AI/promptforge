@@ -85,6 +85,7 @@ class ProductAgentService:
         start_monitor_after_flash: bool = False,
         session_id: str | None = None,
         explicit_edit_authorized: bool = False,
+        execution_profile: str = "standard",
     ) -> ProductAgentRun:
         if not self.enabled:
             raise PermissionError("AGENT_RUNTIME_DISABLED")
@@ -104,6 +105,7 @@ class ProductAgentService:
             start_monitor_after_flash=start_monitor_after_flash,
             session_id=session_id,
             explicit_edit_authorized=explicit_edit_authorized,
+            execution_profile=execution_profile,
         )
 
     def get_run(self, run_id: str) -> ProductAgentRun:
@@ -144,6 +146,15 @@ class ProductAgentService:
 
     async def retry(self, run_id: str) -> ProductAgentRun:
         return await self._owner().retry(run_id)
+
+    async def resume(self, run_id: str, **kwargs: object) -> ProductAgentRun:
+        return await self._owner().resume(run_id, **kwargs)
+
+    async def verify_saved_draft(self, run_id: str, **kwargs: object) -> ProductAgentRun:
+        return await self._owner().verify_saved_draft(run_id, **kwargs)
+
+    async def discard_draft(self, run_id: str) -> ProductAgentRun:
+        return await self._owner().discard_draft(run_id)
 
     async def close(self) -> None:
         if self.orchestrator is not None:

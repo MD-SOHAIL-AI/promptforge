@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
   Settings,
+  ShieldCheck,
   Sparkles,
   SquareTerminal,
   Trash2,
@@ -25,6 +26,8 @@ import {
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ChatCanvas } from "@/components/nexus/chat-canvas";
 import { TaskCanvas } from "@/components/nexus/task-canvas";
+import { EvidenceCanvas } from "@/components/nexus/evidence-canvas";
+import type { ProjectProfile } from "@/types/engine-contracts";
 import {
   BuildCanvas,
   CodeCanvas,
@@ -35,11 +38,13 @@ import {
   type NexusCanvas,
 } from "@/components/nexus/work-canvases";
 import { SettingsPage } from "@/components/settings/settings-page";
+import { WorkspaceBackground } from "@/components/nexus/workspace-background";
 import type { SettingsCategory } from "@/components/settings/types";
 import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
 import { useChatSession } from "@/hooks/use-chat-session";
 import { useForgeAgentSession } from "@/hooks/use-forge-agent-session";
 import { useForgeXSettings } from "@/hooks/use-forgex-settings";
+import { WorkspacePreferences } from "@/hooks/workspace-preferences";
 import { usePromptForgeWorkspace } from "@/hooks/use-promptforge-workspace";
 import { useModelRuntimeState } from "@/hooks/use-model-runtime-state";
 import { promptForgeApi } from "@/lib/api";
@@ -90,25 +95,38 @@ const WORKSPACE_TABS: Array<{ id: Detail; label: string; icon: typeof Code2; sho
   { id: "code", label: "Files", icon: FolderOpen, shortcut: "Ctrl+Shift+E" },
   { id: "review", label: "Changes", icon: FileDiff, shortcut: "Ctrl+Shift+G" },
   { id: "build", label: "Build", icon: Hammer },
+  { id: "evidence", label: "Evidence", icon: ShieldCheck },
   { id: "hardware", label: "Device", icon: CircuitBoard },
   { id: "terminal", label: "Terminal", icon: SquareTerminal, shortcut: "Ctrl+`" },
 ];
 export function NexusShell() {
   const dialogs = useForgeXDialogs();
-  const workspace = usePromptForgeWorkspace();
   const settingsState = useForgeXSettings();
+  const workspace = usePromptForgeWorkspace(settingsState.settings, settingsState.loading);
   const agent = useForgeAgentSession(
-    workspace.activeProject?.project_id ?? null,
+    workspace.activeProjectAvailable ? workspace.activeProject?.project_id ?? null : null,
   );
   const chat = useChatSession();
   const overlayRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
-  const [view, setView] = useState<View>("chat");
+  const [view, setView] = useState<View>("agent");
   const [sidebar, setSidebar] = useState(true);
   const [narrow, setNarrow] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [draft, setDraft] = useState("");
+  const [reviewPath, setReviewPath] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
+  const recentProjectLimit = Math.max(1, Math.min(50, Number(settingsState.settings["workspace.recent_project_limit"] ?? 10)));
+  const matchingProjects = [...workspace.projects].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)).filter(project => `${project.project_name} ${project.project_path} ${project.target_board}`.toLowerCase().includes(projectSearch.toLowerCase()));
+  const startupApplied = useRef(false);
+  useEffect(() => {
+    if (settingsState.loading || startupApplied.current) return;
+    startupApplied.current = true;
+    const startup = settingsState.settings["general.startup_behavior"];
+    if (startup === "show_welcome_screen") setView("projects");
+    if (startup === "open_empty_workspace") setView("agent");
+  }, [settingsState.loading, settingsState.settings]);
   const [selectedBoardPort, setSelectedBoardPort] = useState<string | null>(
     null,
   );
@@ -123,13 +141,26 @@ export function NexusShell() {
     workspace.detectedBoards.find((b) => b.port === selectedBoardPort) ??
     workspace.detectedBoards[0] ??
     null;
-  const selectedBoardId =
-    boardIdFromProject(workspace.activeProject) ??
-    boardIdFromDetected(selectedBoard);
-  const activeEnvironment =
-    typeof workspace.activeProject?.metadata?.active_environment === "string"
-      ? workspace.activeProject.metadata.active_environment
-      : null;
+  const projectId = workspace.activeProjectAvailable ? workspace.activeProject?.project_id ?? null : null;
+  const markProjectMissing = workspace.markProjectMissing;
+  const [profileState, setProfileState] = useState<{ projectId: string; profile: ProjectProfile } | null>(null);
+  const [environmentChoice, setEnvironmentChoice] = useState<{ projectId: string; name: string } | null>(null);
+  const projectProfile = profileState?.projectId === projectId ? profileState.profile : null;
+  const activeEnvironment = environmentChoice?.projectId === projectId ? environmentChoice.name : projectProfile?.selected_environment ?? null;
+  const setBuildEnvironment = workspace.setBuildEnvironment;
+  useEffect(() => { setBuildEnvironment(activeEnvironment); }, [activeEnvironment, setBuildEnvironment]);
+  useEffect(() => {
+    if (!projectId) return;
+    let current = true;
+    void promptForgeApi.projectProfile(projectId).then(profile => {
+      if (current) setProfileState({ projectId, profile });
+    }).catch(cause => { if (current) { setProfileState(null); markProjectMissing(projectId, cause); } });
+    return () => { current = false; };
+  }, [projectId, agent.run?.status, markProjectMissing]);
+  const selectedEnvironmentProfile = projectProfile?.environments?.find(environment => environment.name === activeEnvironment);
+  const selectedBoardId = projectProfile?.selection_required && !activeEnvironment ? null : selectedEnvironmentProfile
+    ? selectedEnvironmentProfile.board || "native"
+    : boardIdFromProject(workspace.activeProject) ?? boardIdFromDetected(selectedBoard);
   const running = ["running", "queued", "cancelling"].includes(
     agent.run?.status ?? "",
   );
@@ -154,7 +185,7 @@ export function NexusShell() {
     const saved = localStorage.getItem("forgex-destination");
     if (["chat", "agent", "projects", "settings"].includes(saved ?? ""))
       setView(saved as View);
-    const media = matchMedia("(max-width: 1279px)");
+    const media = matchMedia("(max-width: 1099px)");
     const update = () => {
       setNarrow(media.matches);
       if (media.matches) setSidebar(false);
@@ -241,6 +272,14 @@ export function NexusShell() {
       await workspace.importProjectPath(result.path);
       navigate("agent");
     }
+  };
+  const locateProject = async () => {
+    if (!window.forgexDesktop?.openProject) {
+      await dialogs.message({title: "Locate a folder", description: "Use ForgeX Desktop to select the folder's new location."});
+      return;
+    }
+    const result = await window.forgexDesktop.openProject();
+    if (!result.canceled && result.path) await workspace.locateMissingProject(result.path);
   };
   const histories = view === "agent" ? agent.sessions : chat.sessions;
   const selectedSession =
@@ -366,6 +405,8 @@ export function NexusShell() {
     ) : detail === "review" ? (
       <ReviewCanvas
         run={agent.run}
+        initialPath={reviewPath}
+        onDiscard={agent.discardDraft}
         applyingChanges={agent.applyingChanges}
         onBack={() => setDetail(null)}
         onApply={agent.applyChanges}
@@ -386,6 +427,8 @@ export function NexusShell() {
           }
         }}
       />
+    ) : detail === "evidence" ? (
+      <EvidenceCanvas run={agent.run} onBack={() => setDetail(null)} />
     ) : detail === "hardware" ? (
       <HardwareCanvas
         workspace={workspace}
@@ -411,7 +454,8 @@ export function NexusShell() {
           ? "Projects"
           : "Settings";
   return (
-    <main className="fx-product-shell">
+    <WorkspacePreferences.Provider value={settingsState.settings}><main className="fx-product-shell">
+      <WorkspaceBackground />
       {sidebar && narrow ? (
         <button
           className="fx-sidebar-scrim"
@@ -587,6 +631,12 @@ export function NexusShell() {
                   </option>
                 ))}
               </select>
+              {projectProfile?.environments?.length ? <select aria-label="Build environment" className="fx-mode-select" value={activeEnvironment ?? ""} disabled={running} onChange={event => {
+                if (projectId) setEnvironmentChoice({ projectId, name: event.target.value });
+              }}>
+                <option value="" disabled>Select environment</option>
+                {projectProfile.environments.map(environment => <option key={environment.name} value={environment.name}>{environment.name}</option>)}
+              </select> : null}
               <span className="fx-header-context hidden lg:inline-flex" title="Configured target">
                 <CircuitBoard size={13} />
                 {selectedBoardId ?? "No target"}
@@ -615,13 +665,25 @@ export function NexusShell() {
               </button>
             </>
           ) : null}
+          <button className="fx-runtime-status" aria-label="Open runtime status" title={workspace.health ? `Backend: ${workspace.health.status}` : "Backend disconnected"} onClick={() => { setSettingsCategory("about"); navigate("settings"); }}><span data-connected={Boolean(workspace.health)} /> <span className="hidden xl:inline">{workspace.health ? workspace.health.status === "degraded" ? "Limited" : "Connected" : "Offline"}</span></button>
         </header>
         <div className="fx-product-content">
+          {workspace.backendRecovery && !["ready", "stopped"].includes(workspace.backendRecovery.state) ? <div role="status" className="fx-runtime-recovery-banner">{workspace.backendRecovery.restartScheduled || workspace.backendRecovery.state === "starting" ? "Backend reconnecting. Saved work is preserved; execution waits for recovery checks." : workspace.backendRecovery.lastError ?? "Backend unavailable. Saved work is preserved."}</div> : null}
+          {workspace.missingProject ? <div role="alert" className="m-3 rounded border border-amber-500/40 p-3">
+            <p>The folder for {workspace.activeProject?.project_name} is missing. Select its location or open another folder to continue.</p>
+            <div className="mt-2 flex gap-3">
+              <button onClick={() => void locateProject().catch(report)}>Locate folder</button>
+              <button onClick={() => void openProject().catch(report)}>Open another folder</button>
+              <button onClick={() => void workspace.forgetMissingProject().catch(report)}>Remove from recents</button>
+            </div>
+          </div> : null}
+          {/* Keep panel identity stable across hydration and saved-view restoration. */}
           <PanelGroup
+            id="forgex-conversation-panels"
             direction="horizontal"
             autoSaveId="forgex-conversation-panels"
           >
-            <Panel defaultSize={52} minSize={30}>
+            <Panel id="forgex-conversation-main" order={1} defaultSize={52} minSize={30}>
               <div className={view === "chat" ? "h-full" : "hidden"}>
                 <ChatCanvas
                   chat={chat}
@@ -643,7 +705,7 @@ export function NexusShell() {
               <div className={view === "agent" ? "h-full" : "hidden"}>
                 <TaskCanvas
                   agent={agent}
-                  projectName={workspace.activeProject?.project_name ?? null}
+                  projectName={workspace.activeProjectAvailable ? workspace.activeProject?.project_name ?? null : null}
                   selectedBoard={selectedBoard}
                   selectedBoardId={selectedBoardId}
                   activeEnvironment={activeEnvironment}
@@ -654,7 +716,13 @@ export function NexusShell() {
                   onProviderModelsRequest={loadModels}
                   onModelSelectionChange={selectModel}
                   onOpenCanvas={openDetail}
+                  onOpenWorkspace={() => void openProject().catch(report)}
                   onViewFile={(path) => {
+                    if (agent.run?.change_set_id && agent.run.classification !== "CHANGESET_APPLIED") {
+                      setReviewPath(path);
+                      openDetail("review");
+                      return;
+                    }
                     void workspace.openFile(path);
                     openDetail("code");
                   }}
@@ -663,6 +731,8 @@ export function NexusShell() {
                   }
                   initialDraft={draft}
                   onDraftConsumed={() => setDraft("")}
+                  activityDetail={String(settingsState.settings["appearance.activity_detail"] ?? "normal") as "summary" | "normal" | "verbose"}
+                  onActivityDetailChange={value => void settingsState.updateSetting("appearance.activity_detail", value)}
                 />
               </div>
               {view === "projects" ? (
@@ -670,7 +740,7 @@ export function NexusShell() {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <h1>Your projects</h1>
-                      <p>Open a workspace and bring an idea to life.</p>
+                      <p>Open an existing PlatformIO project, or choose an empty folder to generate new firmware.</p>
                     </div>
                     <button
                       className="fx-primary-action"
@@ -680,8 +750,9 @@ export function NexusShell() {
                       Open folder
                     </button>
                   </div>
+                  <div className="fx-project-search"><Search size={16} /><input aria-label="Search projects" placeholder="Search projects, paths or boards" value={projectSearch} onChange={event => setProjectSearch(event.target.value)} /></div>
                   <div className="fx-project-list">
-                    {workspace.projects.map((p) => (
+                    {(projectSearch ? matchingProjects : matchingProjects.slice(0, recentProjectLimit)).map((p) => (
                       <button
                         key={p.project_id}
                         onClick={() => {
@@ -699,12 +770,13 @@ export function NexusShell() {
                         </span>
                       </button>
                     ))}
-                    {!workspace.projects.length ? (
+                    {!matchingProjects.length ? (
                       <p className="py-16 text-center">
-                        Open a local folder to start your first project.
+                        {projectSearch ? "No projects match your search." : "Open a local folder to start your first project."}
                       </p>
                     ) : null}
                   </div>
+                  {!projectSearch && matchingProjects.length > recentProjectLimit ? <p className="fx-project-limit">Showing {recentProjectLimit} recent projects. Search to find any project.</p> : null}
                 </div>
               ) : null}
               {view === "settings" ? (
@@ -726,8 +798,8 @@ export function NexusShell() {
             </Panel>
             {view === "agent" && detail && !narrow ? (
               <>
-                <PanelResizeHandle className="fx-detail-handle" />
-                <Panel defaultSize={38} minSize={28} maxSize={55}>
+                <PanelResizeHandle id="forgex-workspace-resize" className="fx-detail-handle" />
+                <Panel id="forgex-workspace-detail" order={2} defaultSize={38} minSize={28} maxSize={55}>
                   <div className="fx-detail-pane fx-workspace-dock">
                     <div className="fx-workspace-tabs" role="tablist" aria-label="Workspace tools">
                       {WORKSPACE_TABS.map((item) => {
@@ -776,6 +848,6 @@ export function NexusShell() {
           </div>
         ) : null}
       </section>
-    </main>
+    </main></WorkspacePreferences.Provider>
   );
 }

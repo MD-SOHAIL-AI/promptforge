@@ -1,3 +1,4 @@
+import { desktopLog } from "./desktop-logging";
 import { app, BrowserWindow, protocol, session } from "electron";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -8,6 +9,7 @@ import { BackendManager } from "./backend-manager";
 import { FrontendManager } from "./frontend-manager";
 import { HarnessManager } from "./harness-manager";
 import { registerIpcHandlers } from "./ipc";
+import { DESKTOP_LAUNCH_ID } from "./diagnostics";
 import {
   resolveBackendPort,
   resolveDesktopBackgroundsDir,
@@ -22,7 +24,12 @@ if (!app.isPackaged) {
   const configuredUserDataDir = process.env.FORGEX_ELECTRON_USER_DATA_DIR || path.join(process.cwd(), ".forgex", "electron-user-data");
   const userDataDir = prepareDevUserDataDir(configuredUserDataDir);
   app.setPath("userData", userDataDir);
-  app.commandLine.appendSwitch("no-sandbox");
+} else if (process.env.FORGEX_ELECTRON_USER_DATA_DIR) {
+  // Allow a separate profile for packaged qualification without touching the
+  // operator's existing workspace or disabling the production sandbox.
+  const userDataDir = path.resolve(process.env.FORGEX_ELECTRON_USER_DATA_DIR);
+  ensureElectronCacheDirs(userDataDir);
+  app.setPath("userData", userDataDir);
 }
 
 if (process.env.FORGEX_ENABLE_GPU !== "1") {
@@ -67,7 +74,7 @@ function prepareDevUserDataDir(configuredUserDataDir: string): string {
     return configuredUserDataDir;
   } catch (error) {
     const fallback = path.join(process.cwd(), ".forgex", "electron-user-data-dev", String(process.pid));
-    console.warn("[forgex-desktop] dev userData directory unavailable; using per-session fallback", error);
+    desktopLog.warn("[forgex-desktop] dev userData directory unavailable; using per-session fallback", error);
     ensureElectronCacheDirs(fallback);
     return fallback;
   }
@@ -80,6 +87,26 @@ function ensureElectronCacheDirs(userDataDir: string): void {
 }
 
 async function bootstrap(): Promise<void> {
+  process.env.FORGEX_VERSION = app.getVersion();
+  process.env.FORGEX_DESKTOP_LAUNCH_ID = DESKTOP_LAUNCH_ID;
+  if (app.isPackaged) {
+    const resourceRoot = path.join(process.resourcesPath, "forgex");
+    const dataRoot = path.join(app.getPath("userData"), "backend");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    process.env.FORGEX_ROOT = resourceRoot;
+    process.env.FORGEX_DATA_DIR = dataRoot;
+    process.env.FORGEX_LEGACY_DATA_DIR ??= path.dirname(process.resourcesPath);
+    process.env.FORGEX_PYTHON = path.join(resourceRoot, "python", "python.exe");
+    process.env.PYTHONDONTWRITEBYTECODE = "1";
+    process.env.FORGEX_PLATFORMIO_EXECUTABLE = path.join(resourceRoot, "forgex-pio.py");
+    process.env.PLATFORMIO_CORE_DIR = path.join(dataRoot, "platformio");
+    process.env.FORGEX_LIVE_LOG_PATH = path.join(dataRoot, "logs", "live-runtime.jsonl");
+    try {
+      const manifest = JSON.parse(fs.readFileSync(path.join(resourceRoot, "release-manifest.json"), "utf8"));
+      process.env.FORGEX_SOURCE_FINGERPRINT = manifest.backendSourceFingerprint;
+    } catch { /* Backend health reports its independently computed identity. */ }
+    process.env.FORGEX_BACKEND_PORT ??= "8000";
+  }
   resolveDesktopDataDir();
   const backgroundAssets = new BackgroundAssetStore(resolveDesktopBackgroundsDir());
   registerBackgroundAssetProtocol(backgroundAssets);
@@ -88,22 +115,31 @@ async function bootstrap(): Promise<void> {
   const localToken = randomBytes(32).toString("base64url");
   const harnessToken = randomBytes(32).toString("base64url");
   const harnessPort = resolveHarnessPort();
+  const shadowHarnessEnabled = process.env.FORGEX_ENABLE_SHADOW_HARNESS === "1";
   process.env.FORGEX_BACKEND_PORT = String(backendPort);
   process.env.FORGEX_BACKEND_URL = `http://127.0.0.1:${backendPort}`;
   process.env.FORGEX_HARNESS_PORT = String(harnessPort);
-  process.env.FORGEX_HARNESS_URL = `http://127.0.0.1:${harnessPort}`;
-  process.env.FORGEX_HARNESS_TOKEN = harnessToken;
+  if (shadowHarnessEnabled) {
+    process.env.FORGEX_HARNESS_URL = `http://127.0.0.1:${harnessPort}`;
+    process.env.FORGEX_HARNESS_TOKEN = harnessToken;
+  } else {
+    delete process.env.FORGEX_HARNESS_URL;
+    delete process.env.FORGEX_HARNESS_TOKEN;
+  }
   await installLocalSessionCookies(localToken);
 
-  harnessManager = new HarnessManager({ port: harnessPort, token: harnessToken });
+  harnessManager = shadowHarnessEnabled ? new HarnessManager({ port: harnessPort, token: harnessToken }) : null;
   backendManager = new BackendManager({ port: backendPort, localToken });
-  registerIpcHandlers(backendManager, backgroundAssets, harnessManager);
+  registerIpcHandlers(backendManager, backgroundAssets, harnessManager ?? undefined);
 
   try {
-    await harnessManager.start();
+    if (harnessManager) {
+      try { await harnessManager.start(); }
+      catch (error) { desktopLog.error("[forgex-desktop] optional shadow harness failed", error); }
+    }
     await backendManager.start();
   } catch (error) {
-    console.error("[forgex-desktop] backend startup failed", error);
+    desktopLog.error("[forgex-desktop] backend startup failed", error);
     mainWindow = createBackendErrorWindow({
       preloadPath: resolvePreloadPath(),
       reason: error instanceof Error ? error.message : String(error),
@@ -120,7 +156,7 @@ async function bootstrap(): Promise<void> {
     try {
       await frontendManager.start();
     } catch (error) {
-      console.error("[forgex-desktop] frontend startup failed", error instanceof Error ? error.message : String(error));
+      desktopLog.error("[forgex-desktop] frontend startup failed", error instanceof Error ? error.message : String(error));
       mainWindow = createBackendErrorWindow({
         preloadPath: resolvePreloadPath(),
         reason: error instanceof Error ? error.message : String(error),
@@ -172,7 +208,7 @@ function registerBackgroundAssetProtocol(backgroundAssets: BackgroundAssetStore)
         },
       });
     } catch (error) {
-      console.error("[forgex-desktop] background asset load failed", error);
+      desktopLog.error("[forgex-desktop] background asset load failed", error);
       return new Response(null, { status: 500 });
     }
   });

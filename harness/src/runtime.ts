@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { HARNESS_RUNTIME, type JsonObject, type JsonValue } from "./contracts";
 import { SessionEventStore } from "./event-store";
@@ -24,10 +24,11 @@ export class HarnessRuntime {
     await this.events.initialize();
   }
 
-  async invoke(method: string, params: JsonObject): Promise<JsonValue> {
+  async invoke(method: string, params: JsonObject, operationId?: string): Promise<JsonValue> {
     switch (method) {
       case "harness.status":
-        return { runtime: HARNESS_RUNTIME, startedAt: this.startedAt, protocolVersion: 1, authoritative: false, mode: "shadow" };
+        return { runtime: HARNESS_RUNTIME, startedAt: this.startedAt, protocolVersion: 1,
+          authoritative: false, mode: "shadow", runAuthority: "python-agent-orchestrator" };
       case "providers.list":
         return { providers: PROVIDERS as unknown as JsonValue };
       case "tools.list":
@@ -43,11 +44,11 @@ export class HarnessRuntime {
       case "sessions.list":
         return { sessionIds: await this.events.listSessions() };
       case "sessions.create": {
-        const sessionId = this.text(params.sessionId) ?? `session-${randomUUID()}`;
+        const sessionId = this.text(params.sessionId) ?? `session-${operationId ? createHash("sha256").update(operationId).digest("hex").slice(0, 40) : randomUUID()}`;
         const event = await this.events.append(sessionId, "session/created", {
           projectId: this.text(params.projectId),
           title: this.text(params.title),
-        });
+        }, null, operationId);
         return { sessionId, event: event as unknown as JsonValue };
       }
       case "sessions.events": {
@@ -59,7 +60,7 @@ export class HarnessRuntime {
         const type = this.requiredText(params.type, "type");
         const payload = params.payload;
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new RpcMethodError("RPC_PARAMS_INVALID", "payload must be an object");
-        const event = await this.events.append(sessionId, type, payload as JsonObject, this.text(params.runId));
+        const event = await this.events.append(sessionId, type, payload as JsonObject, this.text(params.runId), operationId);
         return { event: event as unknown as JsonValue };
       }
       default:

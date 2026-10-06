@@ -240,7 +240,9 @@ export interface ModelProviderResponse extends ProviderReadinessFields {
   last_error?: string | null;
   models_cached?: number;
   custom?: boolean;
-  protocol?: "openai-completions" | "openai-responses" | "anthropic-messages" | "google-generate-content";
+  protocol?: string;
+  configuration_fields?: string[];
+  options_configured?: boolean;
 }
 
 export interface ModelProvidersResponse {
@@ -562,7 +564,7 @@ export interface ApiErrorBody {
   details?: Record<string, unknown>;
 }
 
-export type ProductAgentStatus = "queued" | "running" | "cancelling" | "awaiting_flash_confirmation" | "paused_model_unavailable" | "completed" | "failed" | "cancelled" | "blocked" | "timed_out" | "interrupted";
+export type ProductAgentStatus = "queued" | "running" | "cancelling" | "awaiting_flash_confirmation" | "paused_model_unavailable" | "completed" | "completed_with_warning" | "failed" | "cancelled" | "blocked" | "timed_out" | "interrupted";
 export type ProductAgentStageStatus = "pending" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export interface ProductValidationIssue {
@@ -587,6 +589,26 @@ export interface ProductValidationReport {
 }
 
 export interface ProductAgentRun {
+  job_id?: string | null;
+  job?: AgentJob | null;
+  task_revision?: string | null;
+  task_state?: {
+    schema_version: 1;
+    revisions: string[];
+    requirements: Array<{id?: string; text?: string}>;
+    superseded_requirements?: Array<{id?: string; text?: string; superseded_by_request?: string}>;
+    exclusions: string[];
+    decisions: string[];
+    milestone: Record<string, unknown> | null;
+    expected_artifacts?: string[];
+    deliverable_manifest?: Array<{id: string; kind: string; path?: string; status: "missing" | "present" | "unverified" | "verified"; source_revision: string}>;
+    evidence: Array<{kind: string; ref: string; status: string}>;
+    blockers: string[];
+    next_action: string;
+    recovery_state: {stalled_turns: number; reorientation_started_at: number | null};
+  } | null;
+  requirement_report?: import("./engine-contracts").VerificationReport | null;
+  failure?: { category: string; original_code: string; primary_code?: string; recovery_code?: string | null; terminal_stop_code?: string; timeout_stage?: string | null; physical_attempt_id?: string | null; origin: string; retryable: boolean; recovery_actions: string[] } | null;
   schema_version?: string | number;
   run_id: string;
   project_id: string;
@@ -600,6 +622,7 @@ export interface ProductAgentRun {
   stage_messages?: Record<string, string>;
   active_workflow_task_id?: string | null;
   build_result?: Record<string, unknown> | null;
+  build_verified?: boolean;
   simulation_result?: Record<string, unknown> | null;
   flash_result?: Record<string, unknown> | null;
   monitor_result?: Record<string, unknown> | null;
@@ -625,28 +648,36 @@ export interface ProductAgentRun {
   agent_plan?: Array<{ text: string; status: "pending" | "in_progress" | "completed" | string }>;
   pending_decision?: boolean;
   suggested_alternatives?: string[];
-  provider_diagnostics?: {
-    outbound_request_count: number;
-    physical_request_count?: number;
-    request_reached_provider: boolean;
-    http_status?: number | null;
-    provider_request_id?: string | null;
-    retry_after_ms?: number | null;
-    last_turn?: number | null;
-    response_mode?: string | null;
-    last_failure_code?: string | null;
-    last_repair_outcome?: string | null;
-    last_parse_reason?: string | null;
-    last_failure_origin?: string | null;
-    last_response_shape?: string | null;
-    last_response_tool_count?: number | null;
-    stream_fallback_used?: boolean;
-  };
+  provider_diagnostics?: import("./engine-contracts").ProviderDiagnostics;
   summary?: ForgeXRunSummary;
   retry_of_run_id?: string | null;
   interrupted_at?: string | null;
   recoverable?: boolean;
   recovery_actions?: string[];
+  recovery?: {
+    eligible: boolean;
+    actions?: import("./engine-contracts").RecoveryActions;
+    blocking_reason: string | null;
+    checkpoint_id: string | null;
+    uncertain_operations: Array<{ operation_id: string; kind: string; status: string }>;
+  } | null;
+}
+
+export interface AgentJob {
+  execution_profile?: "standard" | "advanced";
+  recovery?: import("./engine-contracts").AgentRecoveryState | null;
+  durable_wait_seconds?: number;
+  job_id: string;
+  project_id: string;
+  current_run_id: string;
+  status: string;
+  updated_at: string;
+  retry_due_at?: string | null;
+  recovery_policy: "manual" | "safe_auto";
+  paused_by: string | null;
+  blocking_reason: string | null;
+  milestones: Array<{text?: string; title?: string; status: string}>;
+  budget: {remaining: Record<string, number>; consumed: Record<string, number>; limits: Record<string, number>; accounting?: {reserved_output_tokens:number; actual_completed_output_tokens:number; unresolved_output_tokens:number; physical_attempts:number}};
 }
 
 export interface ForgeXRunSummary {
@@ -692,6 +723,7 @@ export interface AgentGuidanceQueueItem {
 }
 
 export interface ProductAgentEvent {
+  source_run_id?: string;
   activity_record?: import("../lib/activity-stream").ActivityRecord;
   run_id: string;
   session_id?: string;
@@ -784,6 +816,7 @@ export interface ForgeAgentPlanRecord {
 }
 
 export interface ForgeAgentSession {
+  pending_clarification?: { choices: { id: string; options: string[] }[] } | null;
   session_id: string;
   project_id: string;
   provider_id?: string | null;

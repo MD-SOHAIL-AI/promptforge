@@ -20,11 +20,24 @@ from ..schemas.common import APIModel, ErrorResponse
 router = APIRouter(prefix="/models", tags=["models"])
 
 
+@router.get("/providers/{provider_id}/endpoint-health")
+async def endpoint_health(provider_id: str, request: Request, model_id: str | None = None):
+    from ...contracts.recovery import EndpointHealth
+    owner = _router_service(request)
+    try:
+        model = model_id or owner.registry.default_model(provider_id)
+        identity = owner._circuit_identity(provider_id, model)
+    except (KeyError, ValueError) as exc:
+        raise APIError(404, "MODEL_PROVIDER_NOT_FOUND", "The selected model provider was not found.") from exc
+    return EndpointHealth(provider_id=provider_id, model_id=model, **owner.circuit.health(identity)).model_dump(mode="json")
+
+
 class ConfigureProviderRequest(APIModel):
     api_key: str | None = Field(default=None, min_length=1)
     base_url: str | None = Field(default=None, min_length=1)
     default_model: str | None = Field(default=None, min_length=1)
     enabled: bool | None = None
+    options: dict[str, Any] | None = None
 
 
 class CreateCustomProviderRequest(APIModel):
@@ -64,7 +77,7 @@ class TestModelRequest(APIModel):
 
 
 @router.get("/providers", responses={**error_responses(500), "default": {"model": ErrorResponse}})
-async def list_providers(request: Request) -> dict[str, Any]:
+def list_providers(request: Request) -> dict[str, Any]:
     service = _router_service(request)
     return {"providers": [provider.to_dict() for provider in service.registry.list_providers()]}
 
@@ -118,9 +131,13 @@ async def delete_custom_provider(provider_id: str, request: Request) -> dict[str
 async def configure_provider(provider_id: str, body: ConfigureProviderRequest, request: Request) -> dict[str, Any]:
     service = _router_service(request)
     try:
-        provider = service.registry.configure_provider(provider_id, body.model_dump(exclude_unset=True))
+        service.registry.definition(provider_id)
     except ValueError as exc:
         raise APIError(404, "MODEL_PROVIDER_NOT_FOUND", str(exc), {"provider_id": provider_id}) from exc
+    try:
+        provider = service.registry.configure_provider(provider_id, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise APIError(422, "MODEL_PROVIDER_INVALID", str(exc), {"provider_id": provider_id}) from exc
     except CredentialStoreError as exc:
         raise APIError(503, "SECURE_CREDENTIAL_STORE_UNAVAILABLE", "The operating-system credential store is unavailable.") from exc
     except ModelRouterStorageError as exc:

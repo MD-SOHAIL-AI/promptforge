@@ -16,7 +16,7 @@ from typing import Mapping
 from .public_progress import public_text
 
 AGENT_SESSION_TERMINAL_STATUSES = frozenset(
-    {"completed", "failed", "cancelled", "blocked", "timed_out"}
+    {"completed", "completed_with_warning", "failed", "cancelled", "blocked", "timed_out"}
 )
 AGENT_MESSAGE_ROLES = frozenset({"user", "assistant", "tool", "system"})
 AGENT_SESSION_SCHEMA_VERSION = 2
@@ -165,6 +165,7 @@ class AgentSession:
     provider_id: str | None = None
     model_id: str | None = None
     title_source: str = "auto"
+    pending_clarification: Mapping[str, object] | None = None
 
     def to_dict(self, *, include_messages: bool = True) -> dict[str, object]:
         value: dict[str, object] = {
@@ -176,6 +177,7 @@ class AgentSession:
             "project_id": self.project_id,
             "title": self.title,
             "title_source": self.title_source,
+            "pending_clarification": dict(self.pending_clarification) if self.pending_clarification else None,
             "status": self.status,
             "active_run_id": self.active_run_id,
             "created_at": self.created_at,
@@ -227,6 +229,7 @@ class AgentSession:
             provider_id=value.get("provider_id"),
             model_id=value.get("model_id"),
             title_source="manual" if value.get("title_source") == "manual" else "auto",
+            pending_clarification=value.get("pending_clarification") if isinstance(value.get("pending_clarification"), Mapping) else None,
             messages=tuple(messages),
             current_plan=(
                 AgentPlanRecord.from_dict(value.get("current_plan"))
@@ -345,15 +348,27 @@ class AgentSessionStore:
             self._persist_unlocked()
             return updated
 
+    def set_clarification(self, session_id: str, pending: Mapping[str, object] | None) -> AgentSession:
+        with self._lock:
+            session = self.get(session_id)
+            updated = replace(session, pending_clarification=dict(pending) if pending else None,
+                              status="awaiting_clarification" if pending else "idle", updated_at=utc_now())
+            self._sessions[session_id] = updated
+            self._persist_unlocked(only_session_id=session_id)
+            return updated
+
     def update_run(
         self,
         session_id: str,
         *,
         run_id: str | None,
         status: str,
+        expected_run_id: str | None = None,
     ) -> AgentSession:
         with self._lock:
             session = self.get(session_id)
+            if expected_run_id is not None and session.active_run_id != expected_run_id:
+                return session
             updated = replace(
                 session,
                 status=status,

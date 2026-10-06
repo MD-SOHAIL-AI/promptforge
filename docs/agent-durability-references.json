@@ -1,0 +1,79 @@
+[
+  {
+    "archive": "grok-build-main.zip",
+    "sha256": "c5310c545edf6cd09ab59bec789e03279d4ea825231834389e305ece7fc22dd4",
+    "reference_paths": [
+      "grok-build-main/crates/codegen/xai-grok-shell/src/session/acp_session_tests/transient_retry_tests.rs",
+      "grok-build-main/crates/codegen/xai-grok-shell/src/session/acp_session_tests/turn/transient_retry_loop_tests.rs"
+    ]
+  },
+  {
+    "archive": "codex-main (1).zip",
+    "sha256": "c3b9022d5aa32a7309a20a24d6b974196e3373ad31f7f3d439d947b837e72ec1",
+    "reference_paths": [
+      "codex-main/codex-rs/app-server/tests/suite/conversation_summary.rs",
+      "codex-main/codex-rs/core/src/responses_retry.rs",
+      "codex-main/codex-rs/core/src/responses_retry_tests.rs",
+      "codex-main/codex-rs/ext/guardian-reviewer/src/circuit_breaker.rs",
+      "codex-main/codex-rs/ext/guardian-reviewer/src/circuit_breaker_tests.rs"
+    ]
+  },
+  {
+    "archive": "deepseek-harness-master.zip",
+    "sha256": "62d8e482d6c847b0948c26006b1776f3a41cf56e4249ce48b280a03e15d295d2",
+    "reference_paths": [
+      "deepseek-harness-master/.agents/notes/implemented/architecture/2026-09-22-fatal-diagnostics-and-crash-reports.i18n.yaml",
+      "deepseek-harness-master/.agents/notes/implemented/architecture/2026-09-22-fatal-diagnostics-and-crash-reports.md",
+      "deepseek-harness-master/.agents/notes/implemented/architecture/2026-09-22-fatal-diagnostics-and-crash-reports.zh.md",
+      "deepseek-harness-master/apps/desktop/src/crash-report.ts",
+      "deepseek-harness-master/apps/desktop/tests/crash-report.spec.ts",
+      "deepseek-harness-master/packages/llm/llm-retry/README.i18n.yaml",
+      "deepseek-harness-master/packages/llm/llm-retry/README.md",
+      "deepseek-harness-master/packages/llm/llm-retry/README.zh.md",
+      "deepseek-harness-master/packages/llm/llm-retry/package.json",
+      "deepseek-harness-master/packages/llm/llm-retry/src/brand.ts",
+      "deepseek-harness-master/packages/llm/llm-retry/src/history.ts",
+      "deepseek-harness-master/packages/llm/llm-retry/src/index.ts"
+    ]
+  },
+  {
+    "archive": "orca-main.zip",
+    "sha256": "72bc7affb58e9e47ad12a3ffa439e2fff3e53ddbe36ca0a135b53d790f0421ea",
+    "reference_paths": [
+      "orca-main/src/main/crash-reporting/renderer-recovery-circuit-breaker.ts",
+      "orca-main/src/main/crash-reporting/renderer-recovery-circuit-breaker.test.ts"
+    ]
+  },
+  {
+    "archive": "claude-code-main.zip",
+    "sha256": "21b582d551ae1ef8a41d41cf8a4a87f51e5c24744f83f6cb89d4aceb81d8c883",
+    "reference_paths": [
+      "claude-code-main/src/services/api/withRetry.ts",
+      "claude-code-main/src/utils/conversationRecovery.ts"
+    ]
+  },
+  {
+    "archive": "openclaw-main.zip",
+    "sha256": "91a1917bb8fb3b19e489158afdfec25efe3e01d4e92dcc25d919c6ec45558ef4",
+    "reference_paths": [
+      "openclaw-main/src/agents/cli-runner.ts"
+    ]
+  },
+  {
+    "archive": "hermes-workspace-main.zip",
+    "sha256": "8dc7b8eaa70f90fe82deed5707570b422c43d01af3a9169c4678017a0d7a5faf",
+    "reference_paths": [
+      "hermes-workspace-main/docs/swarm2-memory-framework-spec.md",
+      "hermes-workspace-main/docs/workspace-chat-session-routing.md"
+    ]
+  },
+  {
+    "archive": "opencode-dev (1).zip",
+    "sha256": "dc74ebfe125e0589c33972e54c3380f793b1b1436675f8271f60131976c0e344",
+    "reference_paths": [
+      "opencode-dev/packages/opencode/src/session/retry.ts",
+      "opencode-dev/packages/opencode/src/session/processor.ts",
+      "opencode-dev/packages/opencode/src/session/compaction.ts"
+    ]
+  }
+]

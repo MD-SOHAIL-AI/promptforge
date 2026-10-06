@@ -163,7 +163,7 @@ def run_activity_fields(event: Mapping[str, object]) -> dict[str, object]:
     activity = activity_for_run_event(event)
     if activity is None:
         return {}
-    phase = "completed" if str(event.get("status") or "") in {"completed", "failed", "cancelled", "blocked", "timed_out"} else "active"
+    phase = "completed" if str(event.get("status") or "") in {"completed", "completed_with_warning", "failed", "cancelled", "blocked", "timed_out"} else "active"
     return {
         "activity": activity.value,
         "activity_label": ACTIVITY_LABELS[activity],
@@ -187,7 +187,7 @@ def activity_for_run_event(event: Mapping[str, object]) -> AgentActivity | None:
         return AgentActivity.FINISHING
     if event_type == "runtime.awaiting_flash_confirmation":
         return AgentActivity.WAITING
-    if event_type == "runtime.completed":
+    if event_type in {"runtime.completed", "runtime.completed_with_warning"}:
         return AgentActivity.FINISHING
     if event_type == "runtime.failed":
         return AgentActivity.DIAGNOSING if stage == "build" else AgentActivity.FINISHING

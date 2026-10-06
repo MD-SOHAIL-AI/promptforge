@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, readdir } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 
 import type { JsonObject, SessionEvent } from "./contracts";
@@ -81,21 +82,51 @@ export class SessionEventStore {
     return events;
   }
 
-  append(sessionId: string, type: string, payload: JsonObject, runId: string | null = null): Promise<SessionEvent> {
+  append(sessionId: string, type: string, payload: JsonObject, runId: string | null = null, operationId?: string): Promise<SessionEvent> {
     const prior = this.chains.get(sessionId) ?? Promise.resolve();
-    const next = prior.then(() => this.appendUnlocked(sessionId, type, payload, runId));
-    this.chains.set(sessionId, next.catch(() => undefined));
+    const next = prior.then(() => this.appendUnlocked(sessionId, type, payload, runId, operationId));
+    const settled = next.then(() => undefined, () => undefined);
+    this.chains.set(sessionId, settled);
+    void settled.then(() => { if (this.chains.get(sessionId) === settled) this.chains.delete(sessionId); });
     return next;
   }
 
-  private async appendUnlocked(sessionId: string, type: string, payload: JsonObject, runId: string | null): Promise<SessionEvent> {
+  private async appendUnlocked(sessionId: string, type: string, payload: JsonObject, runId: string | null, operationId?: string): Promise<SessionEvent> {
+    await this.initialize();
+    this.file(sessionId); // Validate before opening any state file.
+    // SQLite's OS lock is released when the owner dies. JSONL remains the
+    // event format; this database only serializes publishers across processes.
+    const lock = new DatabaseSync(this.file(sessionId) + ".writer.sqlite3");
+    try { lock.exec("PRAGMA busy_timeout=0; BEGIN IMMEDIATE"); }
+    catch (error) {
+      lock.close();
+      if ((error as Error).message.includes("locked")) throw new EventStoreError("SESSION_WRITER_LOCKED");
+      throw error;
+    }
+    try {
+      return await this.appendOwned(sessionId, type, payload, runId, operationId);
+    } finally {
+      lock.exec("ROLLBACK");
+      lock.close();
+    }
+  }
+
+  private async appendOwned(sessionId: string, type: string, payload: JsonObject, runId: string | null, operationId?: string): Promise<SessionEvent> {
     if (!type || type.length > 160 || !/^[a-z0-9][a-z0-9./_-]*$/i.test(type)) {
       throw new EventStoreError("SESSION_EVENT_TYPE_INVALID");
     }
     const events = await this.read(sessionId);
+    const eventId = operationId ? createHash("sha256").update(operationId).digest("hex") : randomUUID();
+    const saved = events.find((event) => event.eventId === eventId);
+    if (saved) {
+      if (saved.type !== type || saved.runId !== runId || canonical(saved.payload) !== canonical(payload)) {
+        throw new EventStoreError("SESSION_OPERATION_CONFLICT");
+      }
+      return saved;
+    }
     const unsigned: Omit<SessionEvent, "checksum"> = {
       schemaVersion: 1,
-      eventId: randomUUID(),
+      eventId,
       sessionId,
       runId,
       sequence: events.length + 1,

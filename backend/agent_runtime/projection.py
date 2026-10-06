@@ -22,6 +22,11 @@ class SessionProjection:
     approvals: dict[str, dict[str, object]] = field(default_factory=dict)
     queued_guidance: list[dict[str, object]] = field(default_factory=list)
 
+    @classmethod
+    def from_dict(cls, value):
+        from dataclasses import fields
+        return cls(**{item.name: value[item.name] for item in fields(cls) if item.name in value})
+
     def to_dict(self) -> dict[str, object]:
         return {
             "session_id": self.session_id,
@@ -63,8 +68,14 @@ class SessionProjectionEngine:
             state.active_attempt_id = None
             content = event.get("content") or event.get("message")
             if isinstance(content, str): state.assistant_content = content
-        elif event_type in {"runtime.completed", "runtime.failed", "runtime.cancelled"}:
-            state.run_status = event_type.removeprefix("runtime."); state.active_turn = None; state.active_step = None; state.active_attempt_id = None
+        elif event_type in {"runtime.completed", "runtime.completed_with_warning", "runtime.failed", "runtime.cancelled", "runtime.blocked", "runtime.interrupted", "runtime.paused_model_unavailable"}:
+            state.run_status = str(event.get("status") or ("failed" if event_type == "runtime.interrupted" else event_type.removeprefix("runtime.")))
+            state.active_turn = None; state.active_step = None; state.active_attempt_id = None
+            state.pending_tools.clear()
+            for activity in state.activities:
+                if activity.get("state") in {"active", "running", "pending"} or activity.get("status") in {"running", "pending"}:
+                    activity.update({"state": "completed" if state.run_status.startswith("completed") else "error",
+                                     "status": state.run_status, "displayStatus": state.run_status})
         elif event_type in {"tool.invocation.admitted", "TOOL_PENDING", "tool.execution.started", "TOOL_STARTED"}:
             call_id = _str(event.get("call_id") or event.get("tool_call_id"))
             if call_id: state.pending_tools[call_id] = dict(event)
@@ -87,6 +98,8 @@ class SessionProjectionEngine:
         return state
 
     def apply_transient(self, state: SessionProjection, frame: Mapping[str, object]) -> SessionProjection:
+        if state.run_status in {"completed", "completed_with_warning", "failed", "cancelled", "blocked", "timed_out", "paused_model_unavailable"}:
+            return state
         if str(frame.get("event_type") or "") in {"assistant.content.delta", "ASSISTANT_CONTENT_DELTA"}:
             attempt = _str(frame.get("attempt_id"))
             if attempt and state.active_attempt_id not in {None, attempt}:

@@ -44,7 +44,7 @@ export function resolveBackendPython(options: PythonResolverOptions): PythonReso
       continue;
     }
 
-    const runnable = checkPython(candidate.executable, ["-c", "import sys; print(sys.executable)"], options.repoRoot, options.runCheck);
+    const runnable = checkPython(candidate.executable, ["-B", "-c", "import sys; print(sys.executable)"], options.repoRoot, options.runCheck);
     if (!runnable.ok) {
       if (candidate.required || candidate.source === "repo-venv") {
         throw pythonEnvironmentError(
@@ -56,7 +56,7 @@ export function resolveBackendPython(options: PythonResolverOptions): PythonReso
       continue;
     }
 
-    const dependencies = checkPython(candidate.executable, ["-c", DEPENDENCY_CHECK], options.repoRoot, options.runCheck);
+    const dependencies = checkPython(candidate.executable, ["-B", "-c", DEPENDENCY_CHECK], options.repoRoot, options.runCheck);
     if (!dependencies.ok) {
       if (candidate.required || candidate.source === "repo-venv") {
         throw pythonEnvironmentError(

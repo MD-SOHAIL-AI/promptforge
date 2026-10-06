@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
 from typing import Any
 
 from .models import ModelCapabilities, ModelInfo, ModelProvider, ModelRoute, TaskType
 from .storage import ProviderSettingsStorage, mask_secret
+from .opencode_catalog import catalog as opencode_catalog, provider_data, model_data, model_capabilities as catalog_capabilities, protocol as catalog_protocol
 
 
 DEFAULT_OPENROUTER_MODEL = "cohere/north-mini-code:free"
@@ -168,6 +170,7 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         base_url="https://api.openai.com/v1",
         env_model="OPENAI_MODEL",
         models=("gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"),
+        protocol="openai-responses",
     ),
     "groq": ProviderDefinition(
         "groq",
@@ -207,11 +210,11 @@ PROVIDERS: dict[str, ProviderDefinition] = {
         "Gemini API",
         "api_key",
         False,
-        "gemini-1.5-flash",
+        "gemini-2.5-flash",
         env_key="GEMINI_API_KEY",
         base_url="https://generativelanguage.googleapis.com/v1beta",
         env_model="GEMINI_MODEL",
-        models=("gemini-1.5-flash", "gemini-1.5-pro"),
+        models=("gemini-2.5-flash", "gemini-2.5-pro"),
         protocol="google-generate-content",
     ),
     "lmstudio": ProviderDefinition(
@@ -258,7 +261,24 @@ class ProviderRegistry:
         self.storage = storage or ProviderSettingsStorage()
 
     def provider_ids(self) -> tuple[str, ...]:
-        return BUILTIN_PROVIDER_ORDER + tuple(sorted(self.storage.custom_provider_definitions()))
+        return BUILTIN_PROVIDER_ORDER + tuple(sorted(set(PROVIDERS) - set(BUILTIN_PROVIDER_ORDER))) + tuple(sorted(self.storage.custom_provider_definitions()))
+
+    def builtin_provider_ids(self) -> tuple[str, ...]:
+        return tuple(PROVIDERS)
+
+    def provider_options(self, provider_id: str) -> dict[str, Any]:
+        self.definition(provider_id)
+        value = self.storage.credential_store.get(provider_id + "-options")
+        options = json.loads(value) if value else {}
+        # Match OpenCode's env discovery without treating project/region names
+        # as credentials. Explicit provider options take precedence.
+        env_options = {"AWS_REGION": "region", "AWS_PROFILE": "profile", "GOOGLE_VERTEX_PROJECT": "project", "GOOGLE_VERTEX_LOCATION": "location", "CLOUDFLARE_ACCOUNT_ID": "accountId", "CLOUDFLARE_GATEWAY_ID": "gatewayId", "WATSONX_AI_PROJECT_ID": "projectId"}
+        if provider_id in {"azure", "azure-cognitive-services"}:
+            env_options["AZURE_COGNITIVE_SERVICES_RESOURCE_NAME" if provider_id == "azure-cognitive-services" else "AZURE_RESOURCE_NAME"] = "resourceName"
+        for name, key in env_options.items():
+            if os.getenv(name) and key not in options:
+                options[key] = os.environ[name]
+        return options
 
     def definition(self, provider_id: str) -> ProviderDefinition:
         if provider_id in PROVIDERS:
@@ -278,6 +298,7 @@ class ProviderRegistry:
         )
 
     def provider(self, provider_id: str) -> ModelProvider:
+        from .opencode_catalog import QUARANTINED_SDKS
         definition = self.definition(provider_id)
         settings = self.storage.provider_settings(provider_id)
         health = self.storage.provider_health(provider_id)
@@ -285,8 +306,14 @@ class ProviderRegistry:
         api_key = self.api_key(provider_id)
         default_model = self.default_model(provider_id)
         base_url = self.base_url(provider_id)
-        configured = bool(api_key) if definition.auth_type == "api_key" else definition.local or definition.auth_type == "none"
+        options = self.provider_options(provider_id)
+        cloud_auth = provider_id == "amazon-bedrock" and bool(options.get("credentials") or options.get("profile") or os.getenv("AWS_PROFILE") or (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")) or os.getenv("AWS_WEB_IDENTITY_TOKEN_FILE") or os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") or os.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
+        cloud_auth = cloud_auth or provider_id.startswith("google-vertex") and bool(options.get("project") or options.get("googleAuthOptions") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+        configured = bool(api_key) or bool(cloud_auth) if definition.auth_type == "api_key" else definition.local or definition.auth_type == "none"
         enabled = bool(settings.get("enabled", configured)) and definition.available
+        quarantine_reason = QUARANTINED_SDKS.get(provider_data(provider_id).get("npm"))
+        if quarantine_reason:
+            enabled = False
         if not configured and not definition.local:
             enabled = False
         health_status = str(health.get("status") or "unknown")
@@ -301,6 +328,9 @@ class ProviderRegistry:
             last_error = "Adapter prepared for a later release."
         elif not enabled:
             health_status = "disabled"
+        if quarantine_reason:
+            health_status = "disabled"
+            last_error = quarantine_reason
         return ModelProvider(
             provider_id=definition.provider_id,
             display_name=definition.display_name,
@@ -319,10 +349,13 @@ class ProviderRegistry:
             models_cached=len(cached_models),
             custom=provider_id not in PROVIDERS,
             protocol=definition.protocol,
+            configuration_fields=tuple(provider_data(provider_id).get("env", [])),
+            options_configured=bool(self.storage.credential_store.get(provider_id + "-options")),
         )
 
     def list_providers(self) -> list[ModelProvider]:
-        return [self.provider(provider_id) for provider_id in self.provider_ids()]
+        with self.storage.read_snapshot():
+            return [self.provider(provider_id) for provider_id in self.provider_ids()]
 
     def register_custom_provider(
         self,
@@ -378,6 +411,7 @@ class ProviderRegistry:
                 + ", ".join(referenced_by)
             )
         self.storage.credential_store.delete(provider_id)
+        self.storage.credential_store.delete(provider_id + "-options")
         self.storage.delete_provider_state(provider_id)
 
     def list_models(self, provider_id: str) -> list[ModelInfo]:
@@ -419,8 +453,10 @@ class ProviderRegistry:
                         for model_id in definition.models
                         if model_id not in cached_ids
                     )
+                known = {model.model_id for model in models}
+                models.extend(self._catalog_models(provider_id, known))
                 return models
-        return [
+        defaults = [
             ModelInfo(
                 provider_id=provider_id,
                 model_id=model,
@@ -431,6 +467,14 @@ class ProviderRegistry:
             )
             for model in definition.models
         ]
+        return defaults + self._catalog_models(provider_id, {model.model_id for model in defaults})
+
+    def _catalog_models(self, provider_id: str, excluded: set[str]) -> list[ModelInfo]:
+        return [ModelInfo(provider_id, model_id, str(data.get("name") or model_id),
+            context_window=data.get("limit", {}).get("context"),
+            free=data.get("cost", {}).get("input") == 0 and data.get("cost", {}).get("output") == 0,
+            capabilities=ModelCapabilities(**catalog_capabilities(data)))
+            for model_id, data in provider_data(provider_id).get("models", {}).items() if model_id not in excluded]
 
     def model_capabilities(
         self, provider_id: str, model_id: str
@@ -472,6 +516,9 @@ class ProviderRegistry:
                     reasoning=bool({"reasoning", "include_reasoning"} & parameters),
                     system_prompt=True,
                 )
+        facts = model_data(provider_id, model_id)
+        if facts:
+            return ModelCapabilities(**catalog_capabilities(facts))
         if provider_id == "openai":
             modern = any(token in model for token in ("gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4"))
             return ModelCapabilities(True, modern, modern, modern, any(token in model for token in ("gpt-5", "o1", "o3", "o4")), True)
@@ -510,6 +557,17 @@ class ProviderRegistry:
         settings: dict[str, Any],
     ) -> ModelProvider:
         self.definition(provider_id)
+        if "options" in settings:
+            options = settings["options"]
+            if options is None:
+                self.storage.credential_store.delete(provider_id + "-options")
+            elif isinstance(options, dict):
+                encoded = json.dumps(options, allow_nan=False)
+                if len(encoded.encode("utf-16-le")) > 2500:
+                    raise ValueError("Provider options exceed secure credential storage limit")
+                self.storage.credential_store.set(provider_id + "-options", encoded)
+            else:
+                raise ValueError("Provider options must be an object")
         self.storage.save_provider_settings(provider_id, settings)
         return self.provider(provider_id)
 
@@ -535,6 +593,17 @@ class ProviderRegistry:
             value = os.getenv(definition.env_key, "").strip()
             if value:
                 return value
+        options = self.provider_options(provider_id)
+        for key in ("apiKey", "token"):
+            if isinstance(options.get(key), str) and options[key].strip():
+                return options[key].strip()
+        for name in provider_data(provider_id).get("env", []):
+            if any(token in name for token in ("KEY", "TOKEN", "PAT")) and name not in {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}:
+                value = os.getenv(name, "").strip()
+                if value:
+                    return value
+        if provider_id == "opencode":
+            return "public"  # OpenCode Zen's upstream public/free-model auth.
         return None
 
     def base_url(self, provider_id: str) -> str | None:
@@ -616,3 +685,16 @@ class ProviderRegistry:
 
 def _clean_model_id(value: str) -> str:
     return value.strip().strip("\"'")
+
+
+# OpenCode uses this same provider/model catalog, with protocol-specific loaders.
+# Existing ForgeX identifiers/defaults remain valid during migration.
+for _id, _data in opencode_catalog().items():
+    if _id in PROVIDERS:
+        continue
+    _models = tuple(_data.get("models", {}))
+    _generative = [key for key in _models if catalog_capabilities(_data["models"][key])["text_generation"]]
+    PROVIDERS[_id] = ProviderDefinition(_id, _data.get("name", _id), "api_key", False,
+        _generative[0] if _generative else (_models[0] if _models else "default"),
+        env_key=next((name for name in _data.get("env", []) if name not in {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} and any(word in name for word in ("KEY", "TOKEN", "PAT"))), None),
+        base_url=_data.get("api"), models=(), protocol=catalog_protocol(_data))

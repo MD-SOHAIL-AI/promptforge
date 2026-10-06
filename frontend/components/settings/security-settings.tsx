@@ -12,7 +12,7 @@ interface SecuritySettingsProps extends SettingsSectionProps {
   onExport: () => Promise<unknown>;
 }
 
-export function SecuritySettings({ settings, saving, onUpdate, onReset, onExport }: SecuritySettingsProps) {
+export function SecuritySettings({ saving, onReset, onExport }: SecuritySettingsProps) {
   const dialogs = useForgeXDialogs();
   const [message, setMessage] = useState<string | null>(null);
 
@@ -40,15 +40,15 @@ export function SecuritySettings({ settings, saving, onUpdate, onReset, onExport
       variant: "danger",
     });
     if (!approved) return;
-    await onReset();
-    setMessage("Settings reset to defaults.");
+    try { await onReset(); setMessage("Settings reset to defaults."); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Settings could not be reset."); }
   };
 
   return (
     <div className="grid gap-4">
       <SettingsCard title="Protection" description="Security defaults apply across providers, agents, and connected hardware.">
-        <SettingToggle label="Mask API keys" description="Hide sensitive provider credentials anywhere they could be displayed." value={settings["security.mask_api_keys"]} disabled={saving} onChange={(value) => void onUpdate("security.mask_api_keys", value)} />
-        <SettingToggle label="Hardware approval strict mode" description="Require explicit approval before potentially destructive device actions." value={settings["security.hardware_approval_strict_mode"]} disabled={saving} onChange={(value) => void onUpdate("security.hardware_approval_strict_mode", value)} />
+        <SettingToggle label="Credentials are masked" description="Provider credentials stay protected in the interface and diagnostic exports." value={true} disabled onChange={() => undefined} />
+        <SettingToggle label="Hardware approval required" description="Flashing requires explicit approval for the selected artifact and device." value={true} disabled onChange={() => undefined} />
       </SettingsCard>
       <SettingsCard title="Data actions" description="Export safe preferences or restore the default configuration.">
         <div className="grid gap-2 py-4 sm:grid-cols-2">
@@ -56,7 +56,7 @@ export function SecuritySettings({ settings, saving, onUpdate, onReset, onExport
           <Download className="h-4 w-4" />
           Export settings without secrets
         </button>
-        <button className="fx-control flex h-10 items-center justify-center gap-2 px-3 text-xs hover:bg-[var(--fx-hover)]" onClick={resetSettings}>
+        <button disabled={saving} className="fx-control flex h-10 items-center justify-center gap-2 px-3 text-xs hover:bg-[var(--fx-hover)]" onClick={resetSettings}>
           <RotateCcw className="h-4 w-4" />
           Reset settings
         </button>

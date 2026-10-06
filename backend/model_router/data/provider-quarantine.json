@@ -1,0 +1,3 @@
+{
+  "@jerome-benoit/sap-ai-provider-v2": "SAP AI Core is disabled: its SDK pulls in node-forge affected by GHSA-86w9-cpqp-85rv, with no published patched version."
+}

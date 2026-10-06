@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import shutil
 import sys
 import threading
@@ -18,6 +19,7 @@ from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
+from backend.runtime.async_cleanup import settle_bounded
 
 TerminalStream = Literal["stdout", "stderr", "system"]
 TerminalLifecycle = Literal["running", "stopping", "exited", "closed"]
@@ -108,21 +110,33 @@ class _PipeTerminalDriver:
     capability: TerminalCapability = "pipe"
     output_streams: tuple[TerminalStream, ...] = ("stdout", "stderr")
 
-    def __init__(self, process: object) -> None:
+    def __init__(self, process: object, *, job=None, owns_group=False) -> None:
         self.process = process
+        self._job = job
+        self._owns_group = owns_group
 
     @classmethod
     async def spawn(cls, command: tuple[str, ...], *, cwd: Path) -> _PipeTerminalDriver:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=str(cwd),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=os.environ.copy(),
-            **_creation_kwargs(),
-        )
-        return cls(process)
+        job = None
+        if sys.platform == "win32":
+            from backend.runtime.windows_job import WindowsJob
+            job = WindowsJob()
+            command = tuple(job.wrap(command))
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                cwd=str(cwd),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ.copy(),
+                **_creation_kwargs(),
+            )
+        except BaseException:
+            if job is not None:
+                job.close()
+            raise
+        return cls(process, job=job, owns_group=sys.platform != "win32")
 
     @property
     def returncode(self) -> int | None:
@@ -151,14 +165,28 @@ class _PipeTerminalDriver:
         # Ordinary subprocess pipes do not expose a terminal to resize.
 
     async def wait(self) -> int:
-        return int(await getattr(self.process, "wait")())
+        result = int(await getattr(self.process, "wait")())
+        if self._job is not None:
+            self._job.close()
+        return result
 
     async def terminate(self) -> None:
-        getattr(self.process, "terminate")()
+        self._signal_tree(signal.SIGTERM)
 
     async def kill(self) -> None:
+        self._signal_tree(getattr(signal, "SIGKILL", signal.SIGTERM))
+
+    def _signal_tree(self, sig) -> None:
         try:
-            getattr(self.process, "kill")()
+            if self._job is not None:
+                try:
+                    self._job.terminate()
+                finally:
+                    self._job.close()
+            elif self._owns_group:
+                os.killpg(getattr(self.process, "pid"), sig)
+            else:
+                getattr(self.process, "terminate" if sig == signal.SIGTERM else "kill")()
         except ProcessLookupError:
             pass
 
@@ -167,13 +195,15 @@ class _ConPtyTerminalDriver:
     capability: TerminalCapability = "conpty"
     output_streams: tuple[TerminalStream, ...] = ("stdout",)
 
-    def __init__(self, process: object) -> None:
+    def __init__(self, process: object, *, job=None) -> None:
         self.process = process
+        self._job = job
         # Prime pywinpty's process status once before the dedicated reader
         # takes ownership of the native output handle.
         getattr(process, "isalive")()
         self._loop = asyncio.get_running_loop()
-        self._output: asyncio.Queue[str | None] = asyncio.Queue()
+        self._output: asyncio.Queue[str | None] = asyncio.Queue(maxsize=256)
+        self._publish_slots = threading.BoundedSemaphore(256)
         self._exited = asyncio.Event()
         self._exit_code: int | None = None
         self._reader = threading.Thread(
@@ -194,13 +224,19 @@ class _ConPtyTerminalDriver:
     ) -> _ConPtyTerminalDriver:
         from winpty import PtyProcess
 
-        process = PtyProcess.spawn(
-            list(command),
-            cwd=str(cwd),
-            env=os.environ.copy(),
-            dimensions=(rows, cols),
-        )
-        return cls(process)
+        from backend.runtime.windows_job import WindowsJob
+        job = WindowsJob()
+        process = None
+        try:
+            process = PtyProcess.spawn(list(command), cwd=str(cwd),
+                env=os.environ.copy(), dimensions=(rows, cols))
+            job.assign_pid(process.pid)
+            return cls(process, job=job)
+        except BaseException:
+            job.close()
+            if process is not None:
+                process.close(True)
+            raise
 
     @property
     def returncode(self) -> int | None:
@@ -229,10 +265,21 @@ class _ConPtyTerminalDriver:
             time.sleep(0.01)
 
     def _publish(self, data: str | None) -> None:
+        # Bound both buffered output and callbacks waiting on a busy event loop.
+        while not self._publish_slots.acquire(timeout=0.1):
+            if self._loop.is_closed():
+                return
+        def enqueue():
+            try:
+                if self._output.full():
+                    self._output.get_nowait()
+                self._output.put_nowait(data)
+            finally:
+                self._publish_slots.release()
         try:
-            self._loop.call_soon_threadsafe(self._output.put_nowait, data)
+            self._loop.call_soon_threadsafe(enqueue)
         except RuntimeError:
-            pass
+            self._publish_slots.release()
 
     def _publish_exit(self) -> None:
         try:
@@ -262,12 +309,19 @@ class _ConPtyTerminalDriver:
         # PtyProcess.isalive() probes: they contend with the native read path
         # and make interactive input visibly stall under pywinpty.
         await self._exited.wait()
+        if self._job is not None:
+            self._job.close()
         return self._exit_code or 0
 
     async def terminate(self) -> None:
         await asyncio.to_thread(getattr(self.process, "terminate"), False)
 
     async def kill(self) -> None:
+        if self._job is not None:
+            try:
+                self._job.terminate()
+            finally:
+                self._job.close()
         close = getattr(self.process, "close", None)
         if close is not None:
             await asyncio.to_thread(close, True)
@@ -366,6 +420,8 @@ class TerminalService:
             raise ValueError("terminal session is closed")
         if "\x00" in data:
             raise ValueError("terminal input cannot contain NUL characters")
+        if len(data) > 20_000:
+            raise ValueError("terminal input cannot exceed 20000 characters")
         await driver.write(data)
         return session
 
@@ -468,38 +524,43 @@ class TerminalService:
 
     async def _stop_session(self, session: TerminalSession) -> None:
         driver = self._driver(session)
-        if session.closed or driver.returncode is not None:
-            session.exit_code = driver.returncode
+        session.lifecycle_status = "stopping"
+        returncode = driver.returncode
+        try:
+            if returncode is None:
+                completed, _ = await settle_bounded(driver.terminate(), 0.5)
+                completed, returncode = await settle_bounded(driver.wait(), 1.0) if completed else (False, None)
+                if not completed:
+                    try:
+                        await settle_bounded(driver.kill(), 0.5)
+                    finally:
+                        _, returncode = await settle_bounded(driver.wait(), 0.5)
+            else:
+                # An exited root can still have descendants or blocked pumps.
+                await settle_bounded(driver.kill(), 0.5)
+        except (OSError, RuntimeError):
+            try:
+                await settle_bounded(driver.kill(), 0.5)
+            except (OSError, RuntimeError):
+                pass
+        finally:
+            session.exit_code = int(returncode) if isinstance(returncode, int) else driver.returncode
             session.closed = True
             session.lifecycle_status = "closed"
-            self._notify_exit(session, session.exit_code or 0)
-            return
-        session.lifecycle_status = "stopping"
-        try:
-            await driver.terminate()
-            returncode = await asyncio.wait_for(driver.wait(), timeout=2.0)
-        except Exception:
-            await asyncio.gather(driver.kill(), return_exceptions=True)
-            results = await asyncio.gather(driver.wait(), return_exceptions=True)
-            returncode = results[0] if results and isinstance(results[0], int) else driver.returncode
-        session.exit_code = int(returncode) if isinstance(returncode, int) else driver.returncode
-        session.closed = True
-        session.lifecycle_status = "closed"
-        self._notify_exit(session, session.exit_code or 0)
-        pending = [
-            task
-            for task in tuple(session.tasks)
-            if task is not asyncio.current_task() and not task.done()
-        ]
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+            self._notify_exit(session, session.exit_code)
+            pending = [task for task in tuple(session.tasks)
+                if task is not asyncio.current_task() and not task.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                await settle_bounded(asyncio.gather(*pending, return_exceptions=True), 0.25)
 
-    def _notify_exit(self, session: TerminalSession, returncode: int) -> None:
+    def _notify_exit(self, session: TerminalSession, returncode: int | None) -> None:
         if session.exit_notified:
             return
         session.exit_notified = True
-        self._append(session, "system", f"\r\nShell exited with code {returncode}\r\n")
+        message = f"Shell exited with code {returncode}" if returncode is not None else "Terminal closed; process exit status is unavailable"
+        self._append(session, "system", f"\r\n{message}\r\n")
 
     def _append(self, session: TerminalSession, stream: TerminalStream, data: str) -> None:
         session.sequence += 1

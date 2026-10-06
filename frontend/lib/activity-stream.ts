@@ -43,6 +43,10 @@ export interface ActivityEnvelope {
   run_id: string;
   sequence: number;
   activity_record?: ActivityRecord;
+  event_type?: string;
+  status?: string;
+  timestamp?: string;
+  created_at?: string;
 }
 export interface AgentSummaryEnvelope extends ActivityEnvelope {
   event_type?: string;
@@ -129,8 +133,50 @@ export function mergeActivityEvents<T extends ActivityEnvelope>(
       )
     : undefined;
   if (previous && previous.sequence > event.sequence) return current;
-  const next = previous ? current.filter((old) => old !== previous) : current;
+  // Older journal entries projected warning/paused runs as still running.
+  // Normalize the root from its explicit runtime outcome without changing tool evidence.
+  if (a?.kind === "run" && event.event_type?.startsWith("runtime.")) {
+    const outcome = event.status ?? event.event_type.slice("runtime.".length);
+    const status = {
+      completed: "completed", completed_with_warning: "warning",
+      failed: "failed", timed_out: "failed", blocked: "failed",
+      cancelled: "cancelled", interrupted: "interrupted",
+      paused_model_unavailable: "interrupted",
+    }[outcome] as ActivityStatus | undefined;
+    if (status) {
+      const endedAt = Date.parse(event.timestamp ?? event.created_at ?? "");
+      const durationMs = a.durationMs ?? previous?.activity_record?.durationMs ??
+        Math.max(0, (Number.isFinite(endedAt) ? endedAt : a.startedAt) - a.startedAt);
+      event = { ...event, activity_record: { ...a, status, durationMs,
+        displayStatus: status === "completed" ? "success" : status === "failed" ? "failed" : "warning",
+        state: status === "failed" ? "error" : status === "completed" || status === "warning" ? "completed" : "idle",
+        eventType: status === "failed" ? "agent.error" : status === "interrupted" ? "agent.interrupted" : "agent.completed",
+      } };
+    }
+  }
+  let next = previous ? current.filter((old) => old !== previous) : current;
+  if (["runtime.completed", "runtime.completed_with_warning", "runtime.failed", "runtime.cancelled", "runtime.blocked", "runtime.interrupted", "runtime.timed_out", "runtime.paused_model_unavailable"].includes(event.event_type ?? "")) {
+    const finishedAt = a?.kind === "run" && a.durationMs !== null
+      ? a.startedAt + a.durationMs
+      : Date.parse(event.timestamp ?? event.created_at ?? "");
+    next = next.map((old) => {
+      if (old.run_id !== event.run_id || !old.activity_record || (old.activity_record.durationMs !== null && !isActivityActive(old.activity_record))) return old;
+      return { ...old, activity_record: settleActivity(old.activity_record, event.event_type ?? "", finishedAt) } as T;
+    });
+  }
   return [...next, event].sort((x, y) => x.sequence - y.sequence).slice(-2000);
+}
+/** Settling the run cannot manufacture successful tool evidence. */
+export function settleActivity(activity: ActivityRecord, outcome: string, finishedAt: number): ActivityRecord {
+  if (!isActivityActive(activity)) return activity.durationMs !== null ? activity : { ...activity, durationMs: Math.max(0, (Number.isFinite(finishedAt) ? finishedAt : activity.startedAt) - activity.startedAt) };
+  const failed = ["failed", "timed_out", "runtime.failed", "runtime.timed_out"].includes(outcome);
+  const cancelled = ["cancelled", "runtime.cancelled"].includes(outcome) || activity.kind === "approval";
+  return { ...activity,
+    status: cancelled ? "cancelled" : failed ? "failed" : "interrupted",
+    displayStatus: failed ? "failed" : "warning",
+    state: failed ? "error" : activity.state,
+    durationMs: activity.durationMs ?? Math.max(0, (Number.isFinite(finishedAt) ? finishedAt : activity.startedAt) - activity.startedAt),
+  };
 }
 export function activityElapsed(a: ActivityRecord, now: number): number {
   return a.durationMs ?? Math.max(0, now - a.startedAt);
@@ -238,4 +284,3 @@ export function streamedAgentText(
   }
   return result.join("\n\n");
 }
-

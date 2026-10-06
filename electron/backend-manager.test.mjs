@@ -257,4 +257,41 @@ test("BackendManager clears ownership when the owned backend exits", async () =>
   assert.equal(manager.getStatus().state, "crashed");
   assert.equal(manager.getStatus().ownsProcess, false);
   assert.equal(manager.getStatus().pid, undefined);
+  await manager.stop();
+});
+
+test("owned backend restarts are bounded and Stop cancels pending recovery", async () => {
+  const children = [];
+  let live = false;
+  const manager = new BackendManager({
+    port:8000, cwd:process.cwd(), restartDelaysMs:[2,2,2], readinessIntervalMs:1,
+    healthProbe:async () => live ? healthy : {reachable:false, forgeX:false, healthy:false, error:"ECONNREFUSED"},
+    resolvePython:() => resolvedPython,
+    spawnBackend:() => {live = true; const child = fakeProcess(12345 + children.length); children.push(child); return child;},
+  });
+  await manager.start();
+  for (let count=1; count <= 3; count++) {
+    live = false;
+    children.at(-1).emit("exit", 1, null);
+    for (let wait=0; wait < 100 && children.length <= count; wait++) await new Promise(resolve => setTimeout(resolve,2));
+    assert.equal(children.length, count+1);
+    assert.equal(manager.getStatus().state,"ready");
+  }
+  live = false;
+  children.at(-1).emit("exit",1,null);
+  await new Promise(resolve => setTimeout(resolve,10));
+  assert.equal(children.length,4);
+  assert.match(manager.getStatus().lastError, /three attempts/);
+  await manager.stop();
+  const stopped = new BackendManager({port:8000,cwd:process.cwd(),restartDelaysMs:[15],readinessIntervalMs:1,
+    healthProbe:async () => live ? healthy : {reachable:false,forgeX:false,healthy:false},
+    resolvePython:() => resolvedPython,
+    spawnBackend:() => {live = true; const child = fakeProcess(); children.push(child); return child;}});
+  await stopped.start();
+  live = false;
+  children.at(-1).emit("exit",1,null);
+  await stopped.stop();
+  await new Promise(resolve => setTimeout(resolve,25));
+  assert.equal(children.length,5);
+  assert.equal(stopped.getStatus().state,"stopped");
 });

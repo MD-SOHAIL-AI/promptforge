@@ -1,0 +1,16 @@
+Desktop stderr: selected startup/restart lines
+3: [forgex-backend] INFO:     Started server process [12400]
+52: [forgex-backend] Scheduled owned backend restart in 2000ms
+53: [forgex-backend] INFO:     Started server process [2192]
+
+Frontend stderr: selected refused local connections
+81: Failed to proxy http://127.0.0.1:8000/monitor/status Error: connect ECONNREFUSED 127.0.0.1:8000
+147: Failed to proxy http://127.0.0.1:8000/devices/boards Error: connect ECONNREFUSED 127.0.0.1:8000
+163: Failed to proxy http://127.0.0.1:8000/v1/chat/sessions/agent-session-1f941e4897434acfac81df660e7635e4/events Error: connect ECONNREFUSED 127.0.0.1:8000
+179: Failed to proxy http://127.0.0.1:8000/v1/chat/sessions/agent-session-1f941e4897434acfac81df660e7635e4 Error: connect ECONNREFUSED 127.0.0.1:8000
+195: Failed to proxy http://127.0.0.1:8000/devices/boards Error: connect ECONNREFUSED 127.0.0.1:8000
+211: Failed to proxy http://127.0.0.1:8000/devices/boards Error: connect ECONNREFUSED 127.0.0.1:8000
+227: Failed to proxy http://127.0.0.1:8000/devices/boards Error: connect ECONNREFUSED 127.0.0.1:8000
+243: Failed to proxy http://127.0.0.1:8000/health Error: connect ECONNREFUSED 127.0.0.1:8000
+259: Failed to proxy http://127.0.0.1:8000/devices/boards Error: connect ECONNREFUSED 127.0.0.1:8000
+275: Failed to proxy http://127.0.0.1:8000/devices/boards Error: connect ECONNREFUSED 127.0.0.1:8000

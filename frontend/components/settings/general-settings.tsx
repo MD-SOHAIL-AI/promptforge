@@ -14,21 +14,12 @@ export function GeneralSettings({ settings, saving, onUpdate }: SettingsSectionP
           disabled={saving}
           onChange={(value) => void onUpdate("general.startup_behavior", value)}
         />
-        <SettingSelect
-          label="Default project mode"
-          value={settings["general.default_project_mode"]}
-          options={["generate_into_open_folder", "new_project", "modify_existing_project"]}
-          disabled={saving}
-          onChange={(value) => void onUpdate("general.default_project_mode", value)}
-        />
       </SettingsCard>
       <SettingsCard title="Workflow">
-        <SettingToggle
-          label="Confirm before flash"
-          value={settings["general.confirm_before_flash"]}
-          disabled={saving}
-          onChange={(value) => void onUpdate("general.confirm_before_flash", value)}
-        />
+        <div className="border-b border-[var(--fx-border)] py-4 text-sm">
+          <strong>Firmware upload approval</strong><span className="ml-3 text-[var(--fx-text-muted)]">Always required</span>
+          <p className="mt-1 text-xs leading-5 text-[var(--fx-text-muted)]">Every upload requires confirmation of the selected artifact and device.</p>
+        </div>
         <SettingToggle
           label="Auto-open generated main.cpp"
           value={settings["general.auto_open_generated_main_cpp"]}

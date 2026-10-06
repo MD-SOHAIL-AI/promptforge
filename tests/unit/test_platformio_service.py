@@ -312,6 +312,12 @@ def test_search_libraries_returns_only_bounded_registry_package_ids() -> None:
     assert manager.calls[0].args == [service.executable, "pkg", "search", "header:DHT.h"]
 
 
+def test_registry_failure_is_not_reported_as_missing_library() -> None:
+    service = PlatformIOService(FakeSubprocessManager(process_result(returncode=1, stderr="network unavailable")))
+    with pytest.raises(RuntimeError, match="DEPENDENCY_REGISTRY_UNAVAILABLE"):
+        run(service.search_libraries("adafruit/DHT sensor library"))
+
+
 def test_install_dependencies_builds_canonical_command(tmp_path: Path) -> None:
     root = make_project(tmp_path / "firmware")
     manager = FakeSubprocessManager(process_result())
@@ -428,3 +434,61 @@ def test_cancellation_propagates(tmp_path: Path) -> None:
 def test_service_rejects_invalid_configuration(kwargs: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         PlatformIOService(FakeSubprocessManager(), **kwargs)
+
+
+@pytest.mark.parametrize("declared,candidates,valid", [
+    ("claws/BH1750@1.3.0", ("claws/BH1750",), True),
+    ("adafruit/Adafruit_BH1750", ("claws/BH1750",), False),
+    ("Adafruit SSD1306", ("adafruit/Adafruit SSD1306",), True),
+    ("BH1750", ("claws/BH1750", "other/BH1750"), False),
+])
+def test_dependency_preflight_requires_exact_or_unique_registry_identity(tmp_path, monkeypatch, declared, candidates, valid):
+    root = make_project(tmp_path / "project", f"[env:esp32dev]\nplatform=espressif32\nboard=esp32dev\nframework=arduino\nlib_deps={declared}\n")
+    service = PlatformIOService(FakeSubprocessManager())
+    async def search(*args, **kwargs):
+        return candidates
+    monkeypatch.setattr(service, "search_libraries", search)
+    assert run(service.validate_dependencies(root))["valid"] is valid
+
+
+def test_dependency_preflight_does_not_cache_failed_registry_request(tmp_path, monkeypatch):
+    root = make_project(tmp_path / "project", "[env:esp32dev]\nplatform=espressif32\nboard=esp32dev\nframework=arduino\nlib_deps=claws/BH1750\n")
+    service = PlatformIOService(FakeSubprocessManager())
+    responses = iter([(), ("claws/BH1750",)])
+    async def search(*args, **kwargs):
+        return next(responses)
+    monkeypatch.setattr(service, "search_libraries", search)
+    assert not run(service.validate_dependencies(root))["valid"]
+    assert run(service.validate_dependencies(root))["valid"]
+
+
+def test_health_is_immediate_and_probe_is_shared_despite_cancelled_waiter(tmp_path):
+    async def scenario():
+        executable = tmp_path / "pio.exe"
+        executable.write_bytes(b"fixture")
+        release = asyncio.Event()
+        class SlowProbe:
+            calls = 0
+            async def run(self, config):
+                self.calls += 1
+                await release.wait()
+                return process_result(stdout="PlatformIO Core, version 6.2.0")
+        manager = SlowProbe()
+        service = PlatformIOService(manager, executable=str(executable))
+        pending = await asyncio.wait_for(service.health_status(), timeout=0.1)
+        assert pending.reason == "checking" and pending.version is None
+        waiter = asyncio.create_task(service.status())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        for _ in range(10):
+            assert (await asyncio.wait_for(service.health_status(), timeout=0.1)).reason == "checking"
+        assert manager.calls == 1
+        release.set()
+        verified = await service.status()
+        assert verified.version == "6.2.0"
+        assert await service.health_status() == verified
+        assert manager.calls == 1
+        await service.close_status_probe()
+    asyncio.run(scenario())

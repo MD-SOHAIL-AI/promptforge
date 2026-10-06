@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, Check, CircuitBoard, Code2, FileDiff, Hammer, LoaderCircle, Radio, RefreshCw, Rocket, ShieldCheck, TerminalSquare, Usb, X } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { EditorWorkbench } from "@/components/ide/editor-workbench";
 import { IdeExplorer } from "@/components/ide/ide-explorer";
@@ -9,14 +9,16 @@ import { BottomPanel } from "@/components/ide/bottom-panel";
 import { Metric, NexusSurface, ProgressRail, SectionEyebrow } from "@/components/nexus/nexus-primitives";
 import { buildMetrics, pendingWorkspaceChangeCount } from "@/lib/nexus-agent-view";
 import { useAgentChangeSet } from "@/hooks/use-agent-change-set";
+import { useWorkspacePreferences } from "@/hooks/workspace-preferences";
 import type { DetectedBoard, ProductAgentRun } from "@/types";
+import {promptForgeApi} from "@/lib/api";
 
 type Workspace = ReturnType<typeof import("@/hooks/use-promptforge-workspace").usePromptForgeWorkspace>;
 
-export type NexusCanvas = "task" | "code" | "build" | "review" | "hardware" | "serial" | "terminal";
+export type NexusCanvas = "task" | "code" | "build" | "review" | "evidence" | "hardware" | "serial" | "terminal";
 
 export function CanvasHeader({ icon: Icon, title, subtitle, onBack, actions }: { icon: typeof Code2; title: string; subtitle?: string; onBack: () => void; actions?: ReactNode }) {
-  return <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--fx-border-soft)] px-3.5">
+  return <div className="fx-canvas-header flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--fx-border-soft)] px-3.5">
     <div className="flex min-w-0 items-center gap-3">
       <button onClick={onBack} className="grid h-7 w-7 place-items-center rounded-md text-[var(--fx-text-muted)] hover:bg-[var(--fx-hover)] hover:text-[var(--fx-text)]" title="Back to task"><ArrowLeft className="h-4 w-4" /></button>
       <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--fx-accent-faint)] text-[var(--fx-accent)]"><Icon className="h-4 w-4" /></span>
@@ -45,7 +47,8 @@ export function CodeCanvas({
 }) {
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [applyError, setApplyError] = useState<string | null>(null);
-  const editorSettings = { fontSize: 14, tabSize: 2, wordWrap: false, minimapEnabled: false, showLineNumbers: true };
+  const preferences = useWorkspacePreferences();
+  const editorSettings = { fontSize: Number(preferences["editor.font_size"] ?? 14), tabSize: Number(preferences["editor.tab_size"] ?? 2), wordWrap: preferences["editor.word_wrap"] !== false, minimapEnabled: preferences["editor.minimap_enabled"] === true, showLineNumbers: preferences["editor.show_line_numbers"] !== false, showBreadcrumbs: preferences["editor.show_breadcrumbs"] !== false, formatOnSave: preferences["editor.format_on_save"] === true, autoSave: preferences["editor.auto_save"] === true };
   const pendingCount = pendingWorkspaceChangeCount(run);
   const applyPendingChanges = async () => {
     setApplyError(null);
@@ -85,39 +88,60 @@ export function CodeCanvas({
 }
 
 export function BuildCanvas({ workspace, run, onBack, onOpenTerminal, onFlash }: { workspace: Workspace; run: ProductAgentRun | null; onBack: () => void; onOpenTerminal: () => void; onFlash: () => void }) {
-  const metrics = buildMetrics(run);
-  const direct = workspace.buildResult as Record<string, unknown> | null;
-  const success = metrics?.success ?? Boolean(direct?.success);
-  const size = metrics?.size ?? Number(direct?.build_size_bytes ?? 0);
-  const warnings = metrics?.warnings ?? Number(direct?.warnings_count ?? 0);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const scopedRun = run?.project_id === workspace.activeProject?.project_id ? run : null;
+  const [agentEvidence, setAgentEvidence] = useState<{key:string; state:"idle" | "failed" | "passed" | "stale" | "unavailable"; scope:"workspace" | "saved_draft"} | null>(null);
+  const evidenceKey = `${scopedRun?.run_id}:${scopedRun?.build_result?.build_id}:${scopedRun?.build_verified}:${workspace.buildEnvironment}:${workspace.sourceEditsRevision}`;
+  useEffect(() => {
+    if (!scopedRun?.build_result) return;
+    const controller = new AbortController();
+    void promptForgeApi.agentBuildEvidence(scopedRun.run_id, workspace.buildEnvironment, controller.signal)
+      .then(value => {if (!controller.signal.aborted) setAgentEvidence({...value,key:evidenceKey});})
+      .catch(() => {if (!controller.signal.aborted) setAgentEvidence({key:evidenceKey,state:"unavailable",scope:"workspace"});});
+    return () => controller.abort();
+  }, [evidenceKey, scopedRun?.run_id, scopedRun?.build_result, workspace.buildEnvironment]);
+  const metrics = buildMetrics(scopedRun);
+  const direct = workspace.buildObservation.projectId === workspace.activeProject?.project_id ? workspace.buildResult as Record<string, unknown> | null : null;
+  const observation = workspace.buildObservation;
+  const hasDirect = observation.projectId === workspace.activeProject?.project_id && observation.state !== "idle";
+  const state = hasDirect ? observation.state : metrics ? metrics.success ? workspace.tabs.some(tab => tab.dirty) ? "stale" : agentEvidence?.key === evidenceKey ? agentEvidence.state : "stale" : "failed" : "idle";
+  const success = state === "passed";
+  const size = success ? hasDirect ? Number(direct?.build_size_bytes ?? 0) : metrics?.size ?? 0 : 0;
+  const warnings = hasDirect ? Number(direct?.warnings_count ?? 0) : metrics?.warnings;
   const board = metrics?.board || String(direct?.board ?? workspace.activeProject?.target_board ?? "Unknown board");
-  const message = metrics?.message || String(direct?.message ?? (success ? "Build verified." : "No verified build yet."));
+  const message = refreshError || (hasDirect ? observation.message || (state === "running" ? "Compiling the selected project and environment." : "No verified build yet.") : state === "stale" ? "The saved compiler result needs current-source verification." : metrics?.message || "No verified build yet.");
+  const metadata = hasDirect ? direct?.metadata : scopedRun?.build_result?.metadata;
+  const memory = metadata && typeof metadata === "object" ? metadata as Record<string, unknown> : {};
+  const percent = (used: unknown, total: unknown) => typeof used === "number" && typeof total === "number" && total > 0 ? Math.min(100, Math.max(0, used / total * 100)) : null;
+  const flashPercent = success ? percent(memory.flash_used_bytes, memory.flash_total_bytes) : null;
+  const ramPercent = success ? percent(memory.ram_used_bytes, memory.ram_total_bytes) : null;
+  const title = {idle: "Ready for the next build", running: "Compiling firmware", passed: "Firmware compiled successfully", failed: "Firmware build failed", unavailable: "Build result unavailable", cancelled: "Build cancelled", stale: "Build needs verification"}[state];
   return <div className="flex h-full min-h-0 flex-col">
-    <CanvasHeader icon={Hammer} title="Build artifact" subtitle={board} onBack={onBack} actions={<><button onClick={onOpenTerminal} className="fx-nexus-action"><TerminalSquare className="h-3.5 w-3.5" /> Raw output</button><button onClick={() => void workspace.buildActiveProject()} className="fx-nexus-action"><RefreshCw className="h-3.5 w-3.5" /> Build</button></>} />
+    <CanvasHeader icon={Hammer} title="Build artifact" subtitle={`${board}${!hasDirect && agentEvidence?.scope === "saved_draft" ? " · Saved draft" : ""}`} onBack={onBack} actions={<><button onClick={onOpenTerminal} className="fx-nexus-action"><TerminalSquare className="h-3.5 w-3.5" /> Raw output</button><button onClick={() => {setRefreshError(null); void (hasDirect ? workspace.refreshBuildOperation() : scopedRun ? promptForgeApi.agentBuildEvidence(scopedRun.run_id, workspace.buildEnvironment).then(value => setAgentEvidence({...value,key:evidenceKey})) : Promise.resolve()).catch(cause => setRefreshError(cause instanceof Error ? cause.message : "Build status could not be refreshed."));}} className="fx-nexus-action">Refresh result</button><button disabled={state === "running"} onClick={() => void workspace.buildActiveProject()} className="fx-nexus-action"><RefreshCw className="h-3.5 w-3.5" /> Build</button></>} />
     <div className="min-h-0 flex-1 overflow-auto p-3.5">
       <div className="space-y-3">
         <NexusSurface className={`overflow-hidden p-4 ${success ? "is-success" : ""}`} glow={Boolean(workspace.toolAction === "build")}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <span className={`grid h-10 w-10 place-items-center rounded-lg ${success ? "bg-[var(--fx-success-soft)] text-[var(--fx-success)]" : "bg-[var(--fx-panel-elevated)] text-[var(--fx-text-muted)]"}`}>{workspace.toolAction === "build" ? <LoaderCircle className="h-4.5 w-4.5 animate-spin" /> : success ? <Check className="h-4.5 w-4.5" /> : <Hammer className="h-4.5 w-4.5" />}</span>
-              <div><SectionEyebrow>{workspace.toolAction === "build" ? "Building" : success ? "Verified build" : "Build status"}</SectionEyebrow><div className="mt-1 text-[15px] font-semibold tracking-[-.02em] text-[var(--fx-text)]">{success ? "Firmware passed verification" : "Ready for the next build"}</div><p className="mt-1 max-w-[580px] text-[11px] leading-5 text-[var(--fx-text-muted)]">{message}</p></div>
+              <div><SectionEyebrow>{state === "running" ? "Building" : `Build ${state}`}</SectionEyebrow><div className="mt-1 text-[15px] font-semibold tracking-[-.02em] text-[var(--fx-text)]">{title}</div><p className="mt-1 max-w-[580px] text-[11px] leading-5 text-[var(--fx-text-muted)]">{message}</p></div>
             </div>
-            {success ? <button onClick={onFlash} className="fx-primary-action"><Rocket className="h-4 w-4" /> Flash device</button> : null}
+            {success && (hasDirect || !scopedRun?.active_workspace_unchanged) ? <button onClick={onFlash} className="fx-primary-action"><Rocket className="h-4 w-4" /> Flash device</button> : null}
           </div>
         </NexusSurface>
 
         <div className="grid grid-cols-2 gap-2">
           <NexusSurface className="p-4"><Metric label="Target" value={board || "—"} hint={metrics?.platform || workspace.activeProject?.framework || "PlatformIO"} /></NexusSurface>
           <NexusSurface className="p-4"><Metric label="Firmware" value={size ? `${(size / 1024).toFixed(1)} KB` : "—"} hint="Verified artifact size" /></NexusSurface>
-          <NexusSurface className="p-4"><Metric label="Warnings" value={String(warnings)} hint={warnings ? "Review recommended" : "Clean build"} /></NexusSurface>
-          <NexusSurface className="p-4"><Metric label="Status" value={success ? "PASSED" : "IDLE"} hint={run?.updated_at ? new Date(run.updated_at).toLocaleTimeString() : "Awaiting build"} /></NexusSurface>
+          <NexusSurface className="p-4"><Metric label="Warnings" value={warnings === undefined ? "—" : String(warnings)} hint={warnings ? "Review recommended" : success ? "Clean build" : "Awaiting verified result"} /></NexusSurface>
+          <NexusSurface className="p-4"><Metric label="Status" value={state.toUpperCase()} hint={observation.observedAt ? new Date(observation.observedAt).toLocaleTimeString() : scopedRun?.updated_at ? new Date(scopedRun.updated_at).toLocaleTimeString() : "Awaiting build"} /></NexusSurface>
         </div>
 
         <NexusSurface className="p-4">
-          <div className="flex items-center justify-between"><SectionEyebrow>Firmware budget</SectionEyebrow><span className="text-[10px] text-[var(--fx-text-muted)]">Estimated visualization</span></div>
+          <div className="flex items-center justify-between"><SectionEyebrow>Firmware budget</SectionEyebrow><span className="text-[10px] text-[var(--fx-text-muted)]">Compiler measurements</span></div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div><div className="mb-2 flex justify-between text-[10px]"><span className="text-[var(--fx-text-muted)]">Flash</span><span className="font-mono text-[var(--fx-text)]">{size ? "artifact ready" : "—"}</span></div><ProgressRail value={size ? 31 : 0} tone="accent" /></div>
-            <div><div className="mb-2 flex justify-between text-[10px]"><span className="text-[var(--fx-text-muted)]">RAM</span><span className="font-mono text-[var(--fx-text)]">build metadata</span></div><ProgressRail value={size ? 18 : 0} tone="success" /></div>
+            <div><div className="mb-2 flex justify-between text-[10px]"><span className="text-[var(--fx-text-muted)]">Flash</span><span className="font-mono text-[var(--fx-text)]">{flashPercent === null ? "Measurement unavailable" : `${flashPercent.toFixed(1)}%`}</span></div>{flashPercent !== null ? <ProgressRail value={flashPercent} tone="accent" /> : null}</div>
+            <div><div className="mb-2 flex justify-between text-[10px]"><span className="text-[var(--fx-text-muted)]">RAM</span><span className="font-mono text-[var(--fx-text)]">{ramPercent === null ? "Measurement unavailable" : `${ramPercent.toFixed(1)}%`}</span></div>{ramPercent !== null ? <ProgressRail value={ramPercent} tone="success" /> : null}</div>
           </div>
         </NexusSurface>
       </div>
@@ -125,14 +149,16 @@ export function BuildCanvas({ workspace, run, onBack, onOpenTerminal, onFlash }:
   </div>;
 }
 
-export function ReviewCanvas({ run, applyingChanges = false, onBack, onApply, onApplied }: { run: ProductAgentRun | null; applyingChanges?: boolean; onBack: () => void; onApply: () => Promise<ProductAgentRun | null> | ProductAgentRun | null; onApplied: () => Promise<unknown> | unknown }) {
+export function ReviewCanvas({ run, initialPath = null, applyingChanges = false, onBack, onApply, onApplied, onDiscard }: { run: ProductAgentRun | null; initialPath?: string | null; applyingChanges?: boolean; onBack: () => void; onApply: () => Promise<ProductAgentRun | null> | ProductAgentRun | null; onApplied: () => Promise<unknown> | unknown; onDiscard?: () => Promise<unknown> }) {
   const { changeSet, loading } = useAgentChangeSet(run);
   const [selected, setSelected] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const discardInFlight = useRef(false);
   const firstChangedPath = changeSet?.changed_files[0]?.path ?? null;
   useEffect(() => {
-    setSelected(firstChangedPath);
-  }, [changeSet?.change_set_id, firstChangedPath]);
+    setSelected(initialPath ?? firstChangedPath);
+  }, [changeSet?.change_set_id, firstChangedPath, initialPath]);
   const current = changeSet?.changed_files.find((file) => file.path === selected) ?? changeSet?.changed_files[0] ?? null;
   const applyPendingChanges = async () => {
     setApplyError(null);
@@ -158,7 +184,18 @@ export function ReviewCanvas({ run, applyingChanges = false, onBack, onApply, on
         {current ? <div><div className="mb-3 flex items-center justify-between"><div><div className="font-mono text-[12px] text-[var(--fx-text)]">{current.path}</div><div className="mt-1 text-[10px] text-[var(--fx-text-muted)]">{current.change_type} · {current.safe ? "safe" : "review required"}</div></div><span className={`rounded-full border px-2.5 py-1 text-[9px] uppercase tracking-[.12em] ${current.safe ? "border-[color-mix(in_srgb,var(--fx-success)_38%,var(--fx-border))] text-[var(--fx-success)]" : "border-[color-mix(in_srgb,var(--fx-warning)_40%,var(--fx-border))] text-[var(--fx-warning)]"}`}>{current.safe ? "low risk" : "attention"}</span></div><NexusSurface className="overflow-hidden"><pre className="max-h-[64vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-[11px] leading-5 text-[var(--fx-code-text)]">{current.diff_preview || "Diff preview is unavailable for this file."}</pre></NexusSurface></div> : <div className="grid h-full place-items-center text-[11px] text-[var(--fx-text-muted)]">Select a staged file to review.</div>}
       </div>
     </div>
-    {changeSet?.status === "draft" ? <div className="border-t border-[var(--fx-border-soft)] p-3 text-xs text-[var(--fx-text-muted)]">Recovery draft. Retry the run to rebuild and validate these files before approval.</div> : null}
+    {changeSet?.status === "draft" ? <div className="flex items-center justify-between gap-3 border-t border-[var(--fx-border-soft)] p-3 text-xs text-[var(--fx-text-muted)]">
+      <span>Recovery draft. Resume and build these files before approval.</span>
+      {onDiscard ? <button disabled={discarding} onClick={async () => {
+        if (discardInFlight.current) return;
+        discardInFlight.current = true;
+        setDiscarding(true); setApplyError(null);
+        try { await onDiscard(); onBack(); }
+        catch (cause) { setApplyError(cause instanceof Error ? cause.message : "Draft could not be discarded."); }
+        finally { discardInFlight.current = false; setDiscarding(false); }
+      }}>{discarding ? "Discarding…" : "Discard draft"}</button> : null}
+      {applyError ? <span role="alert">{applyError}</span> : null}
+    </div> : null}
     {changeSet?.status === "pending" && run?.status === "completed" ? <div className="flex h-16 shrink-0 items-center justify-between gap-4 border-t border-[var(--fx-border-soft)] bg-[color-mix(in_srgb,var(--fx-panel)_84%,transparent)] px-3.5"><div className="min-w-0 text-[10px] text-[var(--fx-text-muted)]"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[var(--fx-success)]" /> Changes are still isolated from the active workspace.</div>{applyError ? <div className="mt-1 truncate text-[var(--fx-error)]">{applyError}</div> : null}</div><button onClick={() => void applyPendingChanges()} disabled={applyingChanges || loading} className="fx-primary-action shrink-0 disabled:opacity-50">{applyingChanges ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Apply changes</button></div> : null}
   </div>;
 }
@@ -199,5 +236,5 @@ export function SerialCanvas({ workspace, selectedBoard, onBack }: { workspace: 
 }
 
 export function TerminalCanvas({ workspace, onBack }: { workspace: Workspace; onBack: () => void }) {
-  return <div className="flex h-full min-h-0 flex-col"><CanvasHeader icon={TerminalSquare} title="Engineering console" subtitle="Terminal, problems and serial output" onBack={onBack} /><div className="min-h-0 flex-1"><BottomPanel logs={workspace.logs} workspaceLogs={workspace.workspaceLogs} stages={workspace.stages} activeProject={workspace.activeProject} height={900} collapsed={false} maximized onToggleCollapsed={() => undefined} onToggleMaximized={() => undefined} onClearLogs={workspace.clearLogs} /></div></div>;
+  return <div className="flex h-full min-h-0 flex-col"><CanvasHeader icon={TerminalSquare} title="Engineering console" subtitle="Terminal, problems and serial output" onBack={onBack} /><div className="min-h-0 flex-1"><BottomPanel logs={workspace.logs} workspaceLogs={workspace.workspaceLogs} stages={workspace.stages} activeProject={workspace.activeProject} height="100%" collapsed={false} maximized onClearLogs={workspace.clearLogs} /></div></div>;
 }

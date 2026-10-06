@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="4" time="7.933" timestamp="2026-10-05T21:33:24.094770+05:30" hostname="SOHAIL"><testcase classname="tests.unit.test_verification_permission_recovery" name="test_generation_waits_for_permission_without_claiming_a_compiler_failure[False]" time="0.267"><failure message="AssertionError: assert 'BUILD_TOOL_UNAVAILABLE' == 'AGENT_PROJECT_TRUST_REQUIRED'&#10;  &#10;  - AGENT_PROJECT_TRUST_REQUIRED&#10;  + BUILD_TOOL_UNAVAILABLE">tmp_path = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-1978/test_generation_waits_for_perm0')
+explicit_build = False
+
+    @pytest.mark.parametrize("explicit_build", [False, True])
+    def test_generation_waits_for_permission_without_claiming_a_compiler_failure(tmp_path, explicit_build):
+        (tmp_path / "platformio.ini").write_text("[env:esp32dev]\nplatform=espressif32\nboard=esp32dev\nframework=arduino\n")
+        build_plan = ProductToolPlan.parse({"version": "forgex.toolplan.v2", "summary": "Build staged source",
+            "final": False, "tool_calls": [{"id": "build", "type": "build_firmware", "arguments": {}}]})
+        planner = SequencePlanner([plan(path="src/main.cpp", content="void setup() {}\nvoid loop() {}\n"),
+            build_plan if explicit_build else plan(final=True)])
+        builder = Builder()
+        events = []
+        async def publish(event, payload):
+            events.append((event, payload))
+        loop = AutonomousForgeAgentLoop(workspace_root=tmp_path, platformio=builder, planner=planner,
+            progress=publish, policy=BUILD_REPAIR_PROFILE.policy(), trusted_project=False)
+        result = asyncio.run(loop.run(task="Update and build the ESP32 project", require_build=True))
+&gt;       assert result.classification == "AGENT_PROJECT_TRUST_REQUIRED"
+E       AssertionError: assert 'BUILD_TOOL_UNAVAILABLE' == 'AGENT_PROJECT_TRUST_REQUIRED'
+E         
+E         - AGENT_PROJECT_TRUST_REQUIRED
+E         + BUILD_TOOL_UNAVAILABLE
+
+tests\unit\test_verification_permission_recovery.py:27: AssertionError</failure></testcase><testcase classname="tests.unit.test_verification_permission_recovery" name="test_generation_waits_for_permission_without_claiming_a_compiler_failure[True]" time="0.130"><failure message="AssertionError: assert 'BUILD_TOOL_UNAVAILABLE' == 'AGENT_PROJECT_TRUST_REQUIRED'&#10;  &#10;  - AGENT_PROJECT_TRUST_REQUIRED&#10;  + BUILD_TOOL_UNAVAILABLE">tmp_path = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-1978/test_generation_waits_for_perm1')
+explicit_build = True
+
+    @pytest.mark.parametrize("explicit_build", [False, True])
+    def test_generation_waits_for_permission_without_claiming_a_compiler_failure(tmp_path, explicit_build):
+        (tmp_path / "platformio.ini").write_text("[env:esp32dev]\nplatform=espressif32\nboard=esp32dev\nframework=arduino\n")
+        build_plan = ProductToolPlan.parse({"version": "forgex.toolplan.v2", "summary": "Build staged source",
+            "final": False, "tool_calls": [{"id": "build", "type": "build_firmware", "arguments": {}}]})
+        planner = SequencePlanner([plan(path="src/main.cpp", content="void setup() {}\nvoid loop() {}\n"),
+            build_plan if explicit_build else plan(final=True)])
+        builder = Builder()
+        events = []
+        async def publish(event, payload):
+            events.append((event, payload))
+        loop = AutonomousForgeAgentLoop(workspace_root=tmp_path, platformio=builder, planner=planner,
+            progress=publish, policy=BUILD_REPAIR_PROFILE.policy(), trusted_project=False)
+        result = asyncio.run(loop.run(task="Update and build the ESP32 project", require_build=True))
+&gt;       assert result.classification == "AGENT_PROJECT_TRUST_REQUIRED"
+E       AssertionError: assert 'BUILD_TOOL_UNAVAILABLE' == 'AGENT_PROJECT_TRUST_REQUIRED'
+E         
+E         - AGENT_PROJECT_TRUST_REQUIRED
+E         + BUILD_TOOL_UNAVAILABLE
+
+tests\unit\test_verification_permission_recovery.py:27: AssertionError</failure></testcase><testcase classname="tests.unit.test_verification_permission_recovery" name="test_trust_revoked_during_preflight_prevents_the_compiler_launch" time="0.142"><failure message="AssertionError: assert None == 'AGENT_PROJECT_TRUST_REQUIRED'">tmp_path = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-1978/test_trust_revoked_during_pref0')
+
+    def test_trust_revoked_during_preflight_prevents_the_compiler_launch(tmp_path):
+        trusted = [True]
+        class RevokingBuilder(Builder):
+            async def validate_dependencies(self, root):
+                trusted[0] = False
+                return {"valid": True}
+        async def scenario():
+            builder = RevokingBuilder()
+            loop = AutonomousForgeAgentLoop(workspace_root=tmp_path, platformio=builder,
+                planner=SequencePlanner([]), progress=progress, policy=BUILD_REPAIR_PROFILE.policy(),
+                project_trust_getter=lambda: trusted[0], task_contract={"requirements": [{"id": "req-1", "text": "Build source"}]})
+            observation = await loop._build_once(None)
+            assert observation["output"]["error_code"] == "AGENT_PROJECT_TRUST_REQUIRED"
+            assert builder.calls == 0 and not loop.build_passed
+&gt;       asyncio.run(scenario())
+
+tests\unit\test_verification_permission_recovery.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\diwan\AppData\Local\Programs\Python\Python310\lib\asyncio\runners.py:44: in run
+    return loop.run_until_complete(main)
+C:\Users\diwan\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py:646: in run_until_complete
+    return future.result()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def scenario():
+        builder = RevokingBuilder()
+        loop = AutonomousForgeAgentLoop(workspace_root=tmp_path, platformio=builder,
+            planner=SequencePlanner([]), progress=progress, policy=BUILD_REPAIR_PROFILE.policy(),
+            project_trust_getter=lambda: trusted[0], task_contract={"requirements": [{"id": "req-1", "text": "Build source"}]})
+        observation = await loop._build_once(None)
+&gt;       assert observation["output"]["error_code"] == "AGENT_PROJECT_TRUST_REQUIRED"
+E       AssertionError: assert None == 'AGENT_PROJECT_TRUST_REQUIRED'
+
+tests\unit\test_verification_permission_recovery.py:49: AssertionError</failure></testcase><testcase classname="tests.unit.test_verification_permission_recovery" name="test_api_permission_block_preserves_draft_then_verifies_without_a_model" time="3.155"><failure message="AssertionError: {'active_workflow_task_id': 'task-agent-run-209ee00d93bb45be8570e10199954e17', 'active_workspace_unchanged': True, 'agent_plan': [], 'approval_expires_at': None, ...}&#10;assert 'failed' == 'blocked'&#10;  &#10;  - blocked&#10;  + failed">tmp_path = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-1978/test_api_permission_block_pres0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001FE0343F4F0&gt;
+
+    def test_api_permission_block_preserves_draft_then_verifies_without_a_model(tmp_path, monkeypatch):
+        from pathlib import Path
+        from backend.main import execute_prompt
+        from tests.api.test_api_routes import make_client, successful_build
+        from tests.api.test_product_agent_runtime_api import setup_env, wait_run_status
+    
+        setup_env(monkeypatch, tmp_path, enabled=True)
+        monkeypatch.setenv("FORGEX_ENABLE_AGENT_ORCHESTRATOR_V2", "1")
+        client, project_id, builder = make_client(tmp_path, execute_prompt_fn=execute_prompt)
+        with client as api:
+            owner = api.app.state.services.product_agent_service.orchestrator
+            owner.auto_recovery_enabled = False
+            planner = SequencePlanner([plan(path="src/main.cpp", content="void setup() {}\nvoid loop() {}\n"), plan(final=True)])
+            monkeypatch.setattr(owner.provider_registry, "resolve", lambda *args, **kwargs: planner)
+            async def build_stage(project, *, environment=None, **kwargs):
+                builder.calls.append((str(project), environment))
+                return successful_build(Path(project) / ".pio/build/esp32dev/firmware.bin")
+            monkeypatch.setattr(builder, "build", build_stage)
+            started = api.post("/agent-runtime/runs", json={"project_id": project_id,
+                "instruction": "Update and build ESP32 firmware", "provider_id": "fake_planner", "autonomy": "build_only"})
+            assert started.status_code == 202, started.text
+            first = wait_run_status(api, started.json()["run"]["run_id"], {"blocked", "failed"})
+&gt;           assert first["status"] == "blocked", first
+E           AssertionError: {'active_workflow_task_id': 'task-agent-run-209ee00d93bb45be8570e10199954e17', 'active_workspace_unchanged': True, 'agent_plan': [], 'approval_expires_at': None, ...}
+E           assert 'failed' == 'blocked'
+E             
+E             - blocked
+E             + failed
+
+tests\unit\test_verification_permission_recovery.py:76: AssertionError</failure></testcase></testsuite></testsuites>

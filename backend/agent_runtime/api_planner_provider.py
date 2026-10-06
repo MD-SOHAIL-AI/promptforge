@@ -143,8 +143,11 @@ class ApiPlannerProvider:
         endpoint: str | None = None,
         fallback_model_ids: Sequence[str] | None = None,
         capabilities_by_model: Mapping[str, ModelCapabilities] | None = None,
+        diagnostic_smoke: bool = False,
     ) -> None:
         self.config = config
+        # Diagnostic controls are trusted constructor state, never user prose.
+        self.diagnostic_smoke = diagnostic_smoke is True
         self.provider_id = config.provider_id
         self.model_id = model_id.strip()
         self.endpoint = (endpoint or config.endpoint).strip()
@@ -336,7 +339,7 @@ class ApiPlannerProvider:
                 try:
                     _validate_generated_plan(
                         plan,
-                        smoke=_is_smoke_task(task),
+                        smoke=self.diagnostic_smoke,
                         allowed_tools=allowed_tools,
                         task=task,
                         tool_results=tool_results,
@@ -383,7 +386,7 @@ class ApiPlannerProvider:
         stream: bool = False,
     ) -> dict[str, object]:
         instruction = _planner_instruction(
-            smoke=_is_smoke_task(task), allowed_tools=allowed_tools
+            smoke=self.diagnostic_smoke, allowed_tools=allowed_tools
         )
         if repair:
             instruction += (
@@ -1006,31 +1009,42 @@ class ApiPlannerProvider:
 
 
 def _planner_instruction(
-    *, smoke: bool = False, allowed_tools: Sequence[str] = ()
+    *, smoke: bool = False, allowed_tools: Sequence[str] = (), native: bool = False
 ) -> str:
     if smoke:
+        if native:
+            return ("You are Forge Agent V3. Call write_file with path "
+                    f"{API_PRODUCT_SMOKE_PATH} and exact content {API_PRODUCT_SMOKE_CONTENT}. "
+                    "Use the supplied function directly. Do not return a JSON ToolPlan.")
         return (
             "You are Forge Agent V3. Return JSON only. "
             f"Return version {PRODUCT_TOOLPLAN_VERSION} with exactly one write_file call using canonical arguments. "
             f"Use path {API_PRODUCT_SMOKE_PATH} and exact content {API_PRODUCT_SMOKE_CONTENT}. Set final to false."
         )
     tools = ", ".join(allowed_tools)
-    return (
-        "You are Forge Agent V3, a continuous tool-using embedded software engineer. "
+    protocol = (
+        "Use the supplied ForgeX functions directly. Return ordinary assistant text "
+        "only when the task is complete and no tool call is needed. "
+        if native else
         "Return exactly one JSON object per turn and no markdown. "
         f"Use version {PRODUCT_TOOLPLAN_VERSION}. Shape: "
         '{"version":"forgex.toolplan.v2","summary":"what you are doing","tool_calls":'
         '[{"id":"call_1","type":"read_file","arguments":{"path":"src/main.cpp"}}],"final":false}. '
+    )
+    return (
+        "You are Forge Agent V3, a continuous tool-using embedded software engineer. "
+        + protocol +
         f"Available tools for this turn: {tools}. "
         'Canonical tool arguments: list_files {"path":"."}; glob_files {"pattern":"**/*","path":"."}; grep_search {"query":"text","path":"."}; read_file {"path":"src/main.cpp"}; write_file {"path":"src/main.cpp","content":"..."}. '
         "Prefer list/glob/grep/read before editing when context is missing. For create/build/generate tasks, inspect briefly and then make file changes; do not repeat read-only planning when the workspace state is already known. Prefer apply_patch for precise existing-file changes, use edit_file_simple for a single exact replacement, and use write_file only for new files or deliberate full replacement. "
-        "For multi-file projects, write each actual file using a project-relative path such as include/SystemManager.h or src/SystemManager.cpp. write_file creates missing parent directories automatically. Never call write_file for a directory alone (such as include or src), and never use an absolute path or a path outside the active project. You may include up to five independent file writes in one tool plan. "
+        "For multi-file projects, write each actual file using a project-relative path such as include/SystemManager.h or src/SystemManager.cpp. write_file creates missing parent directories automatically. Never call write_file for a directory alone (such as include or src), and never use an absolute path or a path outside the active project. Prefer one or two bounded source edits per turn. Split large files into modules or complete patch hunks; every tool call must have complete valid arguments. Continue the remaining deliverables in later turns using saved evidence. Configuration alone does not complete a firmware project. "
         "Use update_plan for multi-step work. Mark exactly one current step in_progress before acting, then complete it only after successful tool evidence. Each step may include verification: inspection, edit, build, or simulation; use build or simulation for those checks. Keep prior step text stable across updates. The summary is public progress, not private reasoning: one or two concise sentences describing what you are checking or have observed. Never output hidden thinking, scratchpads, or reasoning traces. Use build_firmware after meaningful firmware edits when build is available. "
         "Read build errors and repair them in later turns instead of stopping after the first failure. If a package is missing, use a registry package ID from dependency_candidates; do not guess publisher names. A tool edit with modified=false or an empty diff made no change. "
         "Use spawn_subagent only for a bounded Explore, Review, or Verify task that benefits from independent context; child agents cannot edit. "
         "Use load_skill and memory_search only when they are relevant. In plan-only contexts, inspect/search and call update_plan, never request mutation tools. Never invent tool results. "
         "Use workspace-relative paths only and never request hidden/credential paths. "
-        "Set final=true with no tool calls only when the requested task is actually complete or no further safe action is possible. "
+        + ("Finish with ordinary assistant text and no function call only when the requested task is complete or no further safe action is possible. "
+           if native else "Set final=true with no tool calls only when the requested task is actually complete or no further safe action is possible. ") +
         "On a final turn, put the concise user-facing answer or completion summary in summary; do not use a generic word like completed. "
         "For read-only questions, inspect only what is needed and use the final summary to directly answer the user with concrete findings."
     )
@@ -1219,7 +1233,7 @@ def _normalize_tool_call(value: object, index: int) -> dict[str, object]:
     try:
         parsed_tool = parse_tool_name(tool_type)
     except ValueError as exc:
-        raise ValueError("product_tool_call_schema_invalid") from exc
+        raise ValueError("provider_tool_unknown") from exc
     parsed_tool, normalized_arguments = _normalize_tool_arguments(
         parsed_tool, dict(arguments)
     )
@@ -1229,6 +1243,13 @@ def _normalize_tool_call(value: object, index: int) -> dict[str, object]:
 def _normalize_tool_arguments(
     tool: ToolName, arguments: dict[str, object]
 ) -> tuple[ToolName, dict[str, object]]:
+    if tool in WRITE_TOOLS:
+        # A current-directory prefix is equivalent to a workspace-relative path.
+        # Traversal, absolute paths and Windows separators remain invalid.
+        for key in ("path", "destination"):
+            path = arguments.get(key)
+            if isinstance(path, str):
+                arguments[key] = _strip_current_directory_prefix(path.strip())
     if tool is ToolName.LIST_FILES:
         path = arguments.get("path", ".")
         pattern = arguments.get("pattern")
@@ -1333,10 +1354,6 @@ def _strip_current_directory_prefix(value: str) -> str:
 
 def _looks_like_glob(value: str) -> bool:
     return any(marker in value for marker in ("*", "?", "["))
-
-
-def _is_smoke_task(task: str) -> bool:
-    return "smoke" in task.casefold()
 
 
 def _validate_generated_plan(

@@ -17,6 +17,14 @@ from backend.tools.tool_registry import (
 )
 
 
+@pytest.fixture(autouse=True)
+def registered_builtin_tools(monkeypatch):
+    # Built-ins are registered at application startup. Isolated unit tests
+    # must perform that setup instead of depending on API test collection.
+    monkeypatch.setattr(tool_registry, "_TOOLS", {})
+    tool_registry.register_defaults()
+
+
 def test_builtin_tools_are_registered() -> None:
     assert list_tools() == [
         "board_detector",

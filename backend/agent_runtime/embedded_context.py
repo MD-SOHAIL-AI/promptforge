@@ -12,6 +12,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from backend.security.workspace_io import iter_workspace_files, read_context_text
 
 _PIN_PATTERNS = (
     re.compile(r"^\s*#define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:GPIO_NUM_)?(\d+)\b", re.M),
@@ -92,7 +93,7 @@ class EmbeddedProjectGraph:
         return "\n".join(lines)
 
 
-def inspect_embedded_project(root: str | Path, *, max_files: int = 80) -> EmbeddedProjectGraph:
+def inspect_embedded_project(root: str | Path, *, max_files: int = 80, environment: str | None = None) -> EmbeddedProjectGraph:
     workspace = Path(root).resolve(strict=True)
     board = None
     framework = None
@@ -102,11 +103,12 @@ def inspect_embedded_project(root: str | Path, *, max_files: int = 80) -> Embedd
         parser = configparser.ConfigParser(interpolation=None)
         try:
             parser.read(ini, encoding="utf-8")
-            for section in parser.sections():
-                if section.startswith("env:"):
-                    environments.append(section[4:])
-                    board = board or parser.get(section, "board", fallback=None)
-                    framework = framework or parser.get(section, "framework", fallback=None)
+            from backend.services.project_profile import inspect_project_profile
+            profile = inspect_project_profile(workspace, environment=environment)
+            environments = [item.name for item in profile.environments]
+            selected = next((item for item in profile.environments if item.name == profile.selected_environment), None)
+            if selected:
+                board, framework = selected.board, selected.framework
         except (OSError, configparser.Error):
             pass
 
@@ -123,31 +125,18 @@ def inspect_embedded_project(root: str | Path, *, max_files: int = 80) -> Embedd
     serial_seen = False
 
     source_files: list[Path] = []
-    visited = 0
     ignored = {"node_modules", "vendor", "dist", "build", "__pycache__"}
-    for directory, dirs, names in os.walk(workspace, followlinks=False):
-        dirs[:] = sorted(
-            (name for name in dirs if not name.startswith(".") and name.casefold() not in ignored
-             and not (Path(directory) / name).is_symlink()
-             and not getattr(os.path, "isjunction", lambda _: False)(Path(directory) / name)),
-            key=lambda name: (name not in {"src", "include"}, name),
-        )
-        visited += 1
-        if visited > 2000:
-            break
-        for name in sorted(names):
-            path = Path(directory) / name
-            if path.suffix.casefold() in {".c", ".cc", ".cpp", ".h", ".hpp", ".ino"} and path.is_file() and not path.is_symlink():
-                source_files.append(path)
-                if len(source_files) >= max_files:
-                    break
+    for path in iter_workspace_files(workspace, ignored_dirs=ignored, max_entries=2000):
+        if any(part.startswith(".") for part in path.relative_to(workspace).parts):
+            continue
+        if path.suffix.casefold() in {".c", ".cc", ".cpp", ".h", ".hpp", ".ino"}:
+            source_files.append(path)
         if len(source_files) >= max_files:
             break
     for path in source_files:
         try:
-            with path.open("rb") as source:
-                text = source.read(200_000).decode("utf-8", errors="replace")
-        except OSError:
+            text = read_context_text(workspace, path, 200_000)
+        except (OSError, ValueError, UnicodeError):
             continue
         rel = path.relative_to(workspace).as_posix()
         for pattern in _PIN_PATTERNS:

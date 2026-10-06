@@ -1,5 +1,6 @@
 import asyncio
 import json
+import pytest
 
 from backend.agent_runtime.router_planner import RouterProductPlanner
 from backend.model_router.models import ModelCapabilities, ModelResponse
@@ -53,6 +54,48 @@ class Router:
         return self.response
 
 
+def test_native_missing_argument_repair_has_precise_schema_and_private_diagnostics(monkeypatch):
+    import backend.agent_runtime.router_planner as module
+    diagnostics = []
+    monkeypatch.setattr(module, "emit_diagnostic_event", lambda **event: diagnostics.append(event))
+    router = Router([
+        ModelResponse("", "openrouter", "native-model", tool_calls=(
+            {"id": "bad", "name": "write", "arguments": {"path": "private-name.cpp"}},)),
+        ModelResponse("", "openrouter", "native-model", tool_calls=(
+            {"id": "good", "name": "write", "arguments": {"path": "private-name.cpp", "content": "private source code"}},)),
+    ])
+    planner = RouterProductPlanner(router, provider_id="openrouter", model_id="native-model")
+    plan = asyncio.run(planner.request_turn_async(task="Write firmware", tool_results=(),
+        allowed_tools=("write_file",), run_id="run", turn=3, stream=False))
+    assert len(router.requests) == 2 and plan.tool_calls[0].call_id == "good"
+    assert '"missing_required": ["content"]' in router.requests[1].system_prompt
+    assert '"required": ["path", "content"]' in router.requests[1].system_prompt
+    rejected = next(event for event in diagnostics if event["event"] == "provider.toolplan.rejected")
+    assert rejected["tool"] == "write_file" and rejected["missing_required"] == ["content"]
+    assert rejected["parse_reason"] == "product_tool_arguments_invalid"
+    assert "private-name" not in json.dumps(diagnostics) and "private source" not in json.dumps(diagnostics)
+    assert planner.to_safe_metadata()["last_repair_outcome"] == "succeeded"
+
+
+@pytest.mark.parametrize("name,args,code", [
+    ("write", {"path": "main.cpp"}, "TOOL_ARGUMENTS_INVALID"),
+    ("write", {"path": "main.cpp", "content": "secret", "secret-unexpected-key": True}, "TOOL_ARGUMENTS_INVALID"),
+    ("invented_tool", {}, "TOOLPLAN_TOOL_UNKNOWN"),
+])
+def test_invalid_native_calls_stay_bounded_and_do_not_execute(name, args, code):
+    from backend.agent_runtime.api_planner_provider import ApiPlannerError
+    router = Router(ModelResponse("", "openrouter", "native-model", tool_calls=(
+        {"id": "bad", "name": name, "arguments": args},)))
+    planner = RouterProductPlanner(router, provider_id="openrouter", model_id="native-model")
+    with pytest.raises(ApiPlannerError) as caught:
+        asyncio.run(planner.request_turn_async(task="Write firmware", tool_results=(),
+            allowed_tools=("write_file",), run_id="run", turn=1, stream=False))
+    assert caught.value.safe_code == code and len(router.requests) == 2
+    assert planner.to_safe_metadata()["last_failure_origin"] == "tool_validation"
+    assert "secret" not in json.dumps(caught.value.details)
+    assert planner._native_messages == []
+
+
 def test_router_planner_sends_real_tools_and_decodes_calls():
     router = Router(ModelResponse(
         "", "openrouter", "native-model",
@@ -104,6 +147,62 @@ def test_native_turn_preserves_call_id_and_returns_real_tool_message():
     assert [message["role"] for message in messages] == ["user", "assistant", "tool"]
     assert messages[1]["tool_calls"][0]["id"] == "provider-call"
     assert messages[2]["tool_call_id"] == "provider-call"
+
+
+def test_native_results_survive_a_shrinking_compacted_observation_view():
+    router = Router([
+        ModelResponse("", "openrouter", "native-model", tool_calls=(
+            {"id": "first", "name": "read", "arguments": {"path": "first.cpp"}},)),
+        ModelResponse("", "openrouter", "native-model", tool_calls=(
+            {"id": "second", "name": "read", "arguments": {"path": "second.cpp"}},)),
+        ModelResponse("Done.", "openrouter", "native-model"),
+    ])
+    planner = RouterProductPlanner(router, provider_id="openrouter", model_id="native-model")
+    asyncio.run(planner.request_turn_async(
+        task="Inspect", tool_results=(), allowed_tools=("read_file",),
+        run_id="run", turn=1, stream=False,
+    ))
+    first = {"call_id": "first", "tool": "read_file", "status": "completed",
+             "output": {"content": "source one"}}
+    asyncio.run(planner.request_turn_async(
+        task="Inspect", tool_results=({"call_id": "checkpoint-1", "tool": "context_compaction",
+                                       "status": "completed"}, first),
+        allowed_tools=("read_file",), run_id="run", turn=2, stream=False,
+    ))
+    second = {"call_id": "second", "tool": "read_file", "status": "completed",
+              "output": {"content": "source two"}}
+    asyncio.run(planner.request_turn_async(
+        task="Inspect", tool_results=({"call_id": "checkpoint-2", "tool": "context_compaction",
+                                       "status": "completed"}, second),
+        allowed_tools=("read_file",), run_id="run", turn=3, stream=False,
+    ))
+    messages = router.requests[-1].metadata["forgex_messages"]
+    delivered = [json.loads(message["content"]) for message in messages
+                 if message["role"] == "tool"]
+    assert [item["call_id"] for item in delivered] == ["first", "second"]
+    assert all(item["status"] == "completed" for item in delivered)
+
+
+def test_native_latest_task_revision_reaches_provider_messages():
+    router = Router([
+        ModelResponse("", "openrouter", "native-model", tool_calls=(
+            {"id": "read-1", "name": "read", "arguments": {"path": "src/main.cpp"}},)),
+        ModelResponse("Done.", "openrouter", "native-model"),
+    ])
+    planner = RouterProductPlanner(router, provider_id="openrouter", model_id="native-model")
+    asyncio.run(planner.request_turn_async(
+        task="Use pin 4", tool_results=(), allowed_tools=("read_file",),
+        run_id="run", turn=1, stream=False,
+    ))
+    asyncio.run(planner.request_turn_async(
+        task="Use pin 5", tool_results=({"call_id": "read-1", "tool": "read_file",
+                                        "status": "completed", "output": {"content": "source"}},),
+        allowed_tools=("read_file",), run_id="run", turn=2, stream=False,
+    ))
+    messages = router.requests[-1].metadata["forgex_messages"]
+    assert "Use pin 5" in json.dumps(messages)
+    assert messages[-1]["role"] == "user"
+    assert "Return exactly one JSON object" not in router.requests[-1].system_prompt
 
 
 def test_native_history_compacts_only_complete_tool_exchanges():

@@ -42,6 +42,8 @@ from backend.utils.serial_compat import serial
 # Module logger — structured, lightweight, no external deps
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("promptforge.serial")
+_PORT_OWNERS: dict[str, object] = {}
+_PORT_LOCK = threading.RLock()
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +265,23 @@ def _detect_port(known_vid_pid_pairs: Sequence[str]) -> Optional[str]:
     return None
 
 
+def _port_identity(port_name: str) -> tuple[object, ...] | None:
+    for info in serial.tools.list_ports.comports():
+        if info.device.casefold() == port_name.casefold():
+            unique = getattr(info, "serial_number", None) or getattr(info, "location", None)
+            if unique:
+                return (info.vid, info.pid, unique)
+    return None
+
+
+def _matching_port(identity: tuple[object, ...] | None) -> str | None:
+    if identity is None:
+        return None
+    matches = [info.device for info in serial.tools.list_ports.comports()
+               if (info.vid, info.pid, getattr(info, "serial_number", None) or getattr(info, "location", None)) == identity]
+    return matches[0] if len(matches) == 1 else None
+
+
 # ---------------------------------------------------------------------------
 # SerialRuntime
 # ---------------------------------------------------------------------------
@@ -314,6 +333,8 @@ class SerialRuntime:
 
         # Lifecycle lock prevents concurrent connect/disconnect races
         self._lifecycle_lock = asyncio.Lock()
+        self._port_owner_name: str | None = None
+        self._device_identity: tuple[object, ...] | None = None
 
         # Monitoring task handle — tracked for clean cancellation
         self._monitor_task: Optional[asyncio.Task] = None
@@ -373,7 +394,13 @@ class SerialRuntime:
                     f"Already connected to {self._active_port_name}"
                 )
             self._set_state(SerialConnectionState.CONNECTING)
-            port_name = await self._open_port_with_timeout()
+            self._stop_event.clear()
+            try:
+                port_name = await self._open_port_with_timeout()
+            except BaseException:
+                self._stop_event.set()
+                await self._close_port_unsafe()
+                raise
             self._metrics.connect_count += 1
             self._set_state(SerialConnectionState.CONNECTED)
             self._stop_event.clear()
@@ -393,7 +420,7 @@ class SerialRuntime:
             # This prevents the reader thread from trying to read a closed fd.
             self._stop_event.set()
 
-            if self._monitor_task is not None and not self._monitor_task.done():
+            if self._monitor_task is not None and self._monitor_task is not asyncio.current_task() and not self._monitor_task.done():
                 self._monitor_task.cancel()
                 try:
                     await asyncio.wait_for(
@@ -531,17 +558,16 @@ class SerialRuntime:
         try:
             async for obs in self._monitoring_loop():
                 yield obs
-        except asyncio.CancelledError:
-            logger.debug("monitor() task cancelled")
-            raise
-        finally:
-            # Drain any partial line accumulated in the byte buffer
             if self._line_buffer:
                 partial = self._flush_line_buffer()
                 if partial.strip():
                     yield self._make_obs(partial)
-            self._monitor_task = None
             yield self._make_runtime_obs("monitoring ended", {"port": self._active_port_name})
+        except asyncio.CancelledError:
+            logger.debug("monitor() task cancelled")
+            raise
+        finally:
+            self._monitor_task = None
 
     # ------------------------------------------------------------------
     # Public API — Introspection
@@ -641,6 +667,11 @@ class SerialRuntime:
         Configures the port fully before returning so the caller never sees
         a half-initialised serial object.
         """
+        key = port_name.casefold().removeprefix("\\\\.\\")
+        with _PORT_LOCK:
+            if key in _PORT_OWNERS and _PORT_OWNERS[key] is not self:
+                raise SerialConnectionError("PORT_ALREADY_OWNED")
+            _PORT_OWNERS[key] = self
         try:
             s = serial.Serial(
                 port=port_name,
@@ -652,7 +683,10 @@ class SerialRuntime:
                 write_timeout=2.0,
                 exclusive=True,        # Prevent other processes from stealing the port
             )
-        except serial.SerialException:
+        except BaseException:
+            with _PORT_LOCK:
+                if _PORT_OWNERS.get(key) is self:
+                    _PORT_OWNERS.pop(key, None)
             raise  # caller handles
 
         if self._config.drain_on_connect:
@@ -663,8 +697,16 @@ class SerialRuntime:
                 pass  # non-fatal; port may not support flush
 
         # Store atomically; other threads only read _port after CONNECTED
-        self._port = s
-        self._active_port_name = port_name
+        with _PORT_LOCK:
+            if self._stop_event.is_set():
+                s.close()
+                _PORT_OWNERS.pop(key, None)
+                raise SerialConnectionError("SERIAL_OPEN_CANCELLED")
+            self._port = s
+            self._port_owner_name = key
+            self._active_port_name = port_name
+        if self._device_identity is None:
+            self._device_identity = _port_identity(port_name)
 
     async def _close_port(self) -> None:
         """Close the port in a thread; safe to call if port is already None."""
@@ -675,6 +717,13 @@ class SerialRuntime:
                 await asyncio.to_thread(port.close)
             except Exception as exc:
                 logger.debug("error closing port (ignored): %s", exc)
+        self._release_port_owner()
+
+    def _release_port_owner(self) -> None:
+        with _PORT_LOCK:
+            if self._port_owner_name and _PORT_OWNERS.get(self._port_owner_name) is self:
+                _PORT_OWNERS.pop(self._port_owner_name, None)
+            self._port_owner_name = None
 
     # ------------------------------------------------------------------
     # Internal — Monitoring loop
@@ -958,12 +1007,13 @@ class SerialRuntime:
         await self._close_port_unsafe()
 
         attempt = 0
+        reconnect_deadline = time.monotonic() + max(10.0, self._config.connect_timeout)
         while not self._stop_event.is_set():
             attempt += 1
             self._reconnect_attempts += 1
 
-            if (self._config.max_reconnect_attempts > 0
-                    and attempt > self._config.max_reconnect_attempts):
+            if (time.monotonic() >= reconnect_deadline or
+                    (self._config.max_reconnect_attempts > 0 and attempt > self._config.max_reconnect_attempts)):
                 logger.error(
                     "reconnect budget exhausted after %d attempts on port=%s",
                     attempt - 1,
@@ -992,8 +1042,8 @@ class SerialRuntime:
                 return
 
             # Probe strategy: try last-known port first, then auto-detect
-            candidate = old_port or _detect_port(self._config.known_vid_pid_pairs)
-            if candidate is None:
+            candidate = _matching_port(self._device_identity) if self._device_identity else old_port
+            if candidate is None and self._device_identity is None:
                 candidate = _detect_port(self._config.known_vid_pid_pairs)
 
             if candidate is None:
@@ -1002,14 +1052,19 @@ class SerialRuntime:
 
             try:
                 await asyncio.to_thread(self._open_port_sync, candidate)
-            except (serial.SerialException, OSError) as exc:
+            except (serial.SerialException, OSError, SerialConnectionError) as exc:
                 logger.debug("reconnect probe %d: %s still not ready: %s", attempt, candidate, exc)
-                continue
+                replacement = _matching_port(self._device_identity)
+                if not replacement or replacement == candidate:
+                    continue
+                try:
+                    await asyncio.to_thread(self._open_port_sync, replacement)
+                except (serial.SerialException, OSError, SerialConnectionError):
+                    continue
 
             # Success
             new_port = self._active_port_name
             self._set_state(SerialConnectionState.CONNECTED)
-            self._reconnect_attempts += 1
             logger.info(
                 "reconnected on port=%s (was %s) after %d attempt(s)",
                 new_port, old_port, attempt,
@@ -1042,6 +1097,7 @@ class SerialRuntime:
                 await asyncio.to_thread(port.close)
             except Exception:
                 pass  # Dead port; close is best-effort
+        self._release_port_owner()
 
     # ------------------------------------------------------------------
     # Internal — State management

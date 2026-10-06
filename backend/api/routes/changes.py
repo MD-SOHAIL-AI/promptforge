@@ -20,7 +20,9 @@ def _service(request: Request) -> ChangeSetService:
 
 @router.get("")
 def list_change_sets(request: Request, status: str | None = Query(default=None)) -> dict[str, object]:
-    return {"change_sets": [item.to_dict() for item in _service(request).list(status=status)]}
+    owner = _service(request)
+    return {"change_sets": [item.to_dict() for item in owner.list(status=status)],
+            "recovery_issues": dict(owner.recovery_issues)}
 
 
 @router.get("/{change_set_id}")
@@ -29,7 +31,7 @@ def get_change_set(change_set_id: str, request: Request) -> dict[str, object]:
         item = _service(request).get(change_set_id)
     except ChangeSetError as exc:
         raise _api_error(exc) from exc
-    return {"change_set": item.to_dict()}
+    return {"change_set": item.to_dict(), "recovery_issue": _service(request).recovery_issues.get(change_set_id)}
 
 
 @router.post("/{change_set_id}/apply")

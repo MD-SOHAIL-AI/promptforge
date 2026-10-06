@@ -11,5 +11,5 @@ test("code viewer does not use Monaco's cancellable loader hook", () => {
 
 test("code viewer captures Monaco from editor lifecycle callbacks", () => {
   assert.match(source, /beforeMount=\{configureEditorTheme\}/);
-  assert.match(source, /onMount=\{\(_editor, monaco\) => configureEditorTheme\(monaco\)\}/);
+  assert.match(source, /onMount=\{\(editor, monaco\) => \{ editorRef\.current = editor; configureEditorTheme\(monaco\); \}\}/);
 });

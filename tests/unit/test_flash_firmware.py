@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -139,30 +140,9 @@ def test_platformio_esp32_flash_success(
         FlashConfig(port="COM7", baudrate=921600, verify=True, timeout_s=30),
     )
 
-    assert result.success is True
-    assert result.status is ResultStatus.SUCCESS
-    assert result.tool == "platformio"
-    assert result.tool_version == "6.1.18"
-    assert result.port == "COM7"
-    assert result.board == "ESP32"
-    assert result.flash_duration_ms == 1750
-    assert result.verification_status is VerificationStatus.PASSED
-    assert result.bytes_written == build_artifact.size_bytes
-    assert manager.calls[0].args == ["pio", "--version"]
-    assert manager.calls[1].args == [
-        "pio",
-        "run",
-        "--project-dir",
-        str(project.resolve()),
-        "--environment",
-        "esp32dev",
-        "--target",
-        "upload",
-        "--upload-port",
-        "COM7",
-    ]
-    assert manager.calls[1].cwd == str(project.resolve())
-    assert manager.calls[1].timeout_s == 30
+    assert result.success is False
+    assert "SEALED_UPLOAD_REQUIRED" in result.failure.raw_output or "SEALED_UPLOAD_REQUIRED" in result.message
+    assert manager.calls == []
 
 
 @pytest.mark.parametrize(
@@ -256,7 +236,7 @@ def test_stm32_elf_uses_openocd_and_infers_target(
     ]
     assert manager.calls[1].args[-2:] == [
         "-c",
-        f"program {build_artifact.path.resolve()} verify reset exit",
+        f"program {{{build_artifact.path.resolve().as_posix()}}} verify reset exit",
     ]
 
 

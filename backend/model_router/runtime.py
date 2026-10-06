@@ -5,10 +5,11 @@ import time
 from collections.abc import Mapping
 
 from ..services.llm_service import LLMError
-from .models import ModelRequest, ModelResponse, RouteAttempt, RouteDecision
+from .models import ModelRequest, ModelResponse, RouteAttempt, RouteDecision, execution_value
 from .providers.base import BaseModelProvider
 from .resolver import ModelResolver, ResolvedModel
 from .retry import RetryPolicy
+from .request_recovery import managed, retry_wait
 
 
 class ModelRuntime:
@@ -24,11 +25,13 @@ class ModelRuntime:
         providers: Mapping[str, BaseModelProvider],
         *,
         retry_policy: RetryPolicy | None = None,
+        attempt_slot=None,
     ) -> None:
         self.resolver = resolver
         self.providers = providers
         self.retry_policy = retry_policy or RetryPolicy()
         self.last_decision: RouteDecision | None = None
+        self.attempt_slot = attempt_slot
 
     async def generate(self, request: ModelRequest, *, resolved: ResolvedModel | None = None) -> ModelResponse:
         resolved = resolved or self.resolver.resolve(request)
@@ -47,11 +50,16 @@ class ModelRuntime:
             local_only=request.local_only,
             structured_output=request.structured_output,
             metadata=dict(request.metadata),
+            execution_context=request.execution_context,
         )
         attempts: list[RouteAttempt] = []
         for attempt in range(1, self.retry_policy.max_attempts + 1):
             try:
-                response = await provider.generate(routed)
+                if self.attempt_slot is None:
+                    response = await provider.generate(routed)
+                else:
+                    async with self.attempt_slot(routed):
+                        response = await provider.generate(routed)
                 attempts.append(RouteAttempt(resolved.provider_id, resolved.model_id, attempt, "selected" if attempt == 1 else "same_model_retry", True))
                 self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
                 return response
@@ -59,8 +67,16 @@ class ModelRuntime:
                 raise
             except Exception as exc:
                 attempts.append(RouteAttempt(resolved.provider_id, resolved.model_id, attempt, "selected" if attempt == 1 else "same_model_retry", False, str(getattr(exc, "code", type(exc).__name__))))
+                if managed(routed):
+                    if await retry_wait(routed, exc, attempt):
+                        continue
+                    self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
+                    raise
                 decision = self.retry_policy.decide(exc, attempt)
-                if not decision.retry:
+                deadline = execution_value(routed, "deadline", "forgex_turn_deadline")
+                state = execution_value(routed, "attempts", "forgex_request_attempts", {})
+                exhausted = bool(state) and (int(state.get("used", 0)) >= int(state.get("limit", 6)) or attempt >= int(state.get("limit", 6)))
+                if not decision.retry or exhausted or isinstance(deadline, (float, int)) and time.monotonic() + decision.delay_ms / 1000 >= deadline:
                     self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
                     raise
                 if decision.delay_ms:

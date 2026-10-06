@@ -179,7 +179,7 @@ def normalize_response(
         return _normalize_gemini(data, model_id=model_id)
     if provider_id == "anthropic" and "content" in data:
         return _normalize_anthropic(data, model_id=model_id)
-    if provider_id == "ollama" and "message" in data:
+    if provider_id == "ollama" and ("message" in data or data.get("done") is True):
         return _normalize_ollama(data, model_id=model_id)
     return _normalize_openai_compatible(data, model_id=model_id)
 
@@ -296,7 +296,7 @@ def normalize_stream_event(
         raise ProviderNormalizationError(
             "PROVIDER_STREAM_INVALID", "Anthropic stream packet is invalid."
         )
-    if provider_id == "ollama" and "message" in data:
+    if provider_id == "ollama" and ("message" in data or data.get("done") is True):
         message = data.get("message")
         events = []
         if isinstance(message, Mapping):
@@ -311,7 +311,7 @@ def normalize_stream_event(
                 for call in _normalize_tool_calls(message.get("tool_calls"))
             )
         if data.get("done") is True:
-            events.append(CanonicalStreamEvent("done", finish_reason="stop"))
+            events.append(CanonicalStreamEvent("done", finish_reason=_optional_text(data.get("done_reason")) or "stop", usage=_normalize_usage(data)))
         return tuple(events)
     return _normalize_openai_stream(data)
 
@@ -434,11 +434,11 @@ def _normalize_ollama(data: Mapping[str, Any], *, model_id: str) -> NormalizedEn
         structured_output=_json_object_or_none(text or ""),
         tool_calls=calls,
         reasoning=_text_value(message.get("thinking")) or None,
-        finish_reason="stop" if data.get("done") else None,
+        finish_reason=(_optional_text(data.get("done_reason")) or "stop") if data.get("done") is True else None,
         usage=usage,
         request_id=None,
         model_id=_optional_text(data.get("model")) or model_id,
-        truncated=False,
+        truncated=data.get("done_reason") in {"length", "max_tokens"},
     )
 
 
@@ -532,7 +532,9 @@ def _normalize_openai_stream(data: Mapping[str, Any]) -> tuple[CanonicalStreamEv
                     arguments=dict(raw_arguments) if isinstance(raw_arguments, Mapping) else None,
                 ),)
         if event_type in {"response.completed", "response.done"}:
-            return (CanonicalStreamEvent("done", finish_reason="stop"),)
+            response = data.get("response")
+            usage = response.get("usage") if isinstance(response, Mapping) else data.get("usage")
+            return (CanonicalStreamEvent("done", finish_reason="stop", usage=_normalize_usage(usage)),)
         if "choices" in data or data.get("type") is not None:
             return ()
         raise ProviderNormalizationError(

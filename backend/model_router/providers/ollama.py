@@ -5,8 +5,10 @@ from __future__ import annotations
 import time
 import json
 from typing import Any, Mapping
+from contextlib import aclosing
 
 import httpx
+from .openai_provider import _begin_physical_attempt, _complete_physical_attempt, _fail_physical_attempt
 
 from ...services.llm_service import (
     LLMAuthenticationError,
@@ -18,6 +20,7 @@ from ...services.llm_service import (
     _openai_canonical_messages,
 )
 from ..models import ModelCapabilities, ModelInfo, ModelRequest, ModelResponse, ProviderHealth
+from ..run_budget import settle_attempt
 from ..normalization import ProviderNormalizationError, normalize_response, normalize_stream_event
 from .base import BaseModelProvider, elapsed_ms
 
@@ -31,6 +34,24 @@ class OllamaProvider(BaseModelProvider):
                 yield event.text
 
     async def generate_event_stream(self, request: ModelRequest):
+        diagnostics = _begin_physical_attempt(request)
+        usage = {}
+        completed = False
+        truncated = False
+        try:
+            async with aclosing(self._generate_event_stream(request)) as stream:
+                async for event in stream:
+                    usage.update(event.usage)
+                    completed = completed or event.type == "done"
+                    truncated = truncated or event.finish_reason in {"length", "max_tokens"}
+                    yield event
+            _complete_physical_attempt(diagnostics)
+            settle_attempt(request, usage.get("output_tokens"), complete=completed and not truncated)
+        except Exception as exc:
+            _fail_physical_attempt(diagnostics, exc)
+            raise
+
+    async def _generate_event_stream(self, request: ModelRequest):
         payload = {
             "model": request.model_id or self.registry.default_model(self.provider_id),
             "messages": _messages(request),
@@ -141,6 +162,17 @@ class OllamaProvider(BaseModelProvider):
         return models or self.registry.list_models(self.provider_id)
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
+        diagnostics = _begin_physical_attempt(request)
+        try:
+            response = await self._generate(request)
+            _complete_physical_attempt(diagnostics, request_id=response.request_id)
+            settle_attempt(request, response.output_tokens, complete=not response.truncated and response.finish_reason is not None)
+            return response
+        except Exception as exc:
+            _fail_physical_attempt(diagnostics, exc)
+            raise
+
+    async def _generate(self, request: ModelRequest) -> ModelResponse:
         started = time.monotonic()
         model_id = request.model_id or self.registry.default_model(self.provider_id)
         payload: dict[str, Any] = {

@@ -1,24 +1,22 @@
 "use client";
 
-import { SettingNumber, SettingSelect, SettingsCard, SettingText, SettingToggle } from "@/components/settings/setting-controls";
+import { ShieldCheck } from "lucide-react";
+import { SettingNumber, SettingsCard, SettingToggle } from "@/components/settings/setting-controls";
 import type { SettingsSectionProps } from "@/components/settings/types";
 
 export function HardwareSettings({ settings, saving, onUpdate }: SettingsSectionProps) {
   return (
     <div className="grid gap-4">
-      <SettingsCard title="Defaults">
-        <SettingText label="Default board" value={settings["hardware.default_board"]} disabled={saving} onChange={(value) => void onUpdate("hardware.default_board", value)} />
-        <SettingSelect label="Default framework" value={settings["hardware.default_framework"]} options={["PlatformIO", "Arduino", "ESP-IDF"]} disabled={saving} onChange={(value) => void onUpdate("hardware.default_framework", value)} />
-        <SettingNumber label="Default upload speed" value={settings["hardware.default_upload_speed"]} min={9600} max={2000000} disabled={saving} onChange={(value) => void onUpdate("hardware.default_upload_speed", value)} />
-        <SettingNumber label="Default monitor speed" value={settings["hardware.default_monitor_speed"]} min={300} max={2000000} disabled={saving} onChange={(value) => void onUpdate("hardware.default_monitor_speed", value)} />
-      </SettingsCard>
-      <SettingsCard title="Device Safety">
+      <SettingsCard title="Device discovery" description="Find serial devices while ForgeX is open. You can also detect devices from the Device pane.">
         <SettingToggle label="Auto-detect devices" value={settings["hardware.auto_detect_devices"]} disabled={saving} onChange={(value) => void onUpdate("hardware.auto_detect_devices", value)} />
-        <SettingNumber label="Refresh devices interval" value={settings["hardware.refresh_devices_interval"]} min={2} max={120} disabled={saving} onChange={(value) => void onUpdate("hardware.refresh_devices_interval", value)} />
-        <SettingToggle label="Confirm before flash" value={settings["hardware.confirm_before_flash"]} disabled={saving} onChange={(value) => void onUpdate("hardware.confirm_before_flash", value)} />
-        <SettingToggle label="Confirm before erase" value={settings["hardware.confirm_before_erase"]} disabled={saving} onChange={(value) => void onUpdate("hardware.confirm_before_erase", value)} />
-        <SettingToggle label="Confirm before reset" value={settings["hardware.confirm_before_reset"]} disabled={saving} onChange={(value) => void onUpdate("hardware.confirm_before_reset", value)} />
-        <SettingToggle label="Confirm before debug attach" value={settings["hardware.confirm_before_debug_attach"]} disabled={saving} onChange={(value) => void onUpdate("hardware.confirm_before_debug_attach", value)} />
+        <SettingNumber label="Refresh devices interval" description="Seconds between device scans." value={settings["hardware.refresh_devices_interval"]} min={2} max={120} disabled={saving} onChange={(value) => void onUpdate("hardware.refresh_devices_interval", value)} />
+        <SettingNumber label="Default monitor speed" description="Baud rate used when the project does not specify a monitor speed." value={settings["hardware.default_monitor_speed"]} min={300} max={2000000} disabled={saving} onChange={(value) => void onUpdate("hardware.default_monitor_speed", value)} />
+      </SettingsCard>
+      <SettingsCard title="Project configuration" description="Board, framework and upload speed come from the selected project environment.">
+        <p className="py-4 text-sm leading-6 text-[var(--fx-text-muted)]">Choose a build environment in the workspace header. Edit platformio.ini or the project framework configuration to change board and upload settings.</p>
+      </SettingsCard>
+      <SettingsCard title="Hardware approvals">
+        <p className="flex items-start gap-3 py-4 text-sm leading-6 text-[var(--fx-text-muted)]"><ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-[var(--fx-success)]" />Firmware upload requires approval for the selected device. Agent hardware actions require a separate approval before execution.</p>
       </SettingsCard>
     </div>
   );

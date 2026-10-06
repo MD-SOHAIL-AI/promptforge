@@ -11,6 +11,7 @@ interface IdempotencyRecord {
   key: string;
   fingerprint: string;
   result: JsonValue;
+  status?: "started" | "completed";
 }
 
 export class IdempotencyError extends Error {
@@ -35,7 +36,7 @@ export class IdempotencyStore {
     await mkdir(this.root, { recursive: true });
   }
 
-  execute(key: string, fingerprint: string, operation: () => Promise<JsonValue>): Promise<JsonValue> {
+  execute(key: string, fingerprint: string, operation: () => Promise<JsonValue>, reconcile?: () => Promise<JsonValue>): Promise<JsonValue> {
     if (!KEY.test(key)) throw new IdempotencyError("RPC_IDEMPOTENCY_KEY_INVALID", "Invalid idempotency key");
     const existing = this.pending.get(key);
     if (existing) {
@@ -44,28 +45,40 @@ export class IdempotencyStore {
       }
       return existing.promise;
     }
-    const task = this.executeUnlocked(key, fingerprint, operation).finally(() => this.pending.delete(key));
+    const task = this.executeUnlocked(key, fingerprint, operation, reconcile).finally(() => this.pending.delete(key));
     this.pending.set(key, { fingerprint, promise: task });
     return task;
   }
 
-  private async executeUnlocked(key: string, fingerprint: string, operation: () => Promise<JsonValue>): Promise<JsonValue> {
+  private async executeUnlocked(key: string, fingerprint: string, operation: () => Promise<JsonValue>, reconcile?: () => Promise<JsonValue>): Promise<JsonValue> {
     const saved = await this.read(key);
     if (saved) {
       if (saved.fingerprint !== fingerprint) {
         throw new IdempotencyError("RPC_IDEMPOTENCY_CONFLICT", "Idempotency key was already used for a different request");
       }
-      return structuredClone(saved.result);
+      if (saved.status !== "started") return structuredClone(saved.result);
+      if (!reconcile) throw new IdempotencyError("RPC_OUTCOME_UNKNOWN", "An interrupted operation requires reconciliation; it was not replayed.");
+      const result = await reconcile();
+      await this.write({ schemaVersion: 1, key, fingerprint, result: structuredClone(result), status: "completed" });
+      return result;
     }
+    await this.initialize();
+    const intent = await open(this.file(key), "wx", 0o600).catch(() => {
+      throw new IdempotencyError("RPC_OUTCOME_UNKNOWN", "An operation reservation already exists or could not be persisted.");
+    });
+    try {
+      await intent.writeFile(JSON.stringify({ schemaVersion: 1, key, fingerprint, result: null, status: "started" }), "utf8");
+      await intent.sync();
+    } finally { await intent.close(); }
     const result = await operation();
-    await this.write({ schemaVersion: 1, key, fingerprint, result: structuredClone(result) });
+    await this.write({ schemaVersion: 1, key, fingerprint, result: structuredClone(result), status: "completed" });
     return result;
   }
 
   private async read(key: string): Promise<IdempotencyRecord | null> {
     try {
       const value = JSON.parse(await readFile(this.file(key), "utf8")) as Partial<IdempotencyRecord>;
-      if (value.schemaVersion !== 1 || value.key !== key || typeof value.fingerprint !== "string" || !("result" in value)) {
+      if (value.schemaVersion !== 1 || value.key !== key || typeof value.fingerprint !== "string" || !("result" in value) || (value.status !== undefined && value.status !== "started" && value.status !== "completed")) {
         throw new IdempotencyError("RPC_IDEMPOTENCY_RECORD_INVALID", "Stored idempotency record is invalid");
       }
       return value as IdempotencyRecord;

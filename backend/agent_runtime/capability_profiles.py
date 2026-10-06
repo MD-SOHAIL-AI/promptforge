@@ -1,7 +1,8 @@
 """Capability profiles for the unified Forge agent runtime.
 
-One model/tool loop serves every conversational mode. Profiles only change the
-trusted tools and completion requirements exposed to that loop.
+The Python orchestrator owns runs. Its autonomous and overlay loops share
+the asynchronous turn engine; profiles select trusted tools and completion
+requirements. The semantic loops are still separate implementations.
 """
 from __future__ import annotations
 
@@ -39,6 +40,11 @@ _BASE_READ = frozenset({
     ToolName.READ_FILE,
     ToolName.LOAD_SKILL,
     ToolName.MEMORY_SEARCH,
+    ToolName.PROJECT_DOCTOR,
+    ToolName.INSPECT_SYMBOLS,
+    ToolName.SEARCH_DOCS,
+    ToolName.FETCH_DOCS,
+    ToolName.VALIDATE_HARDWARE_CONFIG,
 })
 
 ASK_PROFILE = AgentCapabilityProfile(
@@ -50,7 +56,7 @@ PLAN_PROFILE = AgentCapabilityProfile(
     allow_no_changes=True, allow_subagents=True,
 )
 EDIT_PROFILE = AgentCapabilityProfile(
-    "edit", "Edit", _BASE_READ | WRITE_TOOLS | {ToolName.UPDATE_PLAN, ToolName.SPAWN_SUBAGENT},
+    "edit", "Edit", _BASE_READ | WRITE_TOOLS | {ToolName.UPDATE_PLAN, ToolName.SPAWN_SUBAGENT, ToolName.VERIFY_REQUIREMENTS},
     allow_no_changes=False, allow_subagents=True,
 )
 BUILD_ONLY_PROFILE = AgentCapabilityProfile(
@@ -60,6 +66,9 @@ BUILD_REPAIR_PROFILE = AgentCapabilityProfile(
     "build_repair", "Build and repair", _BASE_READ | WRITE_TOOLS | {
         ToolName.UPDATE_PLAN, ToolName.WRITE_FILE, ToolName.EDIT_FILE_SIMPLE, ToolName.APPLY_PATCH,
         ToolName.SPAWN_SUBAGENT, ToolName.BUILD_FIRMWARE, ToolName.RUN_SIMULATION,
+        ToolName.VERIFY_REQUIREMENTS,
+        ToolName.RESOLVE_DEPENDENCY, ToolName.RUN_UNIT_TESTS, ToolName.ANALYZE_FIRMWARE,
+        ToolName.DECODE_CRASH, ToolName.VERIFY_ACCEPTANCE, ToolName.OBSERVE_SERIAL,
     }, require_build=True, allow_no_changes=True, allow_subagents=True,
 )
 SIMULATE_PROFILE = AgentCapabilityProfile(
@@ -74,8 +83,8 @@ def profile_for_autonomy(autonomy: str, *, requires_write: bool = False, require
         return ASK_PROFILE
     if normalized == "plan_only":
         return PLAN_PROFILE
-    if normalized == "staged_changes":
-        return EDIT_PROFILE
+    if normalized in {"staged_changes", "review_changes"}:
+        return BUILD_REPAIR_PROFILE if requires_build else EDIT_PROFILE
     if normalized == "build_only_strict":
         return BUILD_ONLY_PROFILE
     if normalized == "simulate":

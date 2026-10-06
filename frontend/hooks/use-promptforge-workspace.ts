@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { promptForgeApi } from "@/lib/api";
-import { toErrorMessage } from "@/lib/errors";
+import { apiErrorCode, toErrorMessage } from "@/lib/errors";
+import { SingleFlight } from "@/lib/single-flight";
 import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
 import {
   EMPTY_FILE,
@@ -49,6 +50,7 @@ import type {
   WorkspaceFile,
   WorkspaceLog,
   WorkflowStage,
+  ForgeXSettingValue,
 } from "@/types";
 
 export type WorkspaceView = "workspace" | "projects" | "builds" | "logs";
@@ -330,11 +332,49 @@ function generationProgressFromEvent(event: ExecutionEvent): GenerationProgress 
   };
 }
 
-export function usePromptForgeWorkspace() {
+export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettingValue> = {}, preferencesLoading = false) {
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const buildEnvironmentRef = useRef<string | null>(null);
+  const sourceRevisionRef = useRef(0);
+  const buildOperationRef = useRef<string | null>(null);
+  const buildObserverRef = useRef<AbortController | null>(null);
+  useEffect(() => () => buildObserverRef.current?.abort(), []);
+  const [buildObservation, setBuildObservation] = useState<import("@/lib/build-observation").BuildObservation>({state: "idle", projectId: null, environment: null, revision: 0, operationId: null, observedAt: null});
+  const [sourceEditsRevision, setSourceEditsRevision] = useState(0);
+  const invalidateBuild = useCallback(() => {
+    sourceRevisionRef.current += 1;
+    setSourceEditsRevision(sourceRevisionRef.current);
+    setBuildObservation((value) => value.state === "idle" ? value : {...value, state: "stale", message: "Source or target changed. Build again to verify this revision."});
+  }, []);
+  const setBuildEnvironment = useCallback((name: string | null) => {
+    if (buildEnvironmentRef.current !== name) invalidateBuild();
+    buildEnvironmentRef.current = name;
+  }, [invalidateBuild]);
   const dialogs = useForgeXDialogs();
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [backendRecovery, setBackendRecovery] = useState<{state:string; lastError?:string; restartScheduled?:boolean} | null>(null);
+  useEffect(() => {
+    if (!window.forgexDesktop?.getStatus) return;
+    let current = true;
+    let pending = false;
+    const refresh = () => {
+      if (pending) return;
+      pending = true;
+      void window.forgexDesktop!.getStatus().then(value => {
+        if (current && value && typeof value === "object" && "backend" in value) {
+          setBackendRecovery((value as {backend:{state:string;lastError?:string;restartScheduled?:boolean}}).backend);
+        }
+      }).catch(() => {}).finally(() => {pending = false;});
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => {current = false; window.clearInterval(timer);};
+  }, []);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectResponse | null>(null);
+  const [availableProjectId, setAvailableProjectId] = useState<string | null>(null);
+  const [missingProjectId, setMissingProjectId] = useState<string | null>(null);
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [recentlyAddedPaths, setRecentlyAddedPaths] = useState<string[]>([]);
   const [stages, setStages] = useState<WorkflowStage[]>(initialStages);
@@ -363,6 +403,8 @@ export function usePromptForgeWorkspace() {
   const entriesProjectRef = useRef<string | null>(null);
   const activeProjectIdRef = useRef<string | null>(null);
   const projectLoadSequenceRef = useRef(0);
+  const missingProjectsRef = useRef(new Set<string>());
+  const projectReadsRef = useRef(new SingleFlight());
   const importProjectInFlightRef = useRef<Map<string, Promise<ProjectImportResponse | null>>>(new Map());
 
   const selectedFile = useMemo(
@@ -409,9 +451,29 @@ export function usePromptForgeWorkspace() {
     [addLog],
   );
 
-  const loadProjectFiles = useCallback(async (projectId: string) => {
+  const markProjectMissing = useCallback((projectId: string, cause: unknown) => {
+    if (apiErrorCode(cause) !== "PROJECT_PATH_MISSING" || activeProjectIdRef.current !== projectId) return false;
+    missingProjectsRef.current.add(projectId);
+    setMissingProjectId(projectId);
+    setAvailableProjectId(null);
+    setEntries([]);
+    setTabs([]);
+    setActivePath(null);
+    setError(null);
+    return true;
+  }, []);
+
+  const loadProjectFiles = useCallback((projectId: string) => projectReadsRef.current.run(`files:${projectId}`, async () => {
+    if (missingProjectsRef.current.has(projectId)) return [];
     const sequence = ++projectLoadSequenceRef.current;
-    const response = await promptForgeApi.projectFiles(projectId);
+    let response;
+    try {
+      response = await promptForgeApi.projectFiles(projectId);
+    } catch (cause) {
+      if (sequence !== projectLoadSequenceRef.current || activeProjectIdRef.current !== projectId) return [];
+      if (markProjectMissing(projectId, cause)) return [];
+      throw cause;
+    }
     if (sequence !== projectLoadSequenceRef.current) return [];
     if (activeProjectIdRef.current && activeProjectIdRef.current !== projectId) return [];
     const previousPaths = new Set(entriesRef.current.map((entry) => entry.path));
@@ -421,9 +483,10 @@ export function usePromptForgeWorkspace() {
     entriesRef.current = response.entries;
     entriesProjectRef.current = projectId;
     setEntries(response.entries);
+    setAvailableProjectId(projectId);
     if (addedPaths.length > 0) setRecentlyAddedPaths(addedPaths);
     return response.entries;
-  }, []);
+  }), [markProjectMissing]);
 
   useEffect(() => {
     if (recentlyAddedPaths.length === 0) return;
@@ -475,7 +538,7 @@ export function usePromptForgeWorkspace() {
     setProjects(response.projects);
     setActiveProject((current) => {
       const rememberedProjectId =
-        preferredProjectId ?? window.localStorage.getItem(LAST_PROJECT_KEY);
+        preferredProjectId ?? (preferencesRef.current["workspace.remember_last_workspace"] !== false && preferencesRef.current["general.startup_behavior"] !== "open_empty_workspace" ? window.localStorage.getItem(LAST_PROJECT_KEY) : null);
       if (rememberedProjectId) {
         const preferred = response.projects.find((project) => project.project_id === rememberedProjectId);
         if (preferred) {
@@ -488,7 +551,7 @@ export function usePromptForgeWorkspace() {
         activeProjectIdRef.current = selected?.project_id ?? null;
         return selected;
       }
-      const selected = response.projects[0] ?? null;
+      const selected = preferencesRef.current["general.startup_behavior"] === "open_empty_workspace" ? null : response.projects[0] ?? null;
       activeProjectIdRef.current = selected?.project_id ?? null;
       return selected;
     });
@@ -551,28 +614,30 @@ export function usePromptForgeWorkspace() {
   }, []);
 
   const updateTabContent = useCallback((path: string, content: string) => {
+    invalidateBuild();
     setTabs((current) =>
       current.map((tab) => (tab.path === path ? { ...tab, content, dirty: true } : tab)),
     );
-  }, []);
+  }, [invalidateBuild]);
 
   const saveFile = useCallback(
-    async (path: string) => {
+    async (path: string, contentOverride?: string) => {
       if (!activeProject) return;
       const tab = tabs.find((item) => item.path === path);
       if (!tab) return;
+      invalidateBuild();
       try {
         const response = await promptForgeApi.updateFile({
           project_id: activeProject.project_id,
           path,
-          content: tab.content,
+          content: contentOverride ?? tab.content,
           file_type: tab.fileType,
         });
         if (activeProjectIdRef.current !== activeProject.project_id) return;
         if ("content" in response) {
           setTabs((current) =>
             current.map((item) =>
-              item === tab
+              item.path === path && item.content === (contentOverride ?? tab.content)
                 ? { ...toFile(response.project_id, response.path, response.content, response.file_type), dirty: false }
                 : item,
             ),
@@ -584,7 +649,7 @@ export function usePromptForgeWorkspace() {
         reportError(err, `File could not be saved: ${path}`);
       }
     },
-    [activeProject, loadProjectFiles, refreshProjects, reportError, tabs],
+    [activeProject, invalidateBuild, loadProjectFiles, refreshProjects, reportError, tabs],
   );
 
   const createEntry = useCallback(
@@ -602,6 +667,7 @@ export function usePromptForgeWorkspace() {
       });
       if (!value) return;
       const path = normalizeWorkspaceRelativePath(value);
+      invalidateBuild();
       try {
         const response = await promptForgeApi.createFile({
           project_id: activeProject.project_id,
@@ -622,7 +688,7 @@ export function usePromptForgeWorkspace() {
         });
       }
     },
-    [activeProject, dialogs, openFile, refreshProjects, reportError],
+    [activeProject, dialogs, invalidateBuild, openFile, refreshProjects, reportError],
   );
 
   const renameEntry = useCallback(
@@ -639,6 +705,7 @@ export function usePromptForgeWorkspace() {
       if (!value || value === entry.path) return;
       const path = normalizeWorkspaceRelativePath(value);
       if (path === entry.path) return;
+      invalidateBuild();
       try {
         const response = await promptForgeApi.updateFile({
           project_id: activeProject.project_id,
@@ -683,13 +750,13 @@ export function usePromptForgeWorkspace() {
         });
       }
     },
-    [activeProject, dialogs, loadProjectFiles, refreshProjects, reportError],
+    [activeProject, dialogs, invalidateBuild, loadProjectFiles, refreshProjects, reportError],
   );
 
   const deleteEntry = useCallback(
     async (entry: WorkspaceEntry) => {
       if (!activeProject) return;
-      const approved = await dialogs.confirmAction({
+      const approved = preferencesRef.current["workspace.confirm_before_delete"] === false ? true : await dialogs.confirmAction({
         title: entry.kind === "file" ? "Delete File?" : "Delete Folder?",
         description: `Delete ${entry.path} from ${activeProject.project_name}?`,
         confirmText: "Delete",
@@ -698,6 +765,7 @@ export function usePromptForgeWorkspace() {
       if (!approved) return;
       try {
         await promptForgeApi.deleteFile(activeProject.project_id, entry.path);
+        invalidateBuild();
         await loadProjectFiles(activeProject.project_id);
         await refreshProjects(activeProject.project_id);
         setTabs((current) => current.filter((tab) => tab.path !== entry.path && !tab.path.startsWith(`${entry.path}/`)));
@@ -710,7 +778,7 @@ export function usePromptForgeWorkspace() {
         });
       }
     },
-    [activeProject, dialogs, loadProjectFiles, refreshProjects, reportError],
+    [activeProject, dialogs, invalidateBuild, loadProjectFiles, refreshProjects, reportError],
   );
 
   const deleteProject = useCallback(async () => {
@@ -730,19 +798,31 @@ export function usePromptForgeWorkspace() {
   }, [activeProject, dialogs, refreshProjects]);
 
   const selectProject = useCallback((project: ProjectResponse) => {
+    buildObserverRef.current?.abort();
+    buildObserverRef.current = null;
+    setToolAction((value) => value === "build" ? null : value);
+    sourceRevisionRef.current += 1;
+    buildOperationRef.current = null;
+    setLastBuildResult(null);
+    setBuildObservation({state: "idle", projectId: project.project_id, environment: null, revision: sourceRevisionRef.current, operationId: null, observedAt: null});
     activeProjectIdRef.current = project.project_id;
     projectLoadSequenceRef.current += 1;
     setActiveProject(project);
+    setAvailableProjectId(null);
+    const missing = project.metadata?.missing === true || missingProjectsRef.current.has(project.project_id);
+    if (missing) missingProjectsRef.current.add(project.project_id);
+    setMissingProjectId(missing ? project.project_id : null);
     setTabs([]);
     setActivePath(null);
     setEntries([]);
     restoredProjectRef.current = null;
-    window.localStorage.setItem(LAST_PROJECT_KEY, project.project_id);
+    if (preferencesRef.current["workspace.remember_last_workspace"] !== false) window.localStorage.setItem(LAST_PROJECT_KEY, project.project_id);
+    else window.localStorage.removeItem(LAST_PROJECT_KEY);
   }, []);
 
   const rememberDesktopWorkspacePath = useCallback((path: string | null) => {
     setDesktopWorkspacePathState(path);
-    if (path) {
+    if (path && preferencesRef.current["workspace.remember_last_workspace"] !== false) {
       window.localStorage.setItem(LAST_WORKSPACE_PATH_KEY, path);
     } else {
       window.localStorage.removeItem(LAST_WORKSPACE_PATH_KEY);
@@ -813,7 +893,11 @@ export function usePromptForgeWorkspace() {
   );
 
   const buildActiveProject = useCallback(async () => {
-    if (!activeProject || toolAction) return null;
+    if (!activeProject || toolAction || buildObserverRef.current) return null;
+    if (tabs.some(tab => tab.dirty)) {
+      setBuildObservation({state:"stale", projectId:activeProject.project_id, environment:buildEnvironmentRef.current, revision:sourceRevisionRef.current, operationId:null, observedAt:null, message:"Save the edited files before building this revision."});
+      return null;
+    }
     if (!hasPlatformIO(activeProject)) {
       const message = `Build requires platformio.ini. Generate or initialize a PlatformIO project first. Workspace root: ${activeProject.project_path}`;
       setError(message);
@@ -821,14 +905,29 @@ export function usePromptForgeWorkspace() {
       return null;
     }
     setToolAction("build");
+    const operationId = crypto.randomUUID();
+    const observer = new AbortController();
+    buildObserverRef.current = observer;
+    buildOperationRef.current = operationId;
+    const revision = sourceRevisionRef.current;
+    const environment = buildEnvironmentRef.current ?? activeEnvironmentName(activeProject);
+    window.localStorage.setItem(`forgex-build-operation:${activeProject.project_id}`, JSON.stringify({operationId, environment}));
+    setBuildObservation({state: "running", projectId: activeProject.project_id, environment, revision, operationId, observedAt: new Date().toISOString()});
+    if (preferencesRef.current["terminal.clear_output_before_build"] === true) setLogs([]);
     setError(null);
     addLog({ channel: "build", message: `Build started for ${activeProject.project_name}` });
     try {
       const response = await promptForgeApi.buildProject({
         project_id: activeProject.project_id,
-        environment: activeEnvironmentName(activeProject),
-      });
+        environment,
+      }, operationId, observer.signal);
+      if (activeProjectIdRef.current !== activeProject.project_id || buildOperationRef.current !== operationId) return response;
+      if (sourceRevisionRef.current !== revision) {
+        setBuildObservation((value) => ({...value, state: "stale", message: "Source changed during the build. Build again to verify it."}));
+        return response;
+      }
       setLastBuildResult(response);
+      setBuildObservation({state: response.operation_state === "stale" ? "stale" : response.result.success ? "passed" : "failed", projectId: activeProject.project_id, environment, revision, operationId, observedAt: new Date().toISOString(), message: response.operation_state === "stale" ? "Source changed during compilation. Build again to verify the current revision." : response.result.message});
       addLog({
         channel: response.result.success ? "build" : "error",
         message: response.result.message || `Build ${response.result.status}`,
@@ -836,12 +935,36 @@ export function usePromptForgeWorkspace() {
       await Promise.allSettled([refreshBuildHistory(), refreshWorkspaceLogs()]);
       return response;
     } catch (err) {
+      if (activeProjectIdRef.current !== activeProject.project_id || buildOperationRef.current !== operationId) return null;
+      setBuildObservation((value) => ({...value, state: "unavailable", observedAt: new Date().toISOString(), message: "Build result could not be retrieved. Refresh the saved operation before retrying."}));
       reportError(err, "Build request failed");
       return null;
     } finally {
-      setToolAction(null);
+      if (buildOperationRef.current === operationId) {
+        setToolAction(null);
+        buildObserverRef.current = null;
+      }
     }
-  }, [activeProject, addLog, refreshBuildHistory, refreshWorkspaceLogs, reportError, toolAction]);
+  }, [activeProject, addLog, refreshBuildHistory, refreshWorkspaceLogs, reportError, toolAction, tabs]);
+
+  const refreshBuildOperation = useCallback(async () => {
+    if (!activeProject) return;
+    let saved: {operationId: string; environment: string | null} | null = null;
+    try { saved = JSON.parse(window.localStorage.getItem(`forgex-build-operation:${activeProject.project_id}`) ?? "null"); }
+    catch { return; }
+    if (!saved) return;
+    const projectId = activeProject.project_id;
+    const revision = sourceRevisionRef.current;
+    const environment = buildEnvironmentRef.current ?? activeEnvironmentName(activeProject);
+    if (saved.environment !== environment) return;
+    const operation = await promptForgeApi.buildOperation(saved.operationId);
+    if (operation.project_id !== projectId || operation.environment !== environment) return;
+    if (activeProjectIdRef.current !== projectId || revision !== sourceRevisionRef.current) return;
+    buildOperationRef.current = saved.operationId;
+    if (operation.result) setLastBuildResult(operation.result);
+    setBuildObservation({state:tabs.some(tab => tab.dirty) ? "stale" : operation.state === "queued" ? "running" : operation.state === "interrupted" ? "unavailable" : operation.state,
+      projectId, environment, revision, operationId:saved.operationId, observedAt:operation.updated_at, message:operation.message ?? operation.result?.result.message});
+  }, [activeProject, tabs]);
 
   const flashActiveProject = useCallback(
     async (board: DetectedBoard | null) => {
@@ -877,7 +1000,7 @@ export function usePromptForgeWorkspace() {
         const response = await promptForgeApi.startMonitor({
           project_id: activeProject?.project_id ?? null,
           port: board?.port ?? null,
-          baudrate: baudFromProject(activeProject, "monitor_speed", 115_200),
+          baudrate: baudFromProject(activeProject, "monitor_speed", Number(preferencesRef.current["terminal.serial_baud_default"] ?? preferencesRef.current["hardware.default_monitor_speed"] ?? 115_200)),
           timeout_s: 1,
         });
         setMonitorStatus(response);
@@ -915,7 +1038,8 @@ export function usePromptForgeWorkspace() {
   }, [addLog, reportError, toolAction]);
 
   useEffect(() => {
-    setDesktopWorkspacePathState(window.localStorage.getItem(LAST_WORKSPACE_PATH_KEY));
+    if (preferencesLoading) return;
+    setDesktopWorkspacePathState(preferencesRef.current["workspace.remember_last_workspace"] !== false && preferencesRef.current["general.startup_behavior"] === "open_last_workspace" ? window.localStorage.getItem(LAST_WORKSPACE_PATH_KEY) : null);
     promptForgeApi
       .health()
       .then(setHealth)
@@ -924,15 +1048,48 @@ export function usePromptForgeWorkspace() {
         setError(toErrorMessage(err, "ForgeX API is unreachable"));
       });
     refreshProjects()
-      .then(() => Promise.allSettled([refreshBuildHistory(), refreshWorkspaceLogs(), refreshDetectedBoards(), refreshMonitorStatus()]))
+      .then(() => Promise.allSettled([refreshBuildHistory(), refreshWorkspaceLogs(), ...(preferencesRef.current["hardware.auto_detect_devices"] !== false ? [refreshDetectedBoards()] : []), refreshMonitorStatus()]))
       .catch((err: unknown) => {
         setError(toErrorMessage(err, "Projects could not be loaded"));
       });
-  }, [refreshBuildHistory, refreshDetectedBoards, refreshMonitorStatus, refreshProjects, refreshWorkspaceLogs]);
+  }, [preferencesLoading, refreshBuildHistory, refreshDetectedBoards, refreshMonitorStatus, refreshProjects, refreshWorkspaceLogs]);
+
+  useEffect(() => {
+    if (preferencesLoading) return;
+    let current = true;
+    let pending = false;
+    const check = () => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      void promptForgeApi.health().then(value => {if (current) setHealth(value);}).catch(() => {if (current) setHealth(null);}).finally(() => {pending = false;});
+    };
+    const timer = window.setInterval(check, 30_000);
+    window.addEventListener("focus", check);
+    return () => {current = false; window.clearInterval(timer); window.removeEventListener("focus", check);};
+  }, [preferencesLoading]);
+
+  const autoDetectDevices = preferences["hardware.auto_detect_devices"] !== false;
+  const deviceRefreshSeconds = Math.max(2, Number(preferences["hardware.refresh_devices_interval"] ?? 5));
+  useEffect(() => {
+    if (preferencesLoading || !autoDetectDevices) return;
+    let pending = false;
+    const timer = window.setInterval(() => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      void refreshDetectedBoards().catch(() => undefined).finally(() => { pending = false; });
+    }, deviceRefreshSeconds * 1000);
+    return () => window.clearInterval(timer);
+  }, [preferencesLoading, autoDetectDevices, deviceRefreshSeconds, refreshDetectedBoards]);
 
   useEffect(() => {
     if (!activeProject) {
       setEntries([]);
+      return;
+    }
+    if (activeProject.metadata?.missing === true) {
+      missingProjectsRef.current.add(activeProject.project_id);
+      setMissingProjectId(activeProject.project_id);
+      setAvailableProjectId(null);
       return;
     }
     loadProjectFiles(activeProject.project_id).catch((err: unknown) => {
@@ -941,7 +1098,7 @@ export function usePromptForgeWorkspace() {
   }, [activeProject, loadProjectFiles]);
 
   useEffect(() => {
-    if (!activeProject || restoredProjectRef.current === activeProject.project_id) return;
+    if (!activeProject || availableProjectId !== activeProject.project_id || restoredProjectRef.current === activeProject.project_id) return;
     restoredProjectRef.current = activeProject.project_id;
     const raw = window.localStorage.getItem(tabStorageKey(activeProject.project_id));
     if (!raw) return;
@@ -956,7 +1113,7 @@ export function usePromptForgeWorkspace() {
         window.localStorage.removeItem(tabStorageKey(activeProject.project_id));
       });
     });
-  }, [activeProject, openFile]);
+  }, [activeProject, availableProjectId, openFile]);
 
   useEffect(() => {
     if (!activeProject) return;
@@ -973,8 +1130,10 @@ export function usePromptForgeWorkspace() {
   );
 
   const refreshAfterWorkflow = useCallback(async () => {
+    if (activeProject && missingProjectsRef.current.has(activeProject.project_id)) return;
     if (activeProject?.external) {
-      await promptForgeApi.refreshProject(activeProject.project_id).catch(() => null);
+      try { await promptForgeApi.refreshProject(activeProject.project_id); }
+      catch (cause) { if (markProjectMissing(activeProject.project_id, cause)) return; throw cause; }
     }
     const refreshedProjects = await refreshProjects(activeProject?.project_id);
     const project =
@@ -984,7 +1143,7 @@ export function usePromptForgeWorkspace() {
     if (project) {
       setActiveProject(project);
       const loadedEntries = await loadProjectFiles(project.project_id);
-      if (loadedEntries.some((entry) => entry.kind === "file" && entry.path === "src/main.cpp")) {
+      if (preferencesRef.current["general.auto_open_generated_main_cpp"] !== false && loadedEntries.some((entry) => entry.kind === "file" && entry.path === "src/main.cpp")) {
         try {
           const response = await promptForgeApi.fileContent(project.project_id, "src/main.cpp");
           const file = toFile(response.project_id, response.path, response.content, response.file_type);
@@ -1003,22 +1162,39 @@ export function usePromptForgeWorkspace() {
       setEntries([]);
     }
     await Promise.allSettled([refreshBuildHistory(), refreshWorkspaceLogs()]);
-  }, [activeProject, loadProjectFiles, refreshBuildHistory, refreshProjects, refreshWorkspaceLogs]);
+  }, [activeProject, loadProjectFiles, markProjectMissing, refreshBuildHistory, refreshProjects, refreshWorkspaceLogs]);
 
-  const refreshProjectFiles = useCallback(async () => {
-    if (!activeProject) return [];
-    if (activeProject.external) {
-      await promptForgeApi.refreshProject(activeProject.project_id).catch(() => null);
-    }
-    return loadProjectFiles(activeProject.project_id);
-  }, [activeProject, loadProjectFiles]);
+  const refreshProjectFiles = useCallback(() => {
+    if (!activeProject || missingProjectsRef.current.has(activeProject.project_id)) return Promise.resolve([]);
+    const project = activeProject;
+    return projectReadsRef.current.run(`refresh:${project.project_id}`, async () => {
+      if (project.external) {
+        try { await promptForgeApi.refreshProject(project.project_id); }
+        catch (cause) {
+          if (markProjectMissing(project.project_id, cause)) return [];
+          throw cause;
+        }
+      }
+      if (activeProjectIdRef.current !== project.project_id) return [];
+      const entries = await loadProjectFiles(project.project_id);
+      // Focus/visibility is an observation, not a source edit. Let the saved
+      // operation compare the actual source hash before changing build truth.
+      if (buildOperationRef.current && !buildObserverRef.current) await refreshBuildOperation();
+      return entries;
+    });
+  }, [activeProject, loadProjectFiles, markProjectMissing, refreshBuildOperation]);
 
   useEffect(() => {
-    if (!activeProject) return;
+    if (!activeProject || preferences["workspace.auto_refresh_explorer"] === false) return;
+    let pending: number | null = null;
     const refresh = () => {
-      void refreshProjectFiles().catch((err: unknown) => {
+      if (pending !== null || missingProjectsRef.current.has(activeProject.project_id)) return;
+      pending = window.setTimeout(() => {
+        pending = null;
+        void refreshProjectFiles().catch((err: unknown) => {
         setError(toErrorMessage(err, "Project files could not be refreshed"));
-      });
+        });
+      }, 100);
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") refresh();
@@ -1027,11 +1203,38 @@ export function usePromptForgeWorkspace() {
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
+      if (pending !== null) window.clearTimeout(pending);
       window.removeEventListener("forgex:workspace-files-changed", refresh);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [activeProject, refreshProjectFiles]);
+  }, [activeProject, refreshProjectFiles, preferences]);
+
+  const forgetMissingProject = useCallback(async () => {
+    const projectId = activeProjectIdRef.current;
+    if (!projectId || !missingProjectsRef.current.has(projectId)) return;
+    await promptForgeApi.forgetRecentProject(projectId);
+    window.localStorage.removeItem(LAST_PROJECT_KEY);
+    activeProjectIdRef.current = null;
+    projectLoadSequenceRef.current++;
+    setActiveProject(null);
+    setMissingProjectId(null);
+    setAvailableProjectId(null);
+    await refreshProjects();
+  }, [refreshProjects]);
+
+  const locateMissingProject = useCallback(async (path: string) => {
+    const projectId = activeProjectIdRef.current;
+    if (!projectId || !missingProjectsRef.current.has(projectId)) return;
+    const project = await promptForgeApi.locateRecentProject(projectId, path);
+    if (activeProjectIdRef.current !== projectId) return;
+    missingProjectsRef.current.delete(projectId);
+    setMissingProjectId(null);
+    selectProject(project);
+    rememberDesktopWorkspacePath(project.project_path);
+    await refreshProjects(projectId);
+    await loadProjectFiles(projectId);
+  }, [loadProjectFiles, refreshProjects, rememberDesktopWorkspacePath, selectProject]);
 
   const execute = useCallback(
     async (prompt: string, options: ExecuteOptions = {}) => {
@@ -1153,13 +1356,24 @@ export function usePromptForgeWorkspace() {
   }, [addLog, isCancelling, isExecuting, reportError, taskId]);
 
   return {
+    setBuildEnvironment,
     health,
+    backendRecovery,
     projects,
     activeProject,
+    activeProjectAvailable: activeProject !== null && availableProjectId === activeProject.project_id && missingProjectId !== activeProject.project_id,
+    missingProject: activeProject !== null && (missingProjectId === activeProject.project_id || activeProject.metadata?.missing === true),
+    markProjectMissing,
+    forgetMissingProject,
+    locateMissingProject,
     setActiveProject: selectProject,
     activeView,
     setActiveView,
-    entries,
+    entries: entries.filter(entry => {
+      const parts = entry.path.split("/");
+      const excluded = preferences["workspace.excluded_folders"];
+      return (!Array.isArray(excluded) || !parts.some(part => excluded.includes(part))) && (preferences["workspace.show_hidden_files"] === true || !parts.some(part => part.startsWith(".") && ![".gitignore", ".clang-format"].includes(part)));
+    }),
     recentlyAddedPaths,
     files,
     tabs,
@@ -1185,6 +1399,9 @@ export function usePromptForgeWorkspace() {
     refreshMonitorStatus,
     toolAction,
     buildActiveProject,
+    refreshBuildOperation,
+    sourceEditsRevision,
+    buildEnvironment: buildEnvironmentRef.current,
     flashActiveProject,
     startSerialMonitor,
     stopSerialMonitor,
@@ -1203,6 +1420,7 @@ export function usePromptForgeWorkspace() {
     result,
     generatedProject: activeProject as unknown as Record<string, unknown> | null,
     buildResult: (lastBuildResult?.result as unknown as Record<string, unknown>) ?? null,
+    buildObservation,
     flashResult: null,
     isExecuting,
     isCancelling,

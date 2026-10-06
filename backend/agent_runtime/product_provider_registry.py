@@ -78,6 +78,10 @@ class ProductProviderRegistry:
         self.last_planner: ProductPlanner | None = None
 
     def list(self) -> tuple[ProductProviderEntry, ...]:
+        with self._model_provider_registry.storage.read_snapshot():
+            return self._list()
+
+    def _list(self) -> tuple[ProductProviderEntry, ...]:
         active_route = self._model_provider_registry.route_for_task("code_generation")
         entries: list[ProductProviderEntry] = []
         # Test doubles are absent from the production provider catalogue. They
@@ -112,10 +116,6 @@ class ProductProviderRegistry:
             routeable = (
                 provider.enabled
                 and provider.configured
-                and (
-                    provider.local
-                    or key_present
-                )
                 and bool(model_id)
             )
             entries.append(

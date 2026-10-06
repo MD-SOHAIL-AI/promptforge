@@ -60,13 +60,13 @@ def test_same_model_timeout_retry(tmp_path: Path):
     assert [r.model_id for r in primary.requests] == ["vendor/model", "vendor/model"]
 
 
-def test_rate_limit_without_reset_does_not_retry(tmp_path: Path):
+def test_rate_limit_without_reset_retries_with_opencode_backoff(tmp_path: Path):
     error = LLMRateLimitError("limited", provider=LLMProvider.OPENROUTER, retryable=True)
     primary = Provider("openrouter", [error])
     router, _ = build(tmp_path, {"openrouter": primary})
-    with pytest.raises(LLMRateLimitError):
-        asyncio.run(router.generate_model(ModelRequest(prompt="x", task_type="code_generation")))
-    assert len(primary.requests) == 1
+    response = asyncio.run(router.generate_model(ModelRequest(prompt="x", task_type="code_generation")))
+    assert response.content == "ok"
+    assert len(primary.requests) == 2
 
 
 def test_short_retry_after_retries_same_model(tmp_path: Path):

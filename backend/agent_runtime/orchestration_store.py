@@ -39,9 +39,27 @@ class AgentOrchestrationStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._transaction_state = threading.local()
+        self._quarantined: dict[str, str] = {}
+        self._observers = set()
         self._initialize()
 
     # ---- Runs / graph -------------------------------------------------
+    def backup_before_reconciliation(self) -> Path:
+        """SQLite backup includes committed WAL; never overwrite the original."""
+        destination = self.path.with_name(self.path.name + ".pre-settlement-reconciliation.bak")
+        with self._lock:
+            if not destination.exists():
+                with closing(self._connect()) as source, closing(sqlite3.connect(str(destination))) as target:
+                    source.backup(target)
+        return destination
+
+    def retention_payloads(self):
+        # Conservative: even old checkpoints remain protected until retirement.
+        with closing(self._connect()) as connection:
+            for table in ("agent_runs", "agent_run_checkpoints", "agent_operations"):
+                for row in connection.execute(f"SELECT payload_json FROM {table}"):
+                    yield _decode(row[0])
+
     def save_run(self, run_id: str, session_id: str, project_id: str, status: str, payload: Mapping[str, object]) -> None:
         now = utc_now()
         encoded = _encode(payload)
@@ -87,6 +105,7 @@ class AgentOrchestrationStore:
 
     # ---- Session ownership -------------------------------------------
     def acquire_lease(self, session_id: str, owner_id: str, *, ttl_seconds: int = 20) -> LeaseGrant:
+        self.require_healthy_journal(session_id)
         ttl = max(5, min(int(ttl_seconds), 300))
         now = datetime.now(timezone.utc)
         expires = now + timedelta(seconds=ttl)
@@ -110,6 +129,7 @@ class AgentOrchestrationStore:
         return LeaseGrant(session_id, owner_id, epoch, _fmt(expires))
 
     def renew_lease(self, grant: LeaseGrant, *, ttl_seconds: int = 20) -> LeaseGrant:
+        self.require_healthy_journal(grant.session_id)
         ttl = max(5, min(int(ttl_seconds), 300))
         now = datetime.now(timezone.utc)
         expires = now + timedelta(seconds=ttl)
@@ -168,7 +188,10 @@ class AgentOrchestrationStore:
         grant: LeaseGrant | None = None,
         idempotency_key: str | None = None,
         event_version: int = 1,
+        run_projection: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
+        if session_id in self._quarantined:
+            raise ValueError("AGENT_JOURNAL_QUARANTINED")
         with self._transaction() as connection:
             if grant is not None:
                 self._assert_lease_tx(connection, grant)
@@ -187,9 +210,12 @@ class AgentOrchestrationStore:
                     return _decode(existing[0])
 
             head = connection.execute(
-                "SELECT last_sequence,last_checksum FROM agent_session_heads WHERE session_id=?",
+                "SELECT last_sequence,last_checksum,health FROM agent_session_heads WHERE session_id=?",
                 (session_id,),
             ).fetchone()
+            if head and head[2] == "quarantined":
+                self._quarantined[session_id] = "quarantine_persisted"
+                raise ValueError("AGENT_JOURNAL_QUARANTINED")
             if head is None:
                 legacy = connection.execute(
                     "SELECT COALESCE(MAX(sequence),0) FROM agent_events WHERE session_id=?",
@@ -257,7 +283,43 @@ class AgentOrchestrationStore:
                 "UPDATE agent_session_heads SET last_sequence=?,last_checksum=?,health='healthy',updated_at=? WHERE session_id=?",
                 (sequence, checksum, utc_now(), session_id),
             )
+            if run_projection is not None:
+                connection.execute("""INSERT INTO agent_runs VALUES(?,?,?,?,?,?,?)
+                    ON CONFLICT(run_id) DO UPDATE SET status=excluded.status,payload_json=excluded.payload_json,updated_at=excluded.updated_at""",
+                    (str(run_projection["run_id"]), session_id, str(run_projection["project_id"]), str(run_projection["status"]),
+                     _encode(run_projection), str(run_projection.get("created_at") or utc_now()), utc_now()))
+        self.notify_observers(session_id)
         return event
+
+    def notify_observers(self, session_id):
+        with self._lock:
+            observers = tuple(self._observers)
+        for observer in observers:
+            try:
+                observer(session_id)
+            except RuntimeError:
+                pass  # A disconnected observation cannot fail a committed event.
+
+    async def wait_for_events(self, session_id, after_sequence, *, run_id=None, timeout=1.0):
+        """Notifications are a wakeup hint; the journal remains the event source."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        changed = asyncio.Event()
+        def notify(identity):
+            if identity == session_id:
+                loop.call_soon_threadsafe(changed.set)
+        with self._lock:
+            self._observers.add(notify)
+        try:
+            if await asyncio.to_thread(self.events, session_id, after_sequence=after_sequence, run_id=run_id, limit=1):
+                return
+            try:
+                await asyncio.wait_for(changed.wait(), timeout)
+            except asyncio.TimeoutError:
+                pass
+        finally:
+            with self._lock:
+                self._observers.discard(notify)
 
     def events(self, session_id: str, *, after_sequence: int = 0, run_id: str | None = None, limit: int = 500) -> tuple[dict[str, object], ...]:
         query = "SELECT payload_json FROM agent_events WHERE session_id=? AND sequence>?"
@@ -273,10 +335,17 @@ class AgentOrchestrationStore:
 
     def verify_journal(self, session_id: str) -> dict[str, object]:
         with closing(self._connect()) as connection:
-            rows = connection.execute(
-                "SELECT sequence,payload_hash,previous_checksum,event_checksum FROM agent_events WHERE session_id=? ORDER BY sequence",
-                (session_id,),
-            ).fetchall()
+            connection.execute("BEGIN")
+            return self._verify_snapshot(connection, session_id)
+
+    def _verify_snapshot(self, connection, session_id: str) -> dict[str, object]:
+        head = connection.execute("SELECT last_sequence,last_checksum,health FROM agent_session_heads WHERE session_id=?", (session_id,)).fetchone()
+        if head and head[2] == "quarantined":
+            return {"healthy": False, "reason": "quarantine_persisted"}
+        rows = connection.execute(
+            "SELECT sequence,payload_hash,previous_checksum,event_checksum,payload_json,event_id,event_version,run_id,node_id,event_type FROM agent_events WHERE session_id=? ORDER BY sequence",
+            (session_id,),
+        )
         previous = ""
         expected_sequence = 1
         for row in rows:
@@ -285,12 +354,86 @@ class AgentOrchestrationStore:
                 return {"healthy": False, "reason": "sequence_gap", "sequence": sequence}
             if str(row[2] or "") != previous:
                 return {"healthy": False, "reason": "checksum_parent_mismatch", "sequence": sequence}
+            try:
+                payload = _decode(row[4])
+            except (ValueError, TypeError):
+                return {"healthy": False, "reason": "payload_invalid", "sequence": sequence}
+            if _payload_hash(payload) != str(row[1]):
+                return {"healthy": False, "reason": "payload_hash_mismatch", "sequence": sequence}
+            if (payload.get("session_id") != session_id or payload.get("sequence") != sequence
+                    or payload.get("session_seq") != sequence or payload.get("event_id") != row[5]
+                    or payload.get("event_version") != row[6] or payload.get("run_id") != row[7]
+                    or payload.get("node_id") != row[8] or payload.get("event_type", "activity.updated") != row[9]
+                    or payload.get("previous_checksum") != row[2] or payload.get("event_checksum") != row[3]):
+                return {"healthy": False, "reason": "event_identity_mismatch", "sequence": sequence}
             checksum = hashlib.sha256((previous + str(row[1] or "")).encode("utf-8")).hexdigest()
             if checksum != str(row[3] or ""):
                 return {"healthy": False, "reason": "checksum_mismatch", "sequence": sequence}
             previous = checksum
             expected_sequence += 1
-        return {"healthy": True, "event_count": len(rows), "last_sequence": expected_sequence - 1, "checksum": previous}
+        count = expected_sequence - 1
+        if (count and not head) or (head and (int(head[0]) != count or str(head[1]) != previous)):
+            return {"healthy": False, "reason": "head_mismatch"}
+        return {"healthy": True, "event_count": count, "last_sequence": count, "checksum": previous}
+
+    def require_healthy_journal(self, session_id: str) -> dict[str, object]:
+        result = self.verify_journal(session_id)
+        if not result["healthy"]:
+            self._quarantined[session_id] = str(result["reason"])
+            with self._transaction() as connection:
+                connection.execute("UPDATE agent_session_heads SET health='quarantined' WHERE session_id=?", (session_id,))
+            raise ValueError("AGENT_JOURNAL_QUARANTINED")
+        if session_id in self._quarantined:
+            raise ValueError("AGENT_JOURNAL_QUARANTINED")
+        return result
+
+    def _observation_integrity(self, connection, session_id):
+        """Read cache only. Authorization always calls require_healthy_journal."""
+        head = connection.execute("SELECT last_sequence,last_checksum,health FROM agent_session_heads WHERE session_id=?", (session_id,)).fetchone()
+        stamps = []
+        for path in (self.path, Path(str(self.path) + "-wal")):
+            try:
+                info = Path(path).stat()
+                # SQLite recreates an empty WAL even for a read connection.
+                # Its timestamp does not signal changed journal bytes.
+                stamps.append((info.st_mtime_ns, info.st_size) if info.st_size else None)
+            except OSError:
+                stamps.append(None)
+        signature = (tuple(head) if head else None, tuple(stamps))
+        cache = getattr(self, "_observation_checks", {})
+        prior = cache.get(session_id)
+        if prior and prior[0] == signature:
+            return prior[1]
+        result = self._verify_snapshot(connection, session_id)
+        if len(cache) >= 128:
+            cache.clear()
+        cache[session_id] = (signature, result)
+        self._observation_checks = cache
+        return result
+
+    def snapshot_events(self, session_id: str, *, run_id: str | None = None, after_sequence: int = 0, observation: bool = False):
+        """Page a consistent read snapshot through its captured head."""
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN")
+            result = self._observation_integrity(connection, session_id) if observation else self._verify_snapshot(connection, session_id)
+            if not result["healthy"] or session_id in self._quarantined:
+                self._quarantined[session_id] = str(result.get("reason") or "quarantined")
+                raise ValueError("AGENT_JOURNAL_QUARANTINED")
+            head = connection.execute("SELECT last_sequence FROM agent_session_heads WHERE session_id=?", (session_id,)).fetchone()
+            boundary = int(head[0]) if head else 0
+            cursor = max(0, int(after_sequence))
+            while cursor < boundary:
+                query = "SELECT sequence,payload_json FROM agent_events WHERE session_id=? AND sequence>? AND sequence<=?"
+                params: list[object] = [session_id, cursor, boundary]
+                if run_id:
+                    query += " AND run_id=?"
+                    params.append(run_id)
+                rows = connection.execute(query + " ORDER BY sequence LIMIT 500", params).fetchall()
+                if not rows:
+                    break
+                for row in rows:
+                    cursor = int(row[0])
+                    yield _decode(row[1])
 
     # ---- Durable input queue -----------------------------------------
     def enqueue_input(self, session_id: str, run_id: str | None, *, mode: str, content: str, source: str = "user") -> dict[str, object]:
@@ -383,13 +526,28 @@ class AgentOrchestrationStore:
             rows = connection.execute(query, tuple(params)).fetchall()
             for row in rows:
                 payload = _decode(row[1]); payload["status"] = "claimed"; payload["claimed_at"] = utc_now(); payload["updated_at"] = payload["claimed_at"]
-                connection.execute("UPDATE agent_input_queue SET status='claimed',payload_json=?,updated_at=? WHERE item_id=? AND status='queued'", (_encode(payload), payload["updated_at"], str(row[0])))
+                payload["run_id"] = run_id or payload.get("run_id")
+                connection.execute("UPDATE agent_input_queue SET run_id=?,status='claimed',payload_json=?,updated_at=? WHERE item_id=? AND status='queued'", (payload["run_id"], _encode(payload), payload["updated_at"], str(row[0])))
                 claimed.append(payload)
         for payload in claimed:
             self.append_event(session_id, {"event_type": "agent.inbox.claimed", "run_id": payload.get("run_id"), "queue_item_id": payload.get("item_id"), "mode": payload.get("mode")})
         return tuple(claimed)
 
     # ---- Projection checkpoints --------------------------------------
+    def acknowledge_guidance(self, run_id: str) -> None:
+        with self._transaction() as connection:
+            rows = connection.execute("SELECT item_id,payload_json FROM agent_input_queue WHERE run_id=? AND status='claimed'", (run_id,)).fetchall()
+            for row in rows:
+                payload = _decode(row[1]); payload["status"] = "acknowledged"
+                connection.execute("UPDATE agent_input_queue SET status='acknowledged',payload_json=?,updated_at=? WHERE item_id=?", (_encode(payload), utc_now(), row[0]))
+
+    def transfer_unacknowledged_guidance(self, source: str, replacement: str) -> None:
+        with self._transaction() as connection:
+            rows = connection.execute("SELECT item_id,payload_json FROM agent_input_queue WHERE run_id=? AND status IN ('claimed','queued')", (source,)).fetchall()
+            for row in rows:
+                payload = _decode(row[1]); payload.update(run_id=replacement, status="queued")
+                connection.execute("UPDATE agent_input_queue SET run_id=?,status='queued',payload_json=?,updated_at=? WHERE item_id=?", (replacement, _encode(payload), utc_now(), row[0]))
+
     def save_projection_checkpoint(self, session_id: str, projection: str, *, session_seq: int, reducer_version: str, payload: Mapping[str, object]) -> None:
         checksum = hashlib.sha256(_encode(payload).encode("utf-8")).hexdigest()
         with self._transaction() as connection:
@@ -420,8 +578,8 @@ class AgentOrchestrationStore:
         session_seq: int,
         payload: Mapping[str, object],
     ) -> dict[str, object]:
-        """Record a settled turn without authorizing effect replay."""
-        turn_number = max(1, int(turn))
+        """Seal admission or a settled turn without authorizing effect replay."""
+        turn_number = max(0, int(turn))
         sequence = max(1, int(session_seq))
         with self._transaction() as connection:
             event = connection.execute(
@@ -432,7 +590,9 @@ class AgentOrchestrationStore:
             if (
                 not event
                 or str(event[0] or "") != run_id
-                or str(event[1] or "") != "turn.settled"
+                or str(event[1] or "") not in {"turn.settled", "runtime.admitted", "tool.checkpoint"}
+                or (str(event[1]) == "runtime.admitted" and turn_number != 0)
+                or (str(event[1]) in {"turn.settled", "tool.checkpoint"} and turn_number == 0)
             ):
                 raise ValueError("AGENT_CHECKPOINT_BOUNDARY_INVALID")
             current = connection.execute(
@@ -451,11 +611,17 @@ class AgentOrchestrationStore:
                 "turn": turn_number,
                 "session_seq": sequence,
                 "event_checksum": str(event[2] or ""),
-                "safe_boundary": "turn.settled",
+                "safe_boundary": str(event[1]),
                 "effect_replay_allowed": False,
                 "resume_mode": "replacement_run_only",
                 "updated_at": utc_now(),
             })
+            if isinstance(checkpoint.get("resume"), dict):
+                checkpoint["checkpoint_version"] = "forgex.agent-checkpoint.v2"
+                if str(event[1]) == "runtime.admitted":
+                    checkpoint["checkpoint_version"] = "forgex.agent-checkpoint.v3"
+                checkpoint["resume_mode"] = "user_confirmed_continuation"
+                checkpoint["checkpoint_id"] = hashlib.sha256(_encode(checkpoint).encode()).hexdigest()
             connection.execute(
                 """INSERT INTO agent_run_checkpoints(
                        run_id,session_id,turn,session_seq,event_checksum,payload_json,updated_at)
@@ -469,6 +635,11 @@ class AgentOrchestrationStore:
                     str(event[2] or ""), _encode(checkpoint), checkpoint["updated_at"],
                 ),
             )
+            if isinstance(checkpoint.get("resume"), dict) and str(event[1]) == "turn.settled":
+                rows = connection.execute("SELECT item_id,payload_json FROM agent_input_queue WHERE run_id=? AND status='claimed'", (run_id,)).fetchall()
+                for row in rows:
+                    item = _decode(row[1]); item.update(status="acknowledged", updated_at=utc_now())
+                    connection.execute("UPDATE agent_input_queue SET status='acknowledged',payload_json=?,updated_at=? WHERE item_id=?", (_encode(item), item["updated_at"], row[0]))
         return checkpoint
 
     def latest_run_checkpoint(self, run_id: str) -> dict[str, object] | None:
@@ -477,7 +648,17 @@ class AgentOrchestrationStore:
                 "SELECT payload_json FROM agent_run_checkpoints WHERE run_id=?",
                 (run_id,),
             ).fetchone()
-        return _decode(row[0]) if row else None
+        if not row:
+            return None
+        checkpoint = _decode(row[0])
+        if checkpoint.get("checkpoint_version") not in {"forgex.agent-checkpoint.v1","forgex.agent-checkpoint.v2","forgex.agent-checkpoint.v3"}:
+            raise ValueError("AGENT_CHECKPOINT_VERSION_UNSUPPORTED")
+        if checkpoint.get("checkpoint_version") in {"forgex.agent-checkpoint.v2","forgex.agent-checkpoint.v3"}:
+            unsigned = dict(checkpoint)
+            digest = unsigned.pop("checkpoint_id", None)
+            if hashlib.sha256(_encode(unsigned).encode()).hexdigest() != digest:
+                raise ValueError("AGENT_CHECKPOINT_CORRUPT")
+        return checkpoint
 
     # ---- Compacted context artifacts --------------------------------
     def save_context_artifact(
@@ -648,7 +829,20 @@ class AgentOrchestrationStore:
     # ---- Initialization / migration ----------------------------------
     def _initialize(self) -> None:
         with closing(self._connect()) as connection:
+            version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            if version > 3:
+                raise ValueError("AGENT_DATABASE_VERSION_UNSUPPORTED")
+            if version < 2 and connection.execute("SELECT 1 FROM sqlite_master WHERE name='agent_events'").fetchone():
+                backup = self.path.with_name(self.path.name + ".pre-hardening.bak")
+                if not backup.exists():
+                    with closing(sqlite3.connect(str(backup))) as target:
+                        connection.backup(target)
             connection.execute("PRAGMA journal_mode=WAL")
+            if version == 2:
+                backup = self.path.with_name(self.path.name + ".pre-jobs-v3.bak")
+                if not backup.exists():
+                    with closing(sqlite3.connect(str(backup))) as target:
+                        connection.backup(target)
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS agent_runs(run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, project_id TEXT NOT NULL,status TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -662,10 +856,18 @@ class AgentOrchestrationStore:
                 CREATE TABLE IF NOT EXISTS agent_projection_checkpoints(session_id TEXT NOT NULL,projection TEXT NOT NULL,session_seq INTEGER NOT NULL,reducer_version TEXT NOT NULL,checksum TEXT NOT NULL,payload_json TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(session_id,projection));
                 CREATE TABLE IF NOT EXISTS agent_run_checkpoints(run_id TEXT PRIMARY KEY,session_id TEXT NOT NULL,turn INTEGER NOT NULL,session_seq INTEGER NOT NULL,event_checksum TEXT NOT NULL,payload_json TEXT NOT NULL,updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS agent_context_artifacts(artifact_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,session_id TEXT NOT NULL,parent_artifact_id TEXT,observation_count INTEGER NOT NULL,content_sha256 TEXT NOT NULL,delta_sha256 TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(run_id,content_sha256));
+                CREATE TABLE IF NOT EXISTS agent_operations(operation_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,kind TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL,payload_json TEXT NOT NULL,updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS agent_recoveries(source_run_id TEXT PRIMARY KEY,replacement_run_id TEXT NOT NULL UNIQUE,request_key TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL,updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS agent_jobs(job_id TEXT PRIMARY KEY,project_id TEXT NOT NULL,session_id TEXT NOT NULL,status TEXT NOT NULL,payload_json TEXT NOT NULL,updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS agent_project_trust(project_id TEXT PRIMARY KEY,payload_json TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS agent_job_requests(job_id TEXT NOT NULL,request_key TEXT NOT NULL,fingerprint TEXT NOT NULL,payload_json TEXT NOT NULL DEFAULT '{}',PRIMARY KEY(job_id,request_key));
                 """
             )
             # Additive migration for pre-canonical databases.  Columns must be
             # added before indexes reference them.
+            request_columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(agent_job_requests)")}
+            if "payload_json" not in request_columns:
+                connection.execute("ALTER TABLE agent_job_requests ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'")
             columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(agent_events)").fetchall()}
             additions = {
                 "event_id": "TEXT",
@@ -689,21 +891,36 @@ class AgentOrchestrationStore:
             connection.execute("CREATE INDEX IF NOT EXISTS idx_agent_run_checkpoints_session ON agent_run_checkpoints(session_id,session_seq)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_agent_context_artifacts_run ON agent_context_artifacts(run_id,observation_count)")
             connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_context_artifacts_position ON agent_context_artifacts(run_id,observation_count)")
-            # Backfill journal identities/checksums once for legacy rows.
+            # Only rows without ANY canonical identity may be migrated. Existing
+            # evidence is never rewritten, even if its checksum is damaged.
             sessions = connection.execute("SELECT DISTINCT session_id FROM agent_events ORDER BY session_id").fetchall()
             for session_row in sessions:
                 sid = str(session_row[0]); previous = ""; last_seq = 0
                 rows = connection.execute("SELECT rowid,sequence,payload_json,event_id,payload_hash,event_checksum FROM agent_events WHERE session_id=? ORDER BY sequence", (sid,)).fetchall()
+                legacy = version < 2 and all(not row[3] and not row[4] and not row[5] for row in rows)
+                if not legacy:
+                    continue
                 for row in rows:
                     rowid, seq, payload_json = int(row[0]), int(row[1]), str(row[2])
-                    event_id = str(row[3] or f"event-{uuid.uuid4().hex}")
-                    payload_hash = str(row[4] or hashlib.sha256(payload_json.encode('utf-8')).hexdigest())
+                    event_id = f"event-{uuid.uuid4().hex}"
+                    payload = _decode(payload_json)
+                    payload.update(event_id=event_id, event_version=1, session_id=sid, sequence=seq, session_seq=seq, previous_checksum=previous)
+                    payload_hash = _payload_hash(payload)
                     checksum = hashlib.sha256((previous + payload_hash).encode('utf-8')).hexdigest()
-                    connection.execute("UPDATE agent_events SET event_id=?,payload_hash=?,previous_checksum=?,event_checksum=? WHERE rowid=?", (event_id, payload_hash, previous, checksum, rowid))
+                    payload["event_checksum"] = checksum
+                    connection.execute("UPDATE agent_events SET payload_json=?,event_id=?,payload_hash=?,previous_checksum=?,event_checksum=? WHERE rowid=?", (_encode(payload), event_id, payload_hash, previous, checksum, rowid))
                     previous = checksum; last_seq = seq
                 connection.execute("""INSERT INTO agent_session_heads(session_id,last_sequence,last_checksum,health,updated_at) VALUES(?,?,?,?,?)
                     ON CONFLICT(session_id) DO UPDATE SET last_sequence=excluded.last_sequence,last_checksum=excluded.last_checksum,updated_at=excluded.updated_at""", (sid,last_seq,previous,"healthy",utc_now()))
+            connection.execute("PRAGMA user_version=3")
             connection.commit()
+        for session_row in sessions:
+            sid = str(session_row[0])
+            try:
+                self.require_healthy_journal(sid)
+            except ValueError:
+                # Preserve damaged history and keep healthy sessions available.
+                continue
 
     def _assert_lease_tx(self, connection: sqlite3.Connection, grant: LeaseGrant) -> None:
         row = connection.execute("SELECT owner_id,lease_epoch,expires_at FROM agent_session_leases WHERE session_id=?", (grant.session_id,)).fetchone()
@@ -712,9 +929,57 @@ class AgentOrchestrationStore:
         if datetime.now(timezone.utc) >= datetime.fromisoformat(str(row[2]).replace("Z", "+00:00")):
             raise ValueError("AGENT_SESSION_LEASE_EXPIRED")
 
+    def operation(self, operation_id: str, run_id: str, kind: str, *, status: str, payload: Mapping[str, object]) -> dict[str, object]:
+        if status not in {"prepared", "started", "completed", "failed", "unknown"}:
+            raise ValueError("AGENT_OPERATION_STATUS_INVALID")
+        fingerprint = hashlib.sha256(_encode(payload).encode()).hexdigest()
+        with self._transaction() as connection:
+            row = connection.execute("SELECT fingerprint,status,payload_json FROM agent_operations WHERE operation_id=?", (operation_id,)).fetchone()
+            if row:
+                if row[0] != fingerprint:
+                    raise ValueError("AGENT_OPERATION_CONFLICT")
+                if row[1] in {"completed", "failed", "unknown"} and row[1] != status:
+                    raise ValueError("AGENT_OPERATION_ALREADY_SETTLED")
+                connection.execute("UPDATE agent_operations SET status=?,updated_at=? WHERE operation_id=?", (status, utc_now(), operation_id))
+            else:
+                if status not in {"prepared", "started"}:
+                    raise ValueError("AGENT_OPERATION_NOT_PREPARED")
+                connection.execute("INSERT INTO agent_operations VALUES(?,?,?,?,?,?,?)", (operation_id, run_id, kind, fingerprint, status, _encode(payload), utc_now()))
+        return {"operation_id": operation_id, "kind": kind, "status": status}
+
+    def operations(self, run_id: str) -> tuple[dict[str, object], ...]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute("SELECT operation_id,kind,status,payload_json FROM agent_operations WHERE run_id=? ORDER BY updated_at,operation_id", (run_id,)).fetchall()
+        return tuple({"operation_id": row[0], "kind": row[1], "status": row[2], "payload": _decode(row[3])} for row in rows)
+
+    def interrupt_operations(self, run_id: str) -> None:
+        with self._transaction() as connection:
+            connection.execute("UPDATE agent_operations SET status='unknown',updated_at=? WHERE run_id=? AND status='started'", (utc_now(), run_id))
+
+    def reserve_recovery(self, run_id: str, key: str, fingerprint: str) -> str:
+        with self._transaction() as connection:
+            row = connection.execute("SELECT replacement_run_id,request_key,fingerprint FROM agent_recoveries WHERE source_run_id=?", (run_id,)).fetchone()
+            if row:
+                if row[2] != fingerprint:
+                    raise ValueError("AGENT_RECOVERY_IDEMPOTENCY_CONFLICT")
+                return str(row[0])
+            replacement = "agent-run-" + uuid.uuid4().hex
+            connection.execute("INSERT INTO agent_recoveries VALUES(?,?,?,?,?,?)", (run_id, replacement, key, fingerprint, "prepared", utc_now()))
+        return replacement
+
+    def complete_recovery(self, run_id: str, replacement: str) -> None:
+        with self._transaction() as connection:
+            connection.execute("UPDATE agent_recoveries SET status='completed',updated_at=? WHERE source_run_id=? AND replacement_run_id=?", (utc_now(), run_id, replacement))
+
+    def recovery_replacement(self, run_id: str) -> str | None:
+        with closing(self._connect()) as connection:
+            row = connection.execute("SELECT replacement_run_id FROM agent_recoveries WHERE source_run_id=?", (run_id,)).fetchone()
+        return str(row[0]) if row else None
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self.path), timeout=10.0)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA synchronous=FULL")
         return connection
 
     def _transaction(self):

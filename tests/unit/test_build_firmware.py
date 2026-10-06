@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from backend.observability.diagnostics import live_log_path
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -149,6 +150,7 @@ def test_success_returns_structured_result_and_build_command(tmp_path: Path) -> 
 def test_build_lifecycle_events_are_written(tmp_path: Path, monkeypatch) -> None:
     log_path = tmp_path / "build.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
     project = make_project(tmp_path / "firmware")
 
     def successful_build(config: ProcessConfig) -> ProcessResult:
@@ -176,6 +178,7 @@ def test_build_lifecycle_events_are_written(tmp_path: Path, monkeypatch) -> None
 def test_failed_build_preserves_compiler_diagnostics(tmp_path: Path, monkeypatch) -> None:
     log_path = tmp_path / "build.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log_path))
+    log_path = live_log_path()
     project = make_project(tmp_path / "firmware")
     compiler_error = "src/main.cpp:4:10: fatal error: missing.h: No such file or directory\n"
 

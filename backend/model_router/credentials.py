@@ -99,7 +99,10 @@ class WindowsCredentialStore:
 
     def _target(self, provider_id: str) -> str:
         safe_id = provider_id.strip().casefold()
-        if not safe_id or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for char in safe_id):
+        # Catalog IDs such as wafer.ai are valid generic credential targets.
+        # Keep existing targets stable and preserve dots to avoid collisions
+        # with IDs that use underscores or hyphens instead.
+        if not safe_id or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789_.-" for char in safe_id):
             raise CredentialStoreError("credential_provider_id_invalid")
         return f"{self.namespace}/{safe_id}"
 

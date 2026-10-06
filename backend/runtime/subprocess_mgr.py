@@ -154,19 +154,18 @@ class ProcessConfig:
     # and ensures reproducible builds across machines.
     env_allowlist: frozenset[str] = frozenset({
         "PATH", "HOME", "USER", "TMPDIR", "TEMP", "TMP",
-        "LANG", "LC_ALL", "LC_CTYPE", "SHELL",
+        "LANG", "LC_ALL", "LC_CTYPE",
         # Windows process/runtime basics. Without SystemRoot, Python and some
         # toolchains cannot load OS crypto/random providers during startup.
-        "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LOCALAPPDATA", "APPDATA",
+        "SystemRoot", "WINDIR", "PATHEXT", "LOCALAPPDATA", "APPDATA",
         "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "USERPROFILE",
         # Arduino / ESP-IDF / ARM toolchain commonly need these:
         "IDF_PATH", "ARDUINO_DIR", "ARM_TOOLCHAIN_PATH",
         # PlatformIO
         "PLATFORMIO_HOME_DIR",
         # esptool is Python-based; needs PYTHONPATH in some installations
-        "PYTHONPATH",
         # OpenOCD may need these for JTAG adapter detection
-        "OPENOCD_SCRIPTS", "LD_LIBRARY_PATH",
+        "OPENOCD_SCRIPTS",
     })
 
 
@@ -272,6 +271,31 @@ class SubprocessManager:
         self._active: dict[int, asyncio.subprocess.Process] = {}
         self._owners: dict[int, str | None] = {}
         self._cancelled_owners: set[str] = set()
+        self._jobs: dict[int, object] = {}
+
+    async def _spawn_owned(self, *args, **kwargs):
+        configured_pio = os.environ.get("FORGEX_PLATFORMIO_EXECUTABLE")
+        if configured_pio and args and str(args[0]) == configured_pio and configured_pio.endswith("forgex-pio.py"):
+            args = (sys.executable, "-B", *args)
+        job = None
+        if sys.platform == "win32":
+            from .windows_job import WindowsJob
+            job = WindowsJob()
+            args = job.wrap(args)
+        try:
+            proc = await asyncio.create_subprocess_exec(*args, **kwargs)
+        except BaseException:
+            if job:
+                job.close()
+            raise
+        if job:
+            self._jobs[proc.pid] = job
+        return proc
+
+    def _close_job(self, pid: int) -> None:
+        job = self._jobs.pop(pid, None)
+        if job:
+            job.close()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -309,7 +333,7 @@ class SubprocessManager:
                     0,
                 )
 
-            proc = await asyncio.create_subprocess_exec(
+            proc = await self._spawn_owned(
                 *config.args,
                 cwd    = config.cwd,
                 env    = env,
@@ -332,6 +356,7 @@ class SubprocessManager:
                     raise asyncio.CancelledError()
                 result = await self._drain_and_wait(proc, config, t0)
             finally:
+                self._close_job(proc.pid)
                 self._active.pop(proc.pid, None)
                 self._owners.pop(proc.pid, None)
 
@@ -369,7 +394,7 @@ class SubprocessManager:
                     0,
                 )
 
-            proc = await asyncio.create_subprocess_exec(
+            proc = await self._spawn_owned(
                 *config.args,
                 cwd    = config.cwd,
                 env    = env,
@@ -386,9 +411,13 @@ class SubprocessManager:
             try:
                 if owner is not None and owner in self._cancelled_owners:
                     raise asyncio.CancelledError()
-                async for item, tasks in self._interleave_streams(proc, config):
-                    pump_tasks = tasks   # Updated each yield; keep latest refs
-                    yield item
+                iterator = self._interleave_streams(proc, config)
+                try:
+                    async for item, tasks in iterator:
+                        pump_tasks = tasks
+                        yield item
+                finally:
+                    await iterator.aclose()
             finally:
                 self._active.pop(proc.pid, None)
                 self._owners.pop(proc.pid, None)
@@ -398,10 +427,19 @@ class SubprocessManager:
                         t.cancel()
                 if pump_tasks:
                     await asyncio.gather(*pump_tasks, return_exceptions=True)
-                # Kill the process (and its group) if still running
-                if proc.returncode is None:
-                    await self._kill_process_tree(proc, _SIGKILL)
-                    await proc.wait()
+                try:
+                    # Cleanup remains bounded even when a descendant holds a pipe.
+                    if proc.returncode is None:
+                        await self._kill_process_tree(proc, _SIGKILL)
+                        await asyncio.wait_for(proc.wait(), timeout=_KILL_GRACE_S)
+                finally:
+                    self._close_job(proc.pid)
+                    # A closed stream has no consumer left to drain paused pipes.
+                    # asyncio.Process exposes no public transport-close method.
+                    transport = getattr(proc, "_transport", None)
+                    if transport is not None:
+                        transport.close()
+                    await asyncio.sleep(0)
 
     async def cancel_owner(self, owner: str) -> None:
         if not owner:
@@ -412,7 +450,10 @@ class SubprocessManager:
             if proc.returncode is None:
                 await self._kill_process_tree(proc, _SIGKILL)
         if targets:
-            await asyncio.gather(*(proc.wait() for proc in targets), return_exceptions=True)
+            await asyncio.wait_for(
+                asyncio.gather(*(proc.wait() for proc in targets), return_exceptions=True),
+                timeout=_KILL_GRACE_S,
+            )
 
     async def kill_all(self) -> None:
         """
@@ -500,7 +541,7 @@ class SubprocessManager:
 
             done, pending = await asyncio.wait(
                 {stdout_task, stderr_task},
-                timeout=config.timeout_s,
+                timeout=max(0.001, config.timeout_s - (time.monotonic() - t0)),
                 return_when=asyncio.ALL_COMPLETED,
             )
             if pending:
@@ -549,7 +590,15 @@ class SubprocessManager:
                 stdin_task.cancel()
                 await asyncio.gather(stdin_task, return_exceptions=True)
 
-        await proc.wait()
+        remaining = max(0.001, config.timeout_s - (time.monotonic() - t0))
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=remaining)
+        except asyncio.TimeoutError:
+            signal_sent = await self._terminate_for_timeout(proc)
+            return ProcessResult(returncode=proc.returncode if proc.returncode is not None else -1,
+                stdout=stdout_bytes, stderr=stderr_bytes, args=config.args,
+                elapsed_s=time.monotonic() - t0, timed_out=True, signal_name=signal_sent,
+                output_truncated=truncated)
         # [FIX-P2] Explicit None check instead of `returncode or 0`.
         # `None or 0` silently reports a process whose wait() was skipped
         # (or failed) as exit code 0 (success). This masked real crashes.
@@ -579,7 +628,7 @@ class SubprocessManager:
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(input=config.stdin_data),
-                timeout=config.timeout_s,
+                timeout=max(0.001, config.timeout_s - (time.monotonic() - t0)),
             )
         except asyncio.TimeoutError:
             await self._terminate_for_timeout(proc)
@@ -665,35 +714,35 @@ class SubprocessManager:
             except asyncio.CancelledError:
                 pass   # Normal cancellation from stream() cleanup
             finally:
-                await queue.put(None)   # EOF sentinel
+                if not asyncio.current_task().cancelling():
+                    await queue.put(None)   # EOF sentinel
 
         tasks = [
             asyncio.create_task(_pump("stdout", proc.stdout)),  # type: ignore[arg-type]
             asyncio.create_task(_pump("stderr", proc.stderr)),  # type: ignore[arg-type]
         ]
 
-        done_count = 0
-        while done_count < 2:
-            # [FIX-P7] Also enforce absolute deadline at the consumer level
-            remaining = deadline - asyncio.get_event_loop().time()
-            if remaining <= 0:
-                break
-            try:
-                item = await asyncio.wait_for(queue.get(), timeout=min(remaining, 5.0))
-            except asyncio.TimeoutError:
-                if asyncio.get_event_loop().time() >= deadline:
+        try:
+            done_count = 0
+            while done_count < 2:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
                     break
-                continue
-            if item is None:
-                done_count += 1
-            else:
-                yield item, tasks   # [FIX-P6] yield tasks alongside data
-
-        # Cancel any pump tasks still running after deadline
-        for t in tasks:
-            if not t.done():
-                t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=min(remaining, 5.0))
+                except asyncio.TimeoutError:
+                    if asyncio.get_event_loop().time() >= deadline:
+                        break
+                    continue
+                if item is None:
+                    done_count += 1
+                else:
+                    yield item, tasks
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     # ── Timeout handling ──────────────────────────────────────────────────────
 
@@ -830,6 +879,17 @@ class SubprocessManager:
         The Windows job object approach is more complete but requires additional
         setup; this is a best-effort approximation.
         """
+        job = self._jobs.get(proc.pid)
+        if job is not None:
+            job.terminate()
+            # Cancellation may arrive before the bootstrap joined the job.
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            self._close_job(proc.pid)
+            return
         if proc.returncode is not None:
             return   # Already exited
 

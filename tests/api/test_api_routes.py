@@ -57,6 +57,9 @@ class FakePlatformIO(PlatformIOService):
             message="PlatformIO test fixture is ready",
         )
 
+    async def health_status(self) -> PlatformIOStatus:
+        return await self.status()
+
 
 class FakeBoardDetector(BoardDetector):
     def __init__(self, boards: list[BoardInfo]) -> None:
@@ -90,6 +93,15 @@ class FakeSerialService:
 def successful_build(firmware: Path) -> BuildResult:
     firmware.parent.mkdir(parents=True, exist_ok=True)
     firmware.write_bytes(b"firmware")
+    from backend.services.firmware_manifest import seal_upload_set
+    from backend.utils.paths import PathManager
+    bootloader = firmware.parent / "bootloader.bin"
+    partitions = firmware.parent / "partitions.bin"
+    bootloader.write_bytes(b"test-bootloader")
+    partitions.write_bytes(b"test-partitions")
+    manifest = seal_upload_set(PathManager().artifacts_directory() / "firmware-manifests",
+        chip="esp32", environment="esp32dev", board="esp32dev", images=[
+            ("bootloader", 0x1000, bootloader), ("partitions", 0x8000, partitions), ("application", 0x10000, firmware)])
     return BuildResult(
         success=True,
         status=ResultStatus.SUCCESS,
@@ -100,6 +112,7 @@ def successful_build(firmware: Path) -> BuildResult:
         platform="platformio",
         board="esp32dev",
         toolchain_version="test",
+        metadata={"artifact_manifest": manifest, "flash_ready": True},
     )
 
 
@@ -515,10 +528,15 @@ def test_execute_passes_selected_board_for_generic_workspace(tmp_path: Path) -> 
                 "generation_mode": "generate_into_open_folder",
             },
         )
+        from backend.api.routes.execute import _active_executions
+        active = _active_executions.get(response.json()["task_id"])
+        if active is not None:
+            client.portal.call(lambda: active.task)
     assert response.status_code == 200
     active_workspace = captured["active_workspace"]
     assert isinstance(active_workspace, dict)
-    assert active_workspace["rootPath"] == str(workspace.resolve())
+    assert active_workspace["original_workspace_root"] == str(workspace.resolve())
+    assert active_workspace["rootPath"] != str(workspace.resolve())
     assert active_workspace["selected_board"] == "esp32dev"
     assert active_workspace["board"] == "ESP32"
     assert active_workspace["generation_mode"] == "generate_into_open_folder"

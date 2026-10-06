@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "transport": {
+    "connect_seconds": 10.0,
+    "first_event_seconds": 120.0,
+    "idle_seconds": 60.0,
+    "total_seconds": 300.0,
+    "write_seconds": 30.0,
+    "pool_seconds": 5.0
+  },
+  "turn_seconds": 180.0,
+  "review_unit_seconds": 60.0,
+  "generation_turn_seconds": 300.0,
+  "model_repair_seconds": 120.0,
+  "generation_reserve": {
+    "requests": 2,
+    "output_tokens": 2048
+  },
+  "renderer": {
+    "read_seconds": 15,
+    "mutation_seconds": 30
+  },
+  "profiles": {
+    "standard": {
+      "elapsed_seconds": 900,
+      "tool_calls_used": 100,
+      "requests": 120,
+      "output_tokens": 245760,
+      "input_bytes": 8000000
+    },
+    "advanced": {
+      "elapsed_seconds": 2700,
+      "tool_calls_used": 300,
+      "requests": 360,
+      "output_tokens": 737280,
+      "input_bytes": 24000000
+    }
+  },
+  "outage_window_seconds": 600,
+  "auto_recovery_cycles": 3,
+  "deadline_codes": {
+    "turn": "AGENT_TURN_LIMIT_EXCEEDED",
+    "job": "AGENT_RUNTIME_LIMIT_EXCEEDED",
+    "provider": "PROVIDER_TIMEOUT",
+    "verification_reserve": "AGENT_VERIFICATION_RESERVE_REACHED"
+  }
+}

@@ -38,9 +38,10 @@ _REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
 
 class ToolPolicyError(ValueError):
-    def __init__(self, classification: RuntimeClassification, reason: str) -> None:
+    def __init__(self, classification: RuntimeClassification, reason: str, *, details: Mapping[str, object] | None = None) -> None:
         self.classification = classification
         self.reason = reason
+        self.details = dict(details or {})
         super().__init__(reason)
 
 
@@ -77,6 +78,7 @@ class ToolPermissionPolicy:
             ".cc",
             ".cs",
             ".cpp",
+            ".csv",
             ".css",
             ".fs",
             ".go",
@@ -135,9 +137,23 @@ class ToolPermissionPolicy:
             "build": "capability_gated",
             "flash": "deny",
             "max_content_bytes": self.max_content_bytes,
+            "allowed_extensions": sorted(self.allowed_extensions),
+            "allowed_extensionless_names": sorted(self.allowed_extensionless_names),
         }
 
     def validate_call(self, call: ToolCall, root: Path) -> None:
+        from .tool_registry import NEW_TOOLS, validate_new_arguments
+        if call.tool in NEW_TOOLS:
+            if self.decisions.get(call.tool, "deny") != "allow":
+                raise ToolPolicyError(RuntimeClassification.POLICY_DENIED, "tool_not_allowed")
+            validate_new_arguments(call.tool, call.arguments)
+            return
+        if call.tool is ToolName.VERIFY_REQUIREMENTS:
+            from .tool_contracts import _validate_product_tool_arguments
+            if self.decisions.get(call.tool, "deny") != "allow":
+                raise ToolPolicyError(RuntimeClassification.POLICY_DENIED, "tool_not_allowed")
+            _validate_product_tool_arguments(call.tool, call.arguments)
+            return
         decision = self.decisions.get(call.tool, "deny")
         if decision == "deny":
             raise ToolPolicyError(
@@ -458,7 +474,9 @@ class ToolPermissionPolicy:
             and candidate.name not in self.allowed_extensionless_names
         ):
             raise ToolPolicyError(
-                RuntimeClassification.POLICY_DENIED, "extension_not_allowed"
+                RuntimeClassification.POLICY_DENIED, "extension_not_allowed",
+                details={"reason": "extension_not_allowed", "extension": candidate.suffix.casefold(),
+                         "allowed_extensions": sorted(self.allowed_extensions)},
             )
         return candidate
 
@@ -525,6 +543,12 @@ def product_agent_policy(*, max_bytes_per_file: int = 128_000) -> ToolPermission
             ToolName.SESSION_EVENT_SEARCH: "allow",
             ToolName.SESSION_TRACE: "allow",
             ToolName.BUILD_FIRMWARE: "allow",
+            ToolName.VERIFY_REQUIREMENTS: "allow",
+            ToolName.PROJECT_DOCTOR: "allow",
+            ToolName.INSPECT_SYMBOLS: "allow",
+            ToolName.SEARCH_DOCS: "allow",
+            ToolName.FETCH_DOCS: "allow",
+            ToolName.VALIDATE_HARDWARE_CONFIG: "allow",
             ToolName.RUN_SIMULATION: "deny",
             ToolName.RUN_COMMAND: "deny",
         },

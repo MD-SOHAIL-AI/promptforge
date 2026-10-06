@@ -20,6 +20,55 @@ from ..schemas.projects import (
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+@router.get("/{project_id}/readiness")
+async def project_readiness(project_id: str, request: Request, provider_id: str | None = None,
+                            model_id: str | None = None, environment: str | None = None):
+    """Read local configuration and cached observations without model generation."""
+    import asyncio
+    from datetime import datetime, timezone
+    from ...services.project_profile import inspect_project_profile
+    record = await resolve_project_from_request(request, project_id)
+    profile = await asyncio.to_thread(inspect_project_profile, record.project_path, environment=environment)
+    owner = services(request)
+    provider = None
+    if provider_id:
+        try:
+            selected = owner.model_router_service.registry.provider(provider_id)
+            checked = selected.last_checked_at
+            observed = datetime.fromisoformat(checked.replace("Z", "+00:00")) if checked else None
+            if observed and observed.tzinfo is None:
+                observed = observed.replace(tzinfo=timezone.utc)
+            age = max(0, (datetime.now(timezone.utc) - observed).total_seconds()) if observed else None
+            provider = {"provider_id": provider_id, "model_id": model_id or selected.default_model,
+                "configured": selected.configured, "enabled": selected.enabled, "cached_status": selected.health_status,
+                "checked_at": checked, "age_seconds": age, "fresh": age is not None and age < 300,
+                "qualified": False}
+        except (KeyError, ValueError):
+            provider = {"provider_id": provider_id, "configured": False, "enabled": False, "qualified": False}
+    toolchain = (await owner.platformio_service.health_status()).to_dict() if owner.platformio_service else None
+    orchestrator = owner.agent_orchestrator
+    trusted = bool(orchestrator and orchestrator.jobs.is_trusted(project_id, record.project_path))
+    environment_ready = not profile.selection_required
+    can_generate = bool(provider and provider["configured"] and provider["enabled"])
+    can_build = bool(trusted and toolchain and toolchain["available"] and environment_ready and profile.adapter != "unknown")
+    return {"project_id": project_id, "observed_at": datetime.now(timezone.utc).isoformat(),
+        "workspace": {"available": True, "path": record.project_path}, "provider": provider,
+        "toolchain": toolchain, "environment": {"selected": profile.selected_environment, "selection_required": profile.selection_required},
+        "permissions": {"local_builds": trusted}, "capabilities": {"generate": can_generate, "build": can_build},
+        "qualification": {"provider": "not_qualified", "hardware": "not_qualified"}}
+
+
+@router.get("/{project_id}/profile")
+async def project_profile(project_id: str, request: Request, environment: str | None = None):
+    from ...services.project_profile import inspect_project_profile
+    import asyncio
+    record = await resolve_project_from_request(request, project_id)
+    try:
+        return await asyncio.to_thread(inspect_project_profile, record.project_path, environment=environment)
+    except (OSError, ValueError) as exc:
+        raise APIError(422, "PROJECT_PROFILE_INVALID", str(exc)) from exc
+
+
 @router.get(
     "",
     response_model=ProjectListResponse,
@@ -96,6 +145,25 @@ async def get_project(project_id: str, request: Request) -> ProjectResponse:
     except ProjectServiceError as exc:
         raise APIError(500, "PROJECT_SERVICE_ERROR", "Project could not be loaded") from exc
     return _project(metadata.to_dict(), loaded)
+
+
+@router.delete("/{project_id}/recent", response_model=ProjectDeleteResponse)
+async def forget_recent_project(project_id: str, request: Request) -> ProjectDeleteResponse:
+    service = required_state(request, "project_import_service", "project import service")
+    normalized = _identifier(project_id)
+    if not await service.forget_project(normalized):
+        raise APIError(404, "PROJECT_NOT_FOUND", "Recent folder was not found")
+    return ProjectDeleteResponse(project_id=normalized, deleted=True)
+
+
+@router.post("/{project_id}/locate", response_model=ProjectResponse)
+async def locate_recent_project(project_id: str, body: ProjectImportRequest, request: Request) -> ProjectResponse:
+    service = required_state(request, "project_import_service", "project import service")
+    try:
+        record = await service.relocate_project(_identifier(project_id), body.path)
+    except ProjectImportError as exc:
+        raise APIError(404 if exc.code == "PROJECT_NOT_FOUND" else 422, exc.code, str(exc), exc.details) from exc
+    return _project(record.to_dict())
 
 
 @router.delete(

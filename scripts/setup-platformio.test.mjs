@@ -11,6 +11,6 @@ test("setup:platformio is wired to the repo-local installer", () => {
 
 test("PlatformIO setup installs into the project virtual environment", () => {
   assert.match(scriptSource, /"\.venv"/);
-  assert.match(scriptSource, /"platformio"/);
+  assert.match(scriptSource, /"platformio==6\.2\.0"/);
   assert.equal(scriptSource.includes("npm install"), false);
 });

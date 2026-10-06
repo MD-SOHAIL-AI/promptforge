@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 
 import { SessionEventStore } from "../../dist/harness/event-store.js";
 import { HarnessRuntime } from "../../dist/harness/runtime.js";
@@ -57,6 +58,9 @@ test("runtime exposes the provider catalog and durable sessions", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "forgex-harness-"));
   const runtime = new HarnessRuntime(new SessionEventStore(root));
   await runtime.initialize();
+  const status = await runtime.invoke("harness.status", {});
+  assert.equal(status.authoritative, false);
+  assert.equal(status.runAuthority, "python-agent-orchestrator");
   const created = await runtime.invoke("sessions.create", { sessionId: "session-two", title: "Two" });
   assert.equal(created.sessionId, "session-two");
   const providers = await runtime.invoke("providers.list", {});
@@ -108,4 +112,40 @@ test("parallel workflows batch work within the subagent concurrency bound", asyn
   const result = await workflow.run({ parentSessionId: "parent-batched", parentRunId: "run", provider: "worker", strategy: "parallel", tasks: ["a", "b", "c", "d", "e"], depth: 0 });
   assert.equal(result.status, "completed");
   assert.equal(result.children.length, 5);
+});
+
+test("crash after a committed effect is not blindly replayed", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "forgex-crash-"));
+  const events = new SessionEventStore(path.join(root, "events"));
+  const first = new IdempotencyStore(path.join(root, "requests"));
+  let effects = 0;
+  const operation = async () => {
+    effects += 1;
+    const event = await events.append("session", "message/user", { text: "once" }, "run", "request-0001");
+    return { eventId: event.eventId };
+  };
+  first.write = async () => { throw new Error("simulated host death before receipt"); };
+  await assert.rejects(first.execute("request-0001", "fingerprint", operation), /host death/);
+  const restarted = new IdempotencyStore(path.join(root, "requests"));
+  await assert.rejects(restarted.execute("request-0001", "fingerprint", operation), /requires reconciliation/);
+  assert.equal(effects, 1);
+  const reconcile = async () => {
+    const event = await events.append("session", "message/user", { text: "once" }, "run", "request-0001");
+    return { eventId: event.eventId };
+  };
+  await restarted.execute("request-0001", "fingerprint", operation, reconcile);
+  assert.equal((await events.read("session")).length, 1);
+  assert.equal(effects, 1);
+});
+
+test("a live publisher blocks competing writers, and releasing it permits recovery", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "forgex-writer-"));
+  const lock = new DatabaseSync(path.join(root, "session.jsonl.writer.sqlite3"));
+  lock.exec("BEGIN IMMEDIATE");
+  const store = new SessionEventStore(root);
+  await assert.rejects(store.append("session", "session/created", {}), /SESSION_WRITER_LOCKED/);
+  assert.deepEqual(await store.read("session"), []);
+  lock.close();
+  await store.append("session", "session/created", {});
+  assert.equal((await store.read("session")).length, 1);
 });

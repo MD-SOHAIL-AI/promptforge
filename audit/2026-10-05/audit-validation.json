@@ -1,0 +1,90 @@
+{
+  "sections": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39
+  ],
+  "all_39_sections": true,
+  "source_files": 659,
+  "coverage_total": 659,
+  "source_hash_changes": [],
+  "configuration_hash_changes": [],
+  "broken_local_links": [],
+  "python_outcomes": {
+    "python-unit.xml": {
+      "unit": {
+        "passed": 2109,
+        "failed": 1,
+        "skipped": 4
+      }
+    },
+    "python-api-integration.xml": {
+      "api": {
+        "passed": 99
+      },
+      "integration": {
+        "passed": 14
+      },
+      "benchmarks": {
+        "passed": 9
+      }
+    }
+  },
+  "dependency_audit": {
+    "npm-audit-root.json": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 11,
+      "critical": 0,
+      "total": 11
+    },
+    "npm-audit-frontend.json": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "browser_runner": "52 assertions passed; teardown interrupted; command exit 1",
+  "physical_flash_cycles": 0,
+  "live_cloud_provider_runs": 0
+}

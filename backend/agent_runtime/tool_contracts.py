@@ -33,8 +33,20 @@ class ToolName(str, Enum):
 
     # Verification. Execution is capability-gated and supplied by the host.
     BUILD_FIRMWARE = "build_firmware"
+    VERIFY_REQUIREMENTS = "verify_requirements"
     RUN_SIMULATION = "run_simulation"
     RUN_COMMAND = "run_command"
+    PROJECT_DOCTOR = "project_doctor"
+    INSPECT_SYMBOLS = "inspect_symbols"
+    RESOLVE_DEPENDENCY = "resolve_dependency"
+    SEARCH_DOCS = "search_docs"
+    FETCH_DOCS = "fetch_docs"
+    VALIDATE_HARDWARE_CONFIG = "validate_hardware_config"
+    RUN_UNIT_TESTS = "run_unit_tests"
+    ANALYZE_FIRMWARE = "analyze_firmware"
+    OBSERVE_SERIAL = "observe_serial"
+    DECODE_CRASH = "decode_crash"
+    VERIFY_ACCEPTANCE = "verify_acceptance"
 
 
 READ_ONLY_TOOLS = frozenset(
@@ -50,13 +62,18 @@ READ_ONLY_TOOLS = frozenset(
         ToolName.SESSION_EVENT_READ,
         ToolName.SESSION_EVENT_SEARCH,
         ToolName.SESSION_TRACE,
+        ToolName.VERIFY_REQUIREMENTS,
+        ToolName.PROJECT_DOCTOR, ToolName.INSPECT_SYMBOLS, ToolName.SEARCH_DOCS,
+        ToolName.FETCH_DOCS, ToolName.VALIDATE_HARDWARE_CONFIG, ToolName.RESOLVE_DEPENDENCY,
+        ToolName.ANALYZE_FIRMWARE, ToolName.VERIFY_ACCEPTANCE,
     }
 )
 WRITE_TOOLS = frozenset(
     {ToolName.WRITE_FILE, ToolName.EDIT_FILE_SIMPLE, ToolName.APPLY_PATCH, ToolName.DELETE_FILE, ToolName.MOVE_FILE}
 )
 EXECUTION_TOOLS = frozenset(
-    {ToolName.BUILD_FIRMWARE, ToolName.RUN_SIMULATION, ToolName.RUN_COMMAND}
+    {ToolName.BUILD_FIRMWARE, ToolName.RUN_SIMULATION, ToolName.RUN_COMMAND,
+     ToolName.RUN_UNIT_TESTS, ToolName.OBSERVE_SERIAL, ToolName.DECODE_CRASH}
 )
 
 
@@ -125,6 +142,7 @@ class RuntimeClassification(str, Enum):
     UNKNOWN_SAFE_FAILURE = "TOOL_RUNTIME_UNKNOWN_SAFE_FAILURE"
     CANCELLED = "AGENT_RUNTIME_CANCELLED"
     MAX_TURNS = "AGENT_RUNTIME_MAX_TURNS"
+    NO_PROGRESS = "AGENT_RUNTIME_NO_PROGRESS"
     LIMIT_EXCEEDED = "AGENT_RUNTIME_LIMIT_EXCEEDED"
 
 
@@ -416,6 +434,7 @@ class ProductToolPlan:
 
 
 def provider_function_schema(tool: ToolName) -> dict[str, object]:
+    from .tool_registry import NEW_TOOLS
     descriptions = {
         ToolName.READ_FILE: "Read a UTF-8 project file from the contained workspace.",
         ToolName.WRITE_FILE: "Stage a complete file write inside the ForgeX ChangeSet workspace.",
@@ -433,6 +452,7 @@ def provider_function_schema(tool: ToolName) -> dict[str, object]:
         ToolName.SESSION_EVENT_SEARCH: "Search this Agent session\'s durable public runtime history.",
         ToolName.SESSION_TRACE: "Inspect a compact public execution trace for this Agent session.",
         ToolName.BUILD_FIRMWARE: "Build the staged embedded project with PlatformIO.",
+        ToolName.VERIFY_REQUIREMENTS: "Submit every task requirement with exact executable-source quotes. This checks source references; finalization separately requires independent requirement review. Recheck after edits.",
         ToolName.RUN_SIMULATION: "Run the configured simulator as a verification step.",
         ToolName.APPLY_PATCH: "Stage a precise unified patch inside the contained workspace.",
         ToolName.DELETE_FILE: "Stage deletion of one file. Never deletes active workspace files before ChangeSet approval.",
@@ -442,7 +462,7 @@ def provider_function_schema(tool: ToolName) -> dict[str, object]:
         "type": "function",
         "function": {
             "name": provider_tool_name(tool),
-            "description": descriptions.get(tool, f"ForgeX tool: {tool.value}"),
+            "description": NEW_TOOLS[tool].description if tool in NEW_TOOLS else descriptions.get(tool, f"ForgeX tool: {tool.value}"),
             "parameters": _tool_arguments_json_schema(tool),
             "strict": True,
         },
@@ -462,9 +482,18 @@ def _tool_call_json_schema(tool: ToolName) -> dict[str, object]:
 
 
 def _tool_arguments_json_schema(tool: ToolName) -> dict[str, object]:
+    from .tool_registry import NEW_TOOLS
+    if tool in NEW_TOOLS:
+        return NEW_TOOLS[tool].schema
     string = {"type": "string", "minLength": 1, "maxLength": 4096}
     path = {"type": "string", "minLength": 1, "maxLength": 1024}
     schemas: dict[ToolName, dict[str, object]] = {
+        ToolName.VERIFY_REQUIREMENTS: {"properties": {"checks": {"type": "array", "minItems": 1, "maxItems": 256,
+            "items": {"type": "object", "additionalProperties": False, "properties": {
+                "id": string, "status": {"enum": ["implemented", "unmet"]},
+                "evidence": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": False,
+                    "properties": {"path": path, "quote": string}, "required": ["path", "quote"]}}},
+                "required": ["id", "status", "evidence"]}}}, "required": ["checks"]},
         ToolName.LIST_FILES: {"properties": {"path": path}, "required": []},
         ToolName.GLOB_FILES: {
             "properties": {"pattern": string, "path": path},
@@ -552,7 +581,12 @@ def _tool_arguments_json_schema(tool: ToolName) -> dict[str, object]:
 def _validate_product_tool_arguments(
     tool: ToolName, arguments: Mapping[str, object]
 ) -> None:
+    from .tool_registry import NEW_TOOLS, validate_new_arguments
+    if tool in NEW_TOOLS:
+        validate_new_arguments(tool, arguments)
+        return
     required: dict[ToolName, frozenset[str]] = {
+        ToolName.VERIFY_REQUIREMENTS: frozenset({"checks"}),
         ToolName.GLOB_FILES: frozenset({"pattern"}),
         ToolName.GREP_SEARCH: frozenset({"query"}),
         ToolName.READ_FILE: frozenset({"path"}),
@@ -594,6 +628,18 @@ def _validate_product_tool_arguments(
             raise ValueError("product_tool_arguments_invalid")
     if tool is ToolName.UPDATE_PLAN and not isinstance(arguments.get("steps"), list):
         raise ValueError("product_tool_arguments_invalid")
+    if tool is ToolName.VERIFY_REQUIREMENTS:
+        checks = arguments.get("checks")
+        if not isinstance(checks, list) or not 1 <= len(checks) <= 256:
+            raise ValueError("product_tool_arguments_invalid")
+        for check in checks:
+            if not isinstance(check, Mapping) or set(check) != {"id", "status", "evidence"} or not isinstance(check["id"], str) or check["status"] not in {"implemented", "unmet"}:
+                raise ValueError("product_tool_arguments_invalid")
+            if not isinstance(check["evidence"], list) or len(check["evidence"]) > 8:
+                raise ValueError("product_tool_arguments_invalid")
+            for evidence in check["evidence"]:
+                if not isinstance(evidence, Mapping) or set(evidence) != {"path", "quote"} or any(not isinstance(evidence[key], str) or not 1 <= len(evidence[key]) <= 4096 for key in ("path", "quote")):
+                    raise ValueError("product_tool_arguments_invalid")
     if tool is ToolName.PRESENT_FILES:
         files = arguments.get("files")
         if not isinstance(files, list) or not 1 <= len(files) <= 32:

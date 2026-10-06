@@ -121,6 +121,12 @@ class SerialMonitor:
     ) -> None:
         self._config = config
         if runtime is not None:
+            injected = getattr(runtime, "_configuration", None) or getattr(runtime, "_config", None)
+            if isinstance(injected, (SerialConfig, SerialConfiguration)):
+                selected = config.port.strip().upper() if config.port else None
+                actual = injected.port.strip().upper() if injected.port else None
+                if selected != actual or injected.baudrate != config.baudrate:
+                    raise ValueError("SERIAL_MONITOR_CONFIGURATION_MISMATCH")
             self._runtime = runtime
         else:
             runtime_config = SerialConfig(

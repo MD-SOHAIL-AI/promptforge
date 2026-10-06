@@ -1,7 +1,7 @@
 "use client";
 
 import { Braces, Copy, FileCode2, Save, X } from "lucide-react";
-import Editor, { type Monaco } from "@monaco-editor/react";
+import Editor, { loader, type Monaco } from "@monaco-editor/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { EditorTab } from "@/types";
@@ -12,17 +12,20 @@ interface CodeViewerProps {
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   onChange: (path: string, content: string) => void;
-  onSave: (path: string) => void;
+  onSave: (path: string, content?: string) => void;
   editorSettings?: {
     fontSize?: number;
     tabSize?: number;
     wordWrap?: boolean;
     minimapEnabled?: boolean;
     showLineNumbers?: boolean;
+    formatOnSave?: boolean;
+    autoSave?: boolean;
   };
 }
 
 const FORGEX_EDITOR_THEME = "forgex-runtime";
+loader.config({ paths: { vs: "/vendor/monaco/vs" } });
 
 function cssColor(name: string, fallback: string) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -42,8 +45,7 @@ function defineForgeXEditorTheme(monaco: Monaco) {
   const root = document.documentElement;
   const isLight = new Set(["porcelain", "paper", "dawn", "solarized-light", "high-contrast-light", "light"]).has(root.dataset.theme ?? "");
   const background = cssColor("--fx-bg", isLight ? "#f4f6f8" : "#0b1117");
-  const surfaceOpacity = Math.min(100, Math.max(65, Number.parseFloat(getComputedStyle(root).getPropertyValue("--fx-surface-opacity")) || 94));
-  const editorBackground = root.dataset.backgroundAsset ? alpha(background, Math.round(surfaceOpacity * 2.55).toString(16).padStart(2, "0")) : background;
+  const editorBackground = background;
   const panel = cssColor("--fx-panel", isLight ? "#ffffff" : "#111821");
   const border = cssColor("--fx-border", isLight ? "#b8c5d4" : "#243040");
   const foreground = cssColor("--fx-code-text", isLight ? "#1f2a3d" : "#d7dee8");
@@ -109,13 +111,27 @@ export const CodeViewer = memo(function CodeViewer({
   editorSettings,
 }: CodeViewerProps) {
   const monacoRef = useRef<Monaco | null>(null);
+  const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
   const [themeRevision, setThemeRevision] = useState(0);
   const active = tabs.find((tab) => tab.path === activePath) ?? tabs[0] ?? null;
+  const save = useCallback(async () => {
+    if (!active) return;
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (editorSettings?.formatOnSave && editor && model) await editor.getAction("editor.action.formatDocument")?.run().catch(() => undefined);
+    if (editor?.getModel() !== model) return;
+    onSave(active.path, model?.getValue() ?? active.content);
+  }, [active, editorSettings?.formatOnSave, onSave]);
+  useEffect(() => {
+    if (!editorSettings?.autoSave || !active?.dirty) return;
+    const timer = window.setTimeout(() => void save(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [active?.content, active?.dirty, editorSettings?.autoSave, save]);
   const fontSize = Number(editorSettings?.fontSize ?? 14);
   const tabSize = Number(editorSettings?.tabSize ?? 2);
   const editorOptions = useMemo(() => ({
     automaticLayout: true,
-    fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, monospace",
+    fontFamily: "'ForgeX Mono', Consolas, monospace",
     fontSize: Number.isFinite(fontSize) ? fontSize : 14,
     lineNumbersMinChars: 3,
     minimap: { enabled: Boolean(editorSettings?.minimapEnabled) },
@@ -206,7 +222,7 @@ export const CodeViewer = memo(function CodeViewer({
             title="Save"
             aria-label="Save"
             disabled={!active || !active.dirty}
-            onClick={() => active && onSave(active.path)}
+            onClick={() => void save()}
           >
             <Save className="h-4 w-4" />
           </button>
@@ -231,7 +247,7 @@ export const CodeViewer = memo(function CodeViewer({
               language={active.language}
               theme={FORGEX_EDITOR_THEME}
               beforeMount={configureEditorTheme}
-              onMount={(_editor, monaco) => configureEditorTheme(monaco)}
+              onMount={(editor, monaco) => { editorRef.current = editor; configureEditorTheme(monaco); }}
               loading={<div className="flex h-full items-center justify-center bg-transparent text-xs text-[var(--fx-text-muted)]">Loading editor...</div>}
               onChange={(value) => onChange(active.path, value ?? "")}
               options={editorOptions}

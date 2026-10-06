@@ -1,10 +1,14 @@
 """Provider-independent ToolPlan planner backed by the canonical model router."""
 
 from __future__ import annotations
+from backend.contracts.runtime_policy import AGENT_TURN_SECONDS, GENERATION_TURN_SECONDS, MODEL_REPAIR_SECONDS, GENERATION_VERIFY_REQUESTS, GENERATION_VERIFY_OUTPUT_TOKENS
+from backend.model_router.run_budget import AgentBudgetExceeded, AgentBudgetPersistenceError
 
 import asyncio
+import hashlib
 import inspect
 import json
+import time
 from collections.abc import Callable, Mapping, Sequence
 
 from backend.model_router.models import ModelRequest, ModelResponse, StructuredOutputSpec
@@ -14,6 +18,7 @@ from backend.model_router.normalization import (
     response_payload,
 )
 from backend.model_router.router import ModelRouterService
+from backend.model_router.run_budget import LIMITS, new_budget, snapshot
 from backend.services.llm_service import (
     LLMAuthenticationError,
     LLMConfigurationError,
@@ -23,13 +28,14 @@ from backend.services.llm_service import (
 from .api_planner_provider import (
     ApiPlannerClassification,
     ApiPlannerError,
-    _is_smoke_task,
     _parse_toolplan_content,
+    _normalize_tool_call,
     _partial_json_string_value,
     _planner_instruction,
     _toolplan_parse_error,
     _validate_generated_plan,
 )
+from backend.observability.diagnostics import emit_diagnostic_event
 from .tool_contracts import (
     PRODUCT_TOOLPLAN_VERSION,
     ProductToolCall,
@@ -37,6 +43,7 @@ from .tool_contracts import (
     parse_tool_name,
     provider_function_schema,
     provider_tool_name,
+    _tool_arguments_json_schema,
 )
 from .observation_context import render_observations
 
@@ -52,6 +59,7 @@ class RouterProductPlanner:
     transport_name = "model_router"
     supports_toolplan = True
     supports_streaming = True
+    supports_durable_continuation = True
 
     def __init__(
         self,
@@ -61,11 +69,13 @@ class RouterProductPlanner:
         model_id: str,
         fallback_provider_id: str | None = None,
         fallback_model_id: str | None = None,
-        max_tokens: int = 4096,
-        turn_timeout_s: float = 180.0,
+        max_tokens: int = 8192,
+        turn_timeout_s: float = GENERATION_TURN_SECONDS,
         session_id: str | None = None,
+        diagnostic_smoke: bool = False,
     ) -> None:
         self.router = router
+        self.diagnostic_smoke = diagnostic_smoke is True
         self.provider_id = provider_id
         self.model_id = model_id
         self.session_id = session_id
@@ -87,9 +97,91 @@ class RouterProductPlanner:
             "structured_output_mode": self._mode(provider_id, model_id),
         }
         self._native_messages: list[dict[str, object]] = []
-        self._native_observation_count = 0
+        self._native_observation_ids: set[str] = set()
         self._candidate_messages: list[dict[str, object]] = []
-        self._candidate_observation_count = 0
+        self._candidate_observation_ids: set[str] = set()
+        self._native_task_text: str | None = None
+        self._candidate_task_text: str | None = None
+        self._initial_task_text: str | None = None
+        self._run_budget = new_budget()
+        self._current_run_id: str | None = None
+        self._recovery_hook = None
+        self._deadline: float | None = None
+        self._turn_deadline: float | None = None
+        self._primary_deadline: float | None = None
+        self._sequence_deadline: float | None = None
+        self._active_sequence = "primary"
+        self._verification_reserve_s = 45.0
+        self._request_attempts = {"used": 0, "limit": 6}
+        self._phase = "generation"
+
+    def bind_recovery_events(self, hook) -> None:
+        self._recovery_hook = hook
+
+    def bind_review_cache(self, load, save):
+        self._review_cache = {"load": load, "save": save}
+
+    def bind_deadline(self, deadline: float) -> None:
+        self._deadline = deadline
+
+    def bind_verification_reserve(self, seconds: float) -> None:
+        self._verification_reserve_s = max(0.0, min(float(seconds), 360.0))
+
+    def bind_phase(self, phase):
+        if phase not in {"generation", "review", "intake"}:
+            raise ValueError("AGENT_PHASE_INVALID")
+        self._phase = phase
+        if phase != "generation":
+            self._verification_reserve_s = 0
+
+    def restore_budget(self, value) -> None:
+        restored = new_budget(value)
+        for key in ("requests","output_tokens","input_bytes"):
+            restored[key] = max(restored[key],self._run_budget.get(key,0))
+        for key in ("_persist","_reserve","_settle","_limits","_phase_reserve"):
+            if key in self._run_budget:
+                restored[key] = self._run_budget[key]
+        self._run_budget = restored
+
+    def bind_job_budget(self, job, persist, reserve=None, settle=None) -> None:
+        self._run_budget = new_budget(job["consumed"])
+        if reserve is not None:
+            self._run_budget["_reserve"] = reserve
+        if settle is not None:
+            self._run_budget["_settle"] = settle
+        self._run_budget["_limits"] = {key:job["limits"][key] for key in ("requests","output_tokens","input_bytes")}
+        self._run_budget["_persist"] = persist
+        self._run_budget["_phase_reserve"] = {"requests": GENERATION_VERIFY_REQUESTS, "output_tokens": GENERATION_VERIFY_OUTPUT_TOKENS}
+
+    def budget_snapshot(self) -> dict:
+        return snapshot(self._run_budget)
+
+    def _response_allowance(self, repair_code: str | None = None) -> int:
+        """Keep room for later repair and verification turns near the budget edge."""
+        limits = self._run_budget.get("_limits", LIMITS)
+        remaining_output = int(limits["output_tokens"]) - int(self._run_budget.get("output_tokens", 0))
+        remaining_requests = int(limits["requests"]) - int(self._run_budget.get("requests", 0))
+        if self._phase == "generation":
+            reserve = self._run_budget.get("_phase_reserve", {})
+            remaining_output -= reserve.get("output_tokens", 0)
+            remaining_requests -= reserve.get("requests", 0)
+        if remaining_output < 1024 or remaining_requests < 1:
+            return self.max_tokens  # The shared budget reports the exhausted dimension.
+        if repair_code == "MODEL_OUTPUT_TRUNCATED":
+            from backend.model_router.opencode_catalog import model_data
+            model_limit = model_data(self.provider_id, self.model_id).get("limit", {}).get("output") or 16384
+            previous = int(self._metadata.get("requested_output_tokens") or self.max_tokens)
+            return min(previous * 2, 16384, int(model_limit), remaining_output)
+        planned_turns = min(4, remaining_requests)
+        return min(self.max_tokens, max(1024, remaining_output // planned_turns))
+
+    def bind_interpretation_budget(self):
+        self._phase = "intake"
+        self._verification_reserve_s = 0
+        if callable(self._run_budget.get("_reserve")):
+            return
+        self._run_budget = new_budget()
+        self._run_budget["_limits"] = {"requests":3,"output_tokens":16384,"input_bytes":128000}
 
     def to_safe_metadata(self) -> dict[str, object]:
         return dict(self._metadata)
@@ -111,6 +203,14 @@ class RouterProductPlanner:
             "selection_source": source,
             "selection_inherited": source not in {"session_role", "role"},
         })
+        planner._run_budget = self._run_budget
+        planner._review_cache = getattr(self, "_review_cache", None)
+        planner._deadline = self._deadline
+        planner._verification_reserve_s = self._verification_reserve_s
+        if role == "review":
+            planner._phase = "review"
+            planner._verification_reserve_s = 0
+        planner._recovery_hook = self._recovery_hook
         return planner
 
     def request_turn(self, **kwargs: object) -> ProductToolPlan:
@@ -139,15 +239,77 @@ class RouterProductPlanner:
         )
 
     async def _bounded_turn(self, **kwargs: object) -> ProductToolPlan:
+        turn_started = time.monotonic()
+        # These fields describe this turn. Counters remain cumulative.
+        for key in ("http_status", "provider_request_id", "retry_after_ms", "physical_attempt_id", "first_event_ms", "last_event_ms", "timeout_stage", "duration_ms", "initial_failure_code", "recovery_failure_code", "last_failure_code", "safe_error_code", "last_failure_origin", "last_parse_reason", "last_repair_outcome"):
+            self._metadata[key] = None
+        self._metadata["request_reached_provider"] = False
+        self._metadata.update(request_dispatched=False, response_headers_received=False,
+                               stream_event_count=0, completion_received=False)
+        self._metadata.update(toolplan_repair_attempted=False, repair_skip_reason=None,
+                              initial_attempt_diagnostics=None, repair_attempt_diagnostics=None)
         try:
-            return await asyncio.wait_for(
-                self._request_turn(**kwargs), timeout=self.turn_timeout_s
+            remaining = self._deadline - time.monotonic() if self._deadline is not None else self.turn_timeout_s
+            if remaining <= 0:
+                self._metadata.update(last_failure_origin="job_deadline", last_failure_code="AGENT_RUNTIME_LIMIT_EXCEEDED", safe_error_code="AGENT_RUNTIME_LIMIT_EXCEEDED")
+                raise ApiPlannerError(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                                      "AGENT_RUNTIME_LIMIT_EXCEEDED", {"origin": "job_deadline"})
+            if self._deadline is not None and remaining <= self._verification_reserve_s:
+                self._metadata.update(last_failure_origin="job_time_reserve", last_failure_code="AGENT_RUNTIME_LIMIT_EXCEEDED", safe_error_code="AGENT_RUNTIME_LIMIT_EXCEEDED")
+                raise ApiPlannerError(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                                      "AGENT_RUNTIME_LIMIT_EXCEEDED",
+                                      {"origin": "job_time_reserve", "remaining_seconds": round(remaining, 3)})
+            phase = getattr(self, "_phase", "generation")
+            from .lifecycle import turn_allowance
+            allowance = turn_allowance(phase=phase, remaining=remaining, turn_timeout=self.turn_timeout_s,
+                                      verification_reserve=self._verification_reserve_s, bounded_job=self._deadline is not None)
+            self._turn_deadline = time.monotonic() + allowance
+            primary = min(AGENT_TURN_SECONDS, allowance)
+            if phase == "generation" and allowance >= 2 * MODEL_REPAIR_SECONDS:
+                primary = min(primary, allowance - MODEL_REPAIR_SECONDS - 3.0)
+            self._primary_deadline = time.monotonic() + primary
+            result = await asyncio.wait_for(
+                self._request_turn(**kwargs), timeout=allowance
             )
+            if callable(self._recovery_hook):
+                published = self._recovery_hook({"event_type": "model.retry.settled", "phase": "running"})
+                if inspect.isawaitable(published):
+                    await published
+            return result
+        except AgentBudgetExceeded as exc:
+            self._metadata.update(last_failure_code=exc.code,
+                                  safe_error_code=exc.code,
+                                  last_failure_origin=exc.details["origin"],
+                                  budget_failure=exc.details)
+            raise ApiPlannerError(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                                  exc.code, exc.details) from exc
+        except AgentBudgetPersistenceError as exc:
+            self._metadata.update(last_failure_code="AGENT_BUDGET_PERSISTENCE_FAILED",
+                                  safe_error_code="AGENT_BUDGET_PERSISTENCE_FAILED",
+                                  last_failure_origin="job_budget_persistence")
+            raise ApiPlannerError(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                                  "AGENT_BUDGET_PERSISTENCE_FAILED",
+                                  {"origin": "job_budget_persistence"}) from exc
         except (TimeoutError, asyncio.TimeoutError) as exc:
-            self._metadata["last_failure_code"] = "PROVIDER_TIMEOUT"
+            self._metadata.update(timeout_stage="turn_deadline", duration_ms=max(0, int((time.monotonic() - turn_started) * 1000)))
+            if self._deadline is not None and time.monotonic() >= self._deadline - 0.01:
+                self._metadata["timeout_stage"] = "job_deadline"
+                self._metadata.update(last_failure_origin="job_deadline", last_failure_code="AGENT_RUNTIME_LIMIT_EXCEEDED", safe_error_code="AGENT_RUNTIME_LIMIT_EXCEEDED")
+                raise ApiPlannerError(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                                      "AGENT_RUNTIME_LIMIT_EXCEEDED", {"origin": "job_deadline"}) from exc
+            self._metadata["last_failure_code"] = "AGENT_TURN_LIMIT_EXCEEDED"
+            self._metadata["safe_error_code"] = "AGENT_TURN_LIMIT_EXCEEDED"
+            self._metadata["last_failure_origin"] = "turn_deadline"
+            if self._metadata.get("toolplan_repair_attempted"):
+                self._metadata.update(recovery_failure_code="AGENT_TURN_LIMIT_EXCEEDED", last_repair_outcome="timed_out")
             raise ApiPlannerError(
-                ApiPlannerClassification.NETWORK_ERROR, "PROVIDER_TIMEOUT"
+                ApiPlannerClassification.UNKNOWN_SAFE_FAILURE, "AGENT_TURN_LIMIT_EXCEEDED",
+                {"origin": "turn_deadline", "timeout_stage": "turn_deadline"}
             ) from exc
+        finally:
+            self._turn_deadline = None
+            self._primary_deadline = None
+            self._sequence_deadline = None
 
     async def _request_turn(
         self,
@@ -184,10 +346,13 @@ class RouterProductPlanner:
         self._metadata["last_response_shape"] = None
         self._metadata["last_response_tool_count"] = None
         self._metadata["stream_fallback_used"] = False
+        self._request_attempts = {"used": 0, "limit": 6}
+        self._metadata["initial_failure_code"] = None
+        self._metadata["recovery_failure_code"] = None
         primary_failure: ApiPlannerError | LLMError | None = None
 
         try:
-            response = await self._generate(
+            response = await self._generate_sequence(
                 provider_id=self.provider_id,
                 model_id=self.model_id,
                 task=task_text,
@@ -205,13 +370,19 @@ class RouterProductPlanner:
                 allowed_tools=tools,
                 turn=turn_number,
             )
+        except AgentBudgetExceeded as exc:
+            raise
         except LLMError as exc:
             primary_failure = exc
-            if self._output_repairable(exc):
+            self._metadata["initial_failure_code"] = self._failure_code(exc)
+            if self._output_repairable(exc) and self._repair_allowed():
                 self._metadata["toolplan_repair_attempted"] = True
                 self._metadata["last_repair_outcome"] = "failed"
                 try:
-                    repaired = await self._generate(
+                    stream_fallback = stream and exc.code == "PROVIDER_STREAM_INVALID"
+                    self._metadata["stream_fallback_used"] = stream_fallback
+                    repaired = await self._generate_sequence(
+                        repair=True,
                         provider_id=self.provider_id,
                         model_id=self.model_id,
                         task=task_text,
@@ -219,8 +390,8 @@ class RouterProductPlanner:
                         allowed_tools=tools,
                         run_id=run,
                         turn=turn_number,
-                        stream=stream,
-                        on_summary=on_summary,
+                        stream=False if stream_fallback else stream,
+                        on_summary=None if stream_fallback else on_summary,
                         repair_code=self._failure_code(exc),
                     )
                     return self._decode(
@@ -230,6 +401,8 @@ class RouterProductPlanner:
                         allowed_tools=tools,
                         turn=turn_number,
                     )
+                except AgentBudgetExceeded:
+                    raise
                 except (LLMError, ApiPlannerError) as repair_error:
                     primary_failure = repair_error
                 except ValueError as repair_error:
@@ -239,9 +412,16 @@ class RouterProductPlanner:
         except (ApiPlannerError, ValueError) as exc:
             parsed = exc if isinstance(exc, ApiPlannerError) else _toolplan_parse_error(exc)
             primary_failure = parsed
-            if parsed.safe_code == "AGENT_PROGRESS_CALLBACK_INVALID":
+            self._metadata["initial_failure_code"] = parsed.safe_code
+            if self._request_attempts["used"] >= 6:
                 self._metadata["last_failure_code"] = parsed.safe_code
-                self._metadata["last_failure_origin"] = "progress_callback"
+                raise parsed
+            if parsed.safe_code in {"AGENT_PROGRESS_CALLBACK_INVALID", "AGENT_TOOL_RESULT_MISSING", "AGENT_TASK_CONTEXT_TOO_LARGE", "AGENT_TURN_LIMIT_EXCEEDED"}:
+                self._metadata["last_failure_code"] = parsed.safe_code
+                self._metadata["last_failure_origin"] = parsed.details.get("origin") or "progress_callback"
+                raise parsed
+            if not self._repair_allowed():
+                self._metadata["last_failure_code"] = parsed.safe_code
                 raise parsed
             self._metadata["toolplan_repair_attempted"] = True
             self._metadata["last_repair_outcome"] = "failed"
@@ -249,7 +429,8 @@ class RouterProductPlanner:
             if stream_fallback:
                 self._metadata["stream_fallback_used"] = True
             try:
-                repaired = await self._generate(
+                repaired = await self._generate_sequence(
+                    repair=True,
                     provider_id=self.provider_id,
                     model_id=self.model_id,
                     task=task_text,
@@ -260,6 +441,7 @@ class RouterProductPlanner:
                     stream=False if stream_fallback else stream,
                     on_summary=None if stream_fallback else on_summary,
                     repair_code=None if stream_fallback else parsed.safe_code,
+                    repair_details=parsed.details,
                 )
                 return self._decode(
                     repaired,
@@ -268,6 +450,8 @@ class RouterProductPlanner:
                     allowed_tools=tools,
                     turn=turn_number,
                 )
+            except AgentBudgetExceeded:
+                raise
             except LLMError as repair_error:
                 primary_failure = repair_error
             except (ApiPlannerError, ValueError) as repair_error:
@@ -278,9 +462,13 @@ class RouterProductPlanner:
                 )
 
         if isinstance(primary_failure, LLMError):
+            if self._metadata.get("toolplan_repair_attempted"):
+                self._metadata["recovery_failure_code"] = self._failure_code(primary_failure)
             self._metadata["last_failure_code"] = self._failure_code(primary_failure)
             raise self._provider_error(primary_failure) from primary_failure
         if isinstance(primary_failure, ApiPlannerError):
+            if self._metadata.get("toolplan_repair_attempted"):
+                self._metadata["recovery_failure_code"] = primary_failure.safe_code
             self._metadata["last_failure_code"] = primary_failure.safe_code
             reason = primary_failure.details.get("parse_reason")
             if isinstance(reason, str):
@@ -293,6 +481,49 @@ class RouterProductPlanner:
             ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
             "FORGEX_INTERNAL_ERROR",
         )
+
+    def _repair_allowed(self) -> bool:
+        limits = self._run_budget.get("_limits", LIMITS)
+        reserve = self._run_budget.get("_phase_reserve", {}) if self._phase == "generation" else {}
+        reason = None
+        if self._request_attempts["used"] >= self._request_attempts["limit"]:
+            reason = "physical_attempt_budget"
+        elif limits["requests"] - self._run_budget.get("requests", 0) - reserve.get("requests", 0) < 1:
+            reason = "request_budget"
+        elif limits["output_tokens"] - self._run_budget.get("output_tokens", 0) - reserve.get("output_tokens", 0) < 1024:
+            reason = "output_budget"
+        elif self._turn_deadline is not None and self._turn_deadline - time.monotonic() < MODEL_REPAIR_SECONDS:
+            reason = "time_budget"
+        if reason:
+            self._metadata.update(last_repair_outcome="skipped", repair_skip_reason=reason)
+            if reason in {"request_budget", "output_budget"}:
+                dimension = "requests" if reason == "request_budget" else "output_tokens"
+                consumed = self._run_budget.get(dimension, 0)
+                charge = 1 if dimension == "requests" else 1024  # Minimum useful repair output.
+                uses_reserve = consumed + charge <= limits[dimension] and reserve.get(dimension, 0) > 0
+                error = AgentBudgetExceeded(dimension, consumed, limits[dimension], charge,
+                    code="AGENT_VERIFICATION_RESERVE_REACHED" if uses_reserve else "AGENT_PROVIDER_BUDGET_EXCEEDED")
+                if uses_reserve:
+                    error.details["origin"] = "verification_reserve"
+                raise error
+            return False
+        return True
+
+    async def _generate_sequence(self, *, repair: bool = False, **kwargs: object) -> ModelResponse:
+        self._active_sequence = "repair" if repair else "primary"
+        self._sequence_deadline = (min(self._turn_deadline, time.monotonic() + MODEL_REPAIR_SECONDS)
+            if repair and self._turn_deadline is not None else self._primary_deadline)
+        try:
+            if self._sequence_deadline is None:
+                return await self._generate(**kwargs)
+            return await asyncio.wait_for(self._generate(**kwargs),
+                timeout=max(0.001, self._sequence_deadline - time.monotonic()))
+        except (TimeoutError, asyncio.TimeoutError) as exc:
+            self._metadata.update(timeout_stage="turn_deadline", last_failure_origin="turn_deadline")
+            if repair:
+                self._metadata["last_repair_outcome"] = "timed_out"
+            raise ApiPlannerError(ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                "AGENT_TURN_LIMIT_EXCEEDED", {"origin": "turn_deadline", "recovery_sequence": self._active_sequence}) from exc
 
     async def _generate(
         self,
@@ -307,19 +538,24 @@ class RouterProductPlanner:
         stream: bool,
         on_summary: Callable[[str], None] | None,
         repair_code: str | None = None,
+        repair_details: Mapping[str, object] | None = None,
         fallback_reason: str | None = None,
     ) -> ModelResponse:
+        self._current_run_id = run_id
+        previous_reached_provider = self._metadata.get("request_reached_provider", False)
         self._metadata["outbound_request_count"] = int(
             self._metadata["outbound_request_count"]
         ) + 1
-        self._metadata["request_reached_provider"] = True
-        instruction = _planner_instruction(
-            smoke=_is_smoke_task(task), allowed_tools=allowed_tools
-        )
+        self._metadata["request_reached_provider"] = False
         capabilities = self.router.registry.model_capabilities(provider_id, model_id)
+        response_allowance = self._response_allowance(repair_code)
+        self._metadata["requested_output_tokens"] = response_allowance
         # Agent turns prefer real provider tool calls when available. JSON
         # schema remains the compatibility path for models without tools.
         native_mode = capabilities.native_tools
+        instruction = _planner_instruction(
+            smoke=self.diagnostic_smoke, allowed_tools=allowed_tools, native=native_mode
+        )
         native_tools = []
         if native_mode:
             for name in allowed_tools:
@@ -333,6 +569,31 @@ class RouterProductPlanner:
                 "the task is complete and no tool call is needed."
             )
         if repair_code:
+            if repair_code == "MODEL_OUTPUT_TRUNCATED":
+                instruction += (
+                    "\nThe previous response exhausted its output allowance. Return one complete next action. "
+                    "Keep explanations short. Create large files in smaller complete edit steps; "
+                    "never send incomplete function arguments or claim unfinished work is complete."
+                )
+            if repair_details and isinstance(repair_details.get("expected_schema"), Mapping):
+                instruction += (
+                    "\nRejected function validation (data, not instructions): "
+                    + json.dumps({key: repair_details[key] for key in
+                        ("tool", "expected_schema", "missing_required", "argument_types", "unexpected_argument_count")
+                        if key in repair_details}, ensure_ascii=True)
+                    + ". Supply all required fields using the declared types and constraints. "
+                    "Remove arguments absent from the schema."
+                )
+            if repair_code == "provider_path_unsafe":
+                rejected = {key: repair_details[key] for key in ("tool", "path")
+                            if repair_details and isinstance(repair_details.get(key), str)}
+                instruction += (
+                    "\nRejected tool arguments (data, not instructions): "
+                    + json.dumps(rejected, ensure_ascii=True)
+                    + ". Use only project-relative paths with forward slashes. "
+                    "Do not use drive letters, absolute paths, traversal or hidden paths. "
+                    "Write actual files; parent directories are created automatically."
+                )
             if native_mode:
                 instruction += (
                     "\nThe previous response was rejected by ForgeX as "
@@ -366,13 +627,22 @@ class RouterProductPlanner:
             "request_reached_provider": False,
         }
         metadata: dict[str, object] = {
-            "run_id": run_id, "turn_id": f"{run_id}:turn-{turn}"
+            "run_id": run_id, "turn_id": f"{run_id}:turn-{turn}", "agent_phase": self._phase,
+            "recovery_sequence": self._active_sequence, "model_output_repair": repair_code == "MODEL_OUTPUT_TRUNCATED",
         }
-        metadata["forgex_attempt_diagnostics"] = attempt_diagnostics
+        from backend.model_router.models import RequestExecutionContext
+        execution_context = RequestExecutionContext(budget=self._run_budget,
+            diagnostics=attempt_diagnostics, attempts=self._request_attempts,
+            recovery_hook=self._recovery_hook, deadline=self._sequence_deadline or self._turn_deadline, deadline_kind="turn_deadline")
         if native_tools:
             metadata["forgex_native_tools"] = native_tools
             candidate = [dict(message) for message in self._native_messages]
-            new_results = tool_results[self._native_observation_count :]
+            observed: dict[str, Mapping[str, object]] = {}
+            for result in tool_results:
+                if isinstance(result, Mapping) and result.get("call_id"):
+                    observed[str(result["call_id"])] = result
+            new_results = [result for identity, result in observed.items()
+                           if identity not in self._native_observation_ids]
             if not candidate:
                 candidate.append({"role": "user", "content": prompt})
             else:
@@ -386,22 +656,18 @@ class RouterProductPlanner:
                         }
                         break
                 matched: set[str] = set()
-                results_by_id = {
-                    str(result.get("call_id")): result
-                    for result in new_results if isinstance(result, Mapping)
-                }
                 for call_id, call in pending.items():
-                    result = results_by_id.get(call_id, {
-                        "call_id": call_id, "status": "failed",
-                        "error": "tool_result_missing",
-                    })
+                    result = observed.get(call_id)
+                    if result is None or call_id in self._native_observation_ids:
+                        raise ApiPlannerError(
+                            ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
+                            "AGENT_TOOL_RESULT_MISSING",
+                            {"origin": "conversation_projection", "call_id": call_id},
+                        )
                     candidate.append({
                         "role": "tool", "tool_call_id": call_id,
                         "name": str(call.get("name") or "tool"),
-                        "content": json.dumps(
-                            dict(result), ensure_ascii=True, sort_keys=True,
-                            default=str,
-                        )[:16000],
+                        "content": _bounded_tool_result(result),
                     })
                     matched.add(call_id)
                 unmatched = [
@@ -415,15 +681,21 @@ class RouterProductPlanner:
                         "content": "Additional trusted Agent observations:\n"
                         + render_observations(unmatched, max_chars=16000),
                     })
+                if task != self._native_task_text:
+                    candidate.append({"role": "user", "content": _current_task_message(task)})
             candidate, compacted = _compact_native_messages(
                 candidate,
                 max_chars=_native_message_budget_chars(
                     context_window=capabilities.context_window,
-                    max_output_tokens=self.max_tokens,
+                    max_output_tokens=response_allowance,
                     instruction=instruction,
                     native_tools=native_tools,
                 ),
             )
+            if (self._native_messages and task != self._initial_task_text
+                    and not any(message.get("content") == _current_task_message(task)
+                                for message in candidate)):
+                candidate.insert(1, {"role": "user", "content": _current_task_message(task)})
             if compacted:
                 self._metadata["native_context_compactions"] = int(
                     self._metadata.get("native_context_compactions") or 0
@@ -433,7 +705,12 @@ class RouterProductPlanner:
                 ) + compacted
             metadata["forgex_messages"] = candidate
             self._candidate_messages = candidate
-            self._candidate_observation_count = len(tool_results)
+            self._candidate_observation_ids = self._native_observation_ids | {
+                str(result["call_id"]) for result in new_results if result.get("call_id")
+            }
+            self._candidate_task_text = task
+            if self._initial_task_text is None:
+                self._initial_task_text = task
         request = ModelRequest(
             prompt=prompt,
             system_prompt=instruction,
@@ -441,7 +718,7 @@ class RouterProductPlanner:
             provider_id=provider_id,
             model_id=model_id,
             temperature=0,
-            max_tokens=self.max_tokens,
+            max_tokens=response_allowance,
             allow_fallback=False,
             structured_output=(
                 None if native_tools else StructuredOutputSpec(
@@ -449,14 +726,24 @@ class RouterProductPlanner:
                 )
             ),
             metadata=metadata,
+            execution_context=execution_context,
         )
         if not stream or not capabilities.streaming:
             try:
                 return await self.router.generate_model(request)
             except LLMError as exc:
+                if exc.code == "FORGEX_REQUEST_INVALID":
+                    self._metadata["outbound_request_count"] -= 1
+                    self._metadata["request_reached_provider"] = previous_reached_provider
+                    self._metadata["last_failure_origin"] = "request_validation"
                 self._record_provider_failure(exc)
                 raise
             except ValueError as exc:
+                if isinstance(exc,AgentBudgetExceeded):
+                    if not attempt_diagnostics.get("physical_request_count"):
+                        self._metadata["outbound_request_count"] -= 1
+                        self._metadata["request_reached_provider"] = previous_reached_provider
+                    raise
                 raise ApiPlannerError(
                     ApiPlannerClassification.RESPONSE_INVALID,
                     "PROVIDER_ENVELOPE_INVALID",
@@ -498,6 +785,10 @@ class RouterProductPlanner:
         except ApiPlannerError:
             raise
         except LLMError as exc:
+            if exc.code == "FORGEX_REQUEST_INVALID":
+                self._metadata["outbound_request_count"] -= 1
+                self._metadata["request_reached_provider"] = previous_reached_provider
+                self._metadata["last_failure_origin"] = "request_validation"
             self._record_provider_failure(exc)
             raise
         except ProviderNormalizationError as exc:
@@ -506,6 +797,11 @@ class RouterProductPlanner:
                 exc.code, {"origin": "stream_iterator"},
             ) from exc
         except ValueError as exc:
+            if isinstance(exc,AgentBudgetExceeded):
+                if not attempt_diagnostics.get("physical_request_count"):
+                    self._metadata["outbound_request_count"] -= 1
+                    self._metadata["request_reached_provider"] = previous_reached_provider
+                raise
             raise ApiPlannerError(
                 ApiPlannerClassification.RESPONSE_INVALID,
                 "PROVIDER_STREAM_INVALID",
@@ -520,6 +816,47 @@ class RouterProductPlanner:
                 ApiPlannerClassification.RESPONSE_INVALID, exc.code,
                 {"origin": "stream_assembly"},
             ) from exc
+
+    def _parse_native_call(self, raw: Mapping[str, object], index: int, turn: int) -> ProductToolCall:
+        """Keep precise validation hints without recording argument values."""
+        normalized = None
+        try:
+            normalized = _normalize_tool_call({
+                "id": raw.get("id") or f"call_{index}",
+                "type": raw.get("name"), "arguments": raw.get("arguments"),
+            }, index)
+            return ProductToolCall.parse(normalized)
+        except (TypeError, ValueError) as exc:
+            parsed = _toolplan_parse_error(exc if isinstance(exc, ValueError)
+                else ValueError("product_tool_call_schema_invalid"))
+            details = dict(parsed.details, origin="tool_validation")
+            try:
+                tool = parse_tool_name(str(normalized["type"] if normalized else raw.get("name")))
+            except ValueError:
+                tool = None
+            if tool is not None:
+                schema = _tool_arguments_json_schema(tool)
+                args = normalized["arguments"] if normalized else raw.get("arguments")
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = None
+                properties = schema.get("properties", {})
+                keys = set(args) if isinstance(args, Mapping) else set()
+                details.update(tool=tool.value, expected_schema=schema,
+                    missing_required=sorted(set(schema.get("required", ())) - keys),
+                    unexpected_argument_count=len(keys - set(properties)),
+                    argument_types={key: type(args[key]).__name__ for key in properties if key in keys})
+            self._metadata.update(last_failure_code=parsed.safe_code,
+                last_failure_origin="tool_validation", last_parse_reason=details["parse_reason"])
+            emit_diagnostic_event(component="provider", event="provider.toolplan.rejected",
+                level="WARNING", provider=self.provider_id, model=self.model_id,
+                run_id=self._current_run_id, turn_id=f"{self._current_run_id}:turn-{turn}",
+                error_code=parsed.safe_code, **{key: details[key] for key in
+                    ("tool", "parse_reason", "missing_required", "argument_types", "unexpected_argument_count")
+                    if key in details})
+            raise ApiPlannerError(ApiPlannerClassification(parsed.classification), parsed.safe_code, details) from exc
 
     def _decode(
         self,
@@ -536,6 +873,9 @@ class RouterProductPlanner:
                 "MODEL_OUTPUT_TRUNCATED",
             )
         native_mode = self._mode(self.provider_id, self.model_id) == "native_tools"
+        if not (response.text or "").strip() and not response.tool_calls and response.structured_output is None:
+            raise ApiPlannerError(ApiPlannerClassification.CONTENT_MISSING, "MODEL_OUTPUT_EMPTY",
+                                  {"origin": "model_output"})
         self._metadata["last_response_tool_count"] = len(response.tool_calls)
         self._metadata["last_response_shape"] = (
             "native_tool_calls" if response.tool_calls else
@@ -559,24 +899,16 @@ class RouterProductPlanner:
                 if legacy_call:
                     self._metadata["last_response_shape"] = "legacy_tool_plan"
         if native_mode and compatibility_payload is None:
-            try:
-                calls = tuple(
-                    ProductToolCall.parse({
-                        "id": call.get("id") or f"call_{index}",
-                        "type": call.get("name"),
-                        "arguments": call.get("arguments"),
-                    })
-                    for index, call in enumerate(response.tool_calls)
-                )
-                plan = ProductToolPlan(
-                    PRODUCT_TOOLPLAN_VERSION,
-                    (response.text or ("Using ForgeX tools." if calls else "Task complete."))[:16000],
-                    calls,
-                    not calls,
-                )
-                normalized = False
-            except (TypeError, ValueError) as exc:
-                raise _toolplan_parse_error(ValueError("product_tool_call_schema_invalid")) from exc
+            calls = tuple(self._parse_native_call(call, index, turn)
+                          for index, call in enumerate(response.tool_calls))
+            plan = ProductToolPlan(
+                PRODUCT_TOOLPLAN_VERSION,
+                (response.text or ("Using ForgeX tools." if calls else "Task complete."))[:16000],
+                calls,
+                not calls,
+            )
+            normalized = any(call.arguments != raw.get("arguments")
+                             for call, raw in zip(calls, response.tool_calls))
         else:
             payload = (
                 compatibility_payload
@@ -592,14 +924,24 @@ class RouterProductPlanner:
                 plan, normalized = _parse_toolplan_content(payload)
             except ValueError as exc:
                 raise _toolplan_parse_error(exc) from exc
-        _validate_generated_plan(
-            plan,
-            smoke=_is_smoke_task(task),
-            allowed_tools=allowed_tools,
-            task=task,
-            tool_results=tool_results,
-            turn=turn,
-        )
+        try:
+            _validate_generated_plan(
+                plan,
+                smoke=self.diagnostic_smoke,
+                allowed_tools=allowed_tools,
+                task=task,
+                tool_results=tool_results,
+                turn=turn,
+            )
+        except ApiPlannerError as exc:
+            self._metadata.update(last_failure_code=exc.safe_code,
+                                  last_failure_origin="tool_validation")
+            emit_diagnostic_event(component="provider", event="provider.toolplan.rejected",
+                level="WARNING", provider=self.provider_id, model=self.model_id,
+                run_id=self._current_run_id, turn_id=f"{self._current_run_id}:turn-{turn}",
+                error_code=exc.safe_code, tool=exc.details.get("tool"),
+                rejected_path=exc.details.get("path"))
+            raise
         if native_mode:
             assistant_calls = []
             for index, call in enumerate(plan.tool_calls):
@@ -619,10 +961,13 @@ class RouterProductPlanner:
             self._native_messages = [
                 *self._candidate_messages, assistant,
             ]
-            self._native_observation_count = self._candidate_observation_count
+            self._native_observation_ids = self._candidate_observation_ids
+            self._native_task_text = self._candidate_task_text
         self._metadata["toolplan_normalized"] = normalized
         if self._metadata.get("last_repair_outcome") == "failed":
             self._metadata["last_repair_outcome"] = "succeeded"
+            self._metadata["last_failure_code"] = None
+            self._metadata["last_failure_origin"] = None
         return plan
 
     def _mode(self, provider_id: str, model_id: str) -> str:
@@ -639,20 +984,33 @@ class RouterProductPlanner:
             self._metadata["physical_request_count"] = int(
                 self._metadata.get("physical_request_count") or 0
             ) + max(0, physical)
+            if physical == 0:
+                # A locally rejected reservation did not replace the last HTTP result.
+                return
         for key in (
             "request_reached_provider",
+            "request_dispatched",
             "http_status",
             "provider_request_id",
             "retry_after_ms",
             "last_attempt_succeeded",
+            "physical_attempt_id", "response_headers_received", "first_event_ms",
+            "last_event_ms", "stream_event_count", "completion_received", "timeout_stage", "duration_ms",
+            "requested_output_tokens", "effective_output_tokens", "finish_reason", "input_tokens", "output_tokens",
+            "reasoning_tokens", "total_tokens", "text_event_count", "reasoning_event_count", "tool_event_count",
+            "worker_exit_code", "worker_cleanup_incomplete",
         ):
             value = values.get(key)
-            if value is not None:
+            if key in values:
                 self._metadata[key] = value
+        from backend.contracts.diagnostics import safe_provider_diagnostics
+        key = "initial_attempt_diagnostics" if self._active_sequence == "primary" else "repair_attempt_diagnostics"
+        self._metadata[key] = safe_provider_diagnostics(values)
 
     def _record_provider_failure(self, exc: LLMError) -> None:
         self._metadata["safe_error_code"] = str(exc.code)
         self._metadata["last_failure_code"] = str(exc.code)
+        self._metadata["last_failure_origin"] = exc.details.get("origin") or "provider_transport"
         if isinstance(exc.status_code, int):
             self._metadata["http_status"] = exc.status_code
             self._metadata["request_reached_provider"] = True
@@ -677,6 +1035,7 @@ class RouterProductPlanner:
             "MODEL_OUTPUT_TRUNCATED",
             "PROVIDER_CONTENT_MISSING",
             "TOOL_ARGUMENTS_INVALID",
+            "PROVIDER_STREAM_INVALID",
         }
 
     @staticmethod
@@ -689,6 +1048,7 @@ class RouterProductPlanner:
     def _provider_error(exc: LLMError) -> ApiPlannerError:
         code = str(exc.code)
         classification = {
+            "FORGEX_REQUEST_INVALID": ApiPlannerClassification.UNKNOWN_SAFE_FAILURE,
             "PROVIDER_AUTH_ERROR": ApiPlannerClassification.AUTH_INVALID,
             "PROVIDER_RATE_LIMITED": ApiPlannerClassification.RATE_LIMITED,
             "PROVIDER_TIMEOUT": ApiPlannerClassification.NETWORK_ERROR,
@@ -706,6 +1066,8 @@ class RouterProductPlanner:
         safe_details: dict[str, object] = {
             "retryable": bool(exc.retryable),
         }
+        if isinstance(exc.details.get("origin"), str):
+            safe_details["origin"] = exc.details["origin"]
         if isinstance(exc.status_code, int):
             safe_details["provider_status"] = exc.status_code
         retry_after = exc.details.get("retry_after_ms")
@@ -724,6 +1086,28 @@ class RouterProductPlanner:
         except RuntimeError:
             return asyncio.run(awaitable)  # type: ignore[arg-type,return-value]
         raise RuntimeError("RouterProductPlanner must run in the Agent worker thread")
+
+
+def _current_task_message(task: str) -> str:
+    return "Current ForgeX task context and latest user revision:\n" + task
+
+
+def _bounded_tool_result(result: Mapping[str, object], *, max_chars: int = 16000) -> str:
+    serialized = json.dumps(dict(result), ensure_ascii=True, sort_keys=True, default=str)
+    if len(serialized) <= max_chars:
+        return serialized
+    output = result.get("output")
+    evidence = {
+        key: output[key] for key in ("path", "success", "exit_code", "source_revision",
+                               "workspace_revision", "build_id", "artifact_id")
+        if isinstance(output, Mapping) and key in output
+    }
+    return json.dumps({
+        "call_id": result.get("call_id"), "tool": result.get("tool"),
+        "status": result.get("status"), "error": result.get("error"),
+        "output_truncated": True, "output_sha256": hashlib.sha256(serialized.encode()).hexdigest(),
+        "evidence": evidence, "output_preview": serialized[:4000],
+    }, ensure_ascii=True, sort_keys=True, default=str)
 
 
 def _native_message_budget_chars(

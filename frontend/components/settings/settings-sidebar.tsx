@@ -33,9 +33,9 @@ interface SettingsSidebarProps {
 
 export function SettingsSidebar({ selected, onSelect }: SettingsSidebarProps) {
   return (
-    <aside className="fx-side-panel w-52 shrink-0 overflow-y-auto border-r border-[var(--fx-border)] p-3 lg:w-60">
+    <aside className="fx-settings-sidebar fx-side-panel w-52 shrink-0 overflow-y-auto border-r border-[var(--fx-border)] p-3 lg:w-60">
       <div className="fx-kicker mb-3 px-2 pt-1">Workspace</div>
-      <nav className="flex flex-col gap-1.5">
+      <nav aria-label="Settings categories" className="flex flex-col gap-1.5">
         {categories.map((category) => {
           const Icon = category.icon;
           const active = selected === category.id;

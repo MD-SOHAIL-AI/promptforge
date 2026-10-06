@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "installer_sha256": "REPLACE_WITH_FINAL_SIGNED_INSTALLER_SHA256",
+  "operator": "",
+  "completed_at": "",
+  "cases": [
+    {
+      "os": "windows-10-x64",
+      "scenario": "clean-install-no-python-node",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-10-x64",
+      "scenario": "upgrade-preserves-data",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-10-x64",
+      "scenario": "uninstall-preserves-data",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-10-x64",
+      "scenario": "usb-unplug-reconnect",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-10-x64",
+      "scenario": "offline-model-recovery",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-10-x64",
+      "scenario": "backend-crash-resume",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-11-x64",
+      "scenario": "clean-install-no-python-node",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-11-x64",
+      "scenario": "upgrade-preserves-data",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-11-x64",
+      "scenario": "uninstall-preserves-data",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-11-x64",
+      "scenario": "usb-unplug-reconnect",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-11-x64",
+      "scenario": "offline-model-recovery",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    },
+    {
+      "os": "windows-11-x64",
+      "scenario": "backend-crash-resume",
+      "passed": false,
+      "evidence": "",
+      "notes": ""
+    }
+  ]
+}

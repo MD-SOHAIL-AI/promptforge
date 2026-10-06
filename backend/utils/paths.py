@@ -11,7 +11,7 @@ __all__ = ["PathManager"]
 class PathManager:
     """Resolve and create ForgeX managed filesystem directories."""
 
-    __slots__ = ("_root",)
+    __slots__ = ("_root", "_data_root")
 
     def __init__(self, root: str | Path | None = None) -> None:
         candidate: str | Path
@@ -25,6 +25,9 @@ class PathManager:
             raise TypeError("root must be a string, Path, or None")
         self._root = Path(candidate).expanduser().resolve()
         self._ensure_directory(self._root)
+        data_root = os.getenv("FORGEX_DATA_DIR") if root is None else None
+        self._data_root = Path(data_root).expanduser().resolve() if data_root else self._root
+        self._ensure_directory(self._data_root)
 
     def project_root(self) -> Path:
         """Return the absolute ForgeX project root."""
@@ -54,7 +57,7 @@ class PathManager:
     def workspace_directory(self) -> Path:
         """Return the repository workspace root."""
 
-        return self._ensure_directory(self._root / "workspace")
+        return self._ensure_directory(self._data_root / "workspace")
 
     def workspace_projects_directory(self) -> Path:
         """Return the workspace project directory."""
@@ -77,7 +80,7 @@ class PathManager:
         return self._workspace_directory("logs")
 
     def _managed_directory(self, name: str) -> Path:
-        return self._ensure_directory(self._root / ".promptforge" / name)
+        return self._ensure_directory(self._data_root / ".promptforge" / name)
 
     def _workspace_directory(self, name: str) -> Path:
         return self._ensure_directory(self.workspace_directory() / name)

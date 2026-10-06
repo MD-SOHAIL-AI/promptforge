@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from backend.security.workspace_io import iter_workspace_files
 
 __all__ = [
     "ExternalProjectEnvironment",
@@ -161,11 +162,34 @@ class ProjectImportService:
         async with self._lock:
             return await asyncio.to_thread(self._refresh_project_sync, project_id)
 
+    async def forget_project(self, project_id: str) -> bool:
+        """Remove only a recent-folder registration, including a missing folder."""
+        async with self._lock:
+            return await asyncio.to_thread(self._forget_project_sync, project_id)
+
+    async def relocate_project(self, project_id: str, project_path: str) -> ExternalProjectRecord:
+        async with self._lock:
+            registry = self._read_registry()
+            record = registry.get(project_id)
+            if record is None:
+                raise ProjectImportError("Recent folder was not found", code="PROJECT_NOT_FOUND")
+            return await asyncio.to_thread(self._import_project_sync, project_path,
+                previous_board=str(record.get("target_board") or ""), relocated_id=project_id)
+
+    def _forget_project_sync(self, project_id: str) -> bool:
+        registry = self._read_registry()
+        if project_id not in registry:
+            return False
+        del registry[project_id]
+        self._write_registry(registry)
+        return True
+
     def _import_project_sync(
         self,
         project_path: str | Path,
         *,
         previous_board: str | None,
+        relocated_id: str | None = None,
     ) -> ExternalProjectRecord:
         root = _validate_external_root(project_path)
         ini_path = root / "platformio.ini"
@@ -185,8 +209,10 @@ class ProjectImportService:
             None,
         )
         manifest_project_id = _safe_manifest_id(promptforge_manifest.get("project_id")) if promptforge_manifest else None
-        project_id = existing_id or manifest_project_id or _project_id(root)
-        if project_id in registry and existing_id is None:
+        if relocated_id and existing_id and relocated_id != existing_id:
+            raise ProjectImportError("This folder belongs to another recent project", code="PROJECT_PATH_REGISTERED")
+        project_id = relocated_id or existing_id or manifest_project_id or _project_id(root)
+        if project_id in registry and existing_id is None and relocated_id is None:
             project_id = f"{project_id}-{uuid.uuid4().hex[:8]}"
 
         created_at = _parse_datetime(str(registry[project_id]["created_at"])) if project_id in registry else now
@@ -536,18 +562,8 @@ def _count_files(root: Path) -> int:
 
 
 def _iter_external_files(root: Path):
-    for current, directories, files in os.walk(root):
-        current_path = Path(current)
-        directories[:] = sorted(
-            directory
-            for directory in directories
-            if directory not in _IGNORED_DIRECTORIES
-            and not (current_path / directory).is_symlink()
-        )
-        for filename in sorted(files):
-            path = current_path / filename
-            if path.name in _IGNORED_FILES or path.is_symlink():
-                continue
+    for path in iter_workspace_files(root, ignored_dirs=_IGNORED_DIRECTORIES):
+        if path.name not in _IGNORED_FILES:
             yield path
 
 

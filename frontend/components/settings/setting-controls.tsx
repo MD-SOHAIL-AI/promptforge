@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Minus, Plus } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { ForgeXSettingValue } from "@/types";
 
@@ -11,11 +11,12 @@ interface ControlProps {
   value: ForgeXSettingValue;
   disabled?: boolean;
   onChange: (value: ForgeXSettingValue) => void;
+  onPreview?: (value: ForgeXSettingValue) => void;
 }
 
 function SettingRow({ label, description, control }: { label: string; description?: string; control: ReactNode }) {
   return (
-    <div className="group flex min-w-0 items-center justify-between gap-6 border-b border-[var(--fx-border-soft)] py-3.5 last:border-b-0">
+    <div className="fx-setting-row group flex min-w-0 items-center justify-between gap-6 border-b border-[var(--fx-border-soft)] py-3.5 last:border-b-0" data-setting-label={label}>
       <div className="min-w-0">
         <div className="text-[13px] font-medium text-[var(--fx-text)]">{label}</div>
         {description ? <div className="mt-1 max-w-xl text-[11px] leading-4 text-[var(--fx-text-muted)]">{description}</div> : null}
@@ -59,24 +60,38 @@ export function SettingSelect({ label, description, value, options, optionLabels
 
 export function SettingNumber({ label, description, value, min, max, disabled, onChange }: ControlProps & { min?: number; max?: number }) {
   const number = Number(value ?? 0);
-  const update = (next: number) => onChange(Math.min(max ?? next, Math.max(min ?? next, next)));
+  const [draft, setDraft] = useState(String(number));
+  const dirty = useRef(false);
+  useEffect(() => { setDraft(String(number)); }, [number]);
+  const update = (next: number) => {
+    if (!Number.isFinite(next)) { setDraft(String(number)); return; }
+    const clamped = Math.min(max ?? next, Math.max(min ?? next, next));
+    setDraft(String(clamped)); onChange(clamped);
+  };
+  const commit = () => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    if (!draft.trim()) setDraft(String(number));
+    else update(Number(draft));
+  };
   return (
     <SettingRow label={label} description={description} control={
       <div className="fx-control flex h-9 items-center overflow-hidden">
         <button type="button" className="fx-icon-button h-full w-8 rounded-none" disabled={disabled || number <= (min ?? -Infinity)} onClick={() => update(number - 1)} aria-label={`Decrease ${label}`}><Minus className="h-3 w-3" /></button>
-        <input type="number" min={min} max={max} className="h-full w-16 border-x border-[var(--fx-border)] bg-transparent text-center text-xs outline-none" value={number} disabled={disabled} onChange={(event) => update(Number(event.target.value))} aria-label={label} />
+        <input type="number" min={min} max={max} className="h-full w-20 border-x border-[var(--fx-border)] bg-transparent text-center text-xs outline-none" value={draft} disabled={disabled} onChange={(event) => {dirty.current = true; setDraft(event.target.value);}} onBlur={commit} onKeyDown={event => {if (event.key === "Enter") commit();}} aria-label={label} />
         <button type="button" className="fx-icon-button h-full w-8 rounded-none" disabled={disabled || number >= (max ?? Infinity)} onClick={() => update(number + 1)} aria-label={`Increase ${label}`}><Plus className="h-3 w-3" /></button>
       </div>
     } />
   );
 }
 
-export function SettingSlider({ label, description, value, min, max, suffix = "", disabled, onChange }: ControlProps & { min: number; max: number; suffix?: string }) {
+export function SettingSlider({ label, description, value, min, max, suffix = "", disabled, onChange, onPreview }: ControlProps & { min: number; max: number; suffix?: string }) {
   const number = Number(value ?? min);
   const [draft, setDraft] = useState(number);
   useEffect(() => setDraft(number), [number]);
+  const dirty = useRef(false);
   const commit = () => {
-    if (draft !== number) onChange(draft);
+    if (dirty.current) { dirty.current = false; onChange(draft); }
   };
   return (
     <SettingRow label={label} description={description} control={
@@ -87,7 +102,7 @@ export function SettingSlider({ label, description, value, min, max, suffix = ""
           max={max}
           value={draft}
           disabled={disabled}
-          onChange={(event) => setDraft(Number(event.target.value))}
+          onChange={(event) => { const next = Number(event.target.value); dirty.current = true; setDraft(next); onPreview?.(next); }}
           onPointerUp={commit}
           onKeyUp={commit}
           onBlur={commit}
@@ -100,14 +115,20 @@ export function SettingSlider({ label, description, value, min, max, suffix = ""
   );
 }
 
-export function SettingText({ label, description, value, disabled, onChange }: ControlProps) {
-  return <SettingRow label={label} description={description} control={<input className="fx-control h-9 w-56 px-3 text-xs outline-none" value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(event.target.value)} aria-label={label} />} />;
-}
-
-export function SettingList({ label, description, value, disabled, onChange }: ControlProps) {
+function DraftText({ label, description, value, disabled, onChange, list = false }: ControlProps & {list?: boolean}) {
   const text = Array.isArray(value) ? value.join(", ") : String(value ?? "");
-  return <SettingRow label={label} description={description} control={<input className="fx-control h-9 w-72 px-3 text-xs outline-none" value={text} disabled={disabled} onChange={(event) => onChange(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} aria-label={label} />} />;
+  const [draft, setDraft] = useState(text);
+  const dirty = useRef(false);
+  useEffect(() => { setDraft(text); }, [text]);
+  const commit = () => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    onChange(list ? draft.split(",").map(item => item.trim()).filter(Boolean) : draft);
+  };
+  return <SettingRow label={label} description={description} control={<input className="fx-control h-9 w-64 max-w-full px-3 text-xs outline-none" value={draft} disabled={disabled} onChange={event => {dirty.current = true; setDraft(event.target.value);}} onBlur={commit} onKeyDown={event => {if (event.key === "Enter") commit();}} aria-label={label} />} />;
 }
+export function SettingText(props: ControlProps) { return <DraftText {...props} />; }
+export function SettingList(props: ControlProps) { return <DraftText {...props} list />; }
 
 export function SettingsCard({ title, description, icon, children }: { title: string; description?: string; icon?: ReactNode; children: ReactNode }) {
   return (

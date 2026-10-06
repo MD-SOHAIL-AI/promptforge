@@ -25,6 +25,9 @@ from ..progress import ExecutionProgressHub
 from ..schemas.common import ErrorResponse
 from ..schemas.execution import ExecuteRequest, ExecuteResponse
 from ..serialization import execution_response, safe_json
+from backend.agent_runtime.checkpoint_files import copy_checkpoint_tree
+from backend.changes import ChangeSetError
+from backend.changes.service import STAGE_ONLY_INTERNAL_FILES
 
 router = APIRouter(tags=["execution"])
 logger = logging.getLogger("promptforge.api")
@@ -147,6 +150,30 @@ async def execute_workflow(
             },
         )
         try:
+            terminal_payload = None
+            async def workflow_progress(event: str, payload: Any) -> None:
+                nonlocal terminal_payload
+                if active_workspace is not None and event == "WORKFLOW_COMPLETED":
+                    terminal_payload = safe_json(payload)
+                    return
+                await progress(event, payload)
+            workflow_workspace = active_workspace
+            stage = None
+            baseline = None
+            change_service = services(request).change_set_service
+            if active_workspace is not None:
+                # Compatibility requests receive the same managed staging
+                # boundary as product runs. Legacy handlers never get a live
+                # project's writable path through this HTTP route.
+                original_root = Path(str(active_workspace["rootPath"])).resolve(strict=True)
+                baseline = await asyncio.to_thread(change_service.inspect_workspace, original_root)
+                stage = change_service.create_stage()
+                await asyncio.to_thread(copy_checkpoint_tree, original_root, stage)
+                workflow_workspace = dict(active_workspace)
+                workflow_workspace.update(original_workspace_root=str(original_root),
+                    rootPath=str(stage), root_path=str(stage), workspace_root=str(stage),
+                    platformioIniPath=str(stage / "platformio.ini"),
+                    platformio_ini_path=str(stage / "platformio.ini"))
             outcome = await execute_prompt(
                 body.prompt,
                 code_generation_service=code_generation_service,
@@ -154,12 +181,32 @@ async def execute_workflow(
                 subprocess_manager=subprocess_manager,
                 serial_runtime=services(request).serial_runtime,
                 task_id=task_id,
-                active_workspace=active_workspace,
+                active_workspace=workflow_workspace,
                 tool_executor=services(request).tool_executor,
-                progress_callback=progress,
+                progress_callback=workflow_progress,
                 metrics_registry=services(request).metrics_registry,
                 runtime_logger=services(request).runtime_logger,
             )
+            if stage is not None and baseline is not None:
+                staged = await asyncio.to_thread(change_service.inspect_workspace, stage)
+                paths = set(staged.files) - STAGE_ONLY_INTERNAL_FILES
+                deleted = set(baseline.files) - paths
+                try:
+                    change_set = await asyncio.to_thread(change_service.create_from_stage,
+                        provider_id="legacy_workflow", workspace_root=baseline.workspace_root,
+                        stage_root=stage, baseline=baseline,
+                        authorized_paths=paths | deleted, deleted_paths=deleted,
+                        authorization_source="explicit_review", review_required=True)
+                except ChangeSetError as exc:
+                    if exc.code != "CHANGE_NO_CHANGES":
+                        raise
+                else:
+                    terminal_payload = None
+                    await progress("WORKFLOW_COMPLETED", {"status": "AWAITING_REVIEW",
+                        "change_set_id": change_set.change_set_id, "active_workspace_unchanged": True,
+                        "message": "Workspace edits are staged and require ChangeSet review."})
+            if terminal_payload is not None:
+                await progress("WORKFLOW_COMPLETED", terminal_payload)
         except asyncio.CancelledError:
             logger.info(
                 "workflow_cancelled",

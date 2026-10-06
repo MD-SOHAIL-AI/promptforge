@@ -258,6 +258,10 @@ class SerialService:
 
         return self._runtime.monitor()
 
+    def observation_snapshot(self, *, limit: int = 100) -> tuple[SerialObservation, ...]:
+        """Non-destructive observation; never changes the device lifecycle."""
+        return tuple(self._runtime.peek_buffer()[-max(1, min(limit, 100)):])
+
     @staticmethod
     def is_port_available(
         port: str,

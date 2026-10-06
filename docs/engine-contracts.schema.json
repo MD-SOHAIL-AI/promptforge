@@ -1,0 +1,1642 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "CompilationUnit": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "compiler": {
+          "title": "Compiler",
+          "type": "string"
+        },
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "includes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Includes",
+          "type": "array"
+        },
+        "defines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Defines",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "compiler",
+        "arguments",
+        "includes",
+        "defines"
+      ],
+      "title": "CompilationUnit",
+      "type": "object"
+    },
+    "EnvironmentProfile": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "board": {
+          "title": "Board",
+          "type": "string"
+        },
+        "framework": {
+          "title": "Framework",
+          "type": "string"
+        },
+        "platform": {
+          "title": "Platform",
+          "type": "string"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "build_flags": {
+          "default": "",
+          "title": "Build Flags",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "board",
+        "framework",
+        "platform"
+      ],
+      "title": "EnvironmentProfile",
+      "type": "object"
+    },
+    "UploadImage": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "bootloader",
+            "partitions",
+            "ota_data",
+            "application"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "offset": {
+          "exclusiveMaximum": 16777216,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "exclusiveMinimum": 0,
+          "maximum": 16777216,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "offset",
+        "sha256",
+        "size_bytes",
+        "filename"
+      ],
+      "title": "UploadImage",
+      "type": "object"
+    },
+    "AcceptanceCheck": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "criterion": {
+          "title": "Criterion",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "criterion",
+        "passed"
+      ],
+      "title": "AcceptanceCheck",
+      "type": "object"
+    },
+    "AcceptanceReport": {
+      "properties": {
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/AcceptanceCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "passed",
+        "checks"
+      ],
+      "title": "AcceptanceReport",
+      "type": "object"
+    },
+    "RequirementCheck": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/RequirementReference"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "review_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Reason"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "title": "RequirementCheck",
+      "type": "object"
+    },
+    "RequirementReference": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "quote"
+      ],
+      "title": "RequirementReference",
+      "type": "object"
+    },
+    "EngineTool": {
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/ToolName"
+        },
+        "provider_name": {
+          "title": "Provider Name",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "stages_files": {
+          "title": "Stages Files",
+          "type": "boolean"
+        },
+        "executes_process": {
+          "title": "Executes Process",
+          "type": "boolean"
+        },
+        "capability_profiles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Capability Profiles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "provider_name",
+        "description",
+        "arguments",
+        "stages_files",
+        "executes_process",
+        "capability_profiles"
+      ],
+      "title": "EngineTool",
+      "type": "object"
+    },
+    "ToolName": {
+      "enum": [
+        "list_files",
+        "glob_files",
+        "grep_search",
+        "read_file",
+        "write_file",
+        "edit_file_simple",
+        "apply_patch",
+        "delete_file",
+        "move_file",
+        "update_plan",
+        "load_skill",
+        "memory_search",
+        "spawn_subagent",
+        "present_files",
+        "session_event_read",
+        "session_event_search",
+        "session_trace",
+        "build_firmware",
+        "verify_requirements",
+        "run_simulation",
+        "run_command",
+        "project_doctor",
+        "inspect_symbols",
+        "resolve_dependency",
+        "search_docs",
+        "fetch_docs",
+        "validate_hardware_config",
+        "run_unit_tests",
+        "analyze_firmware",
+        "observe_serial",
+        "decode_crash",
+        "verify_acceptance"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "RecoveryActionEligibility": {
+      "properties": {
+        "allowed": {
+          "title": "Allowed",
+          "type": "boolean"
+        },
+        "blocking_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocking Reason"
+        }
+      },
+      "required": [
+        "allowed"
+      ],
+      "title": "RecoveryActionEligibility",
+      "type": "object"
+    },
+    "AttemptDiagnostics": {
+      "description": "Counts and provider identifiers only; never prompt or reasoning content.",
+      "properties": {
+        "requested_output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requested Output Tokens"
+        },
+        "effective_output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Output Tokens"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "total_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Tokens"
+        },
+        "text_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Text Event Count",
+          "type": "integer"
+        },
+        "reasoning_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Reasoning Event Count",
+          "type": "integer"
+        },
+        "tool_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Event Count",
+          "type": "integer"
+        },
+        "worker_exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker Exit Code"
+        },
+        "worker_cleanup_incomplete": {
+          "default": false,
+          "title": "Worker Cleanup Incomplete",
+          "type": "boolean"
+        },
+        "physical_attempt_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Physical Attempt Id"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "provider_request_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Request Id"
+        },
+        "completion_received": {
+          "default": false,
+          "title": "Completion Received",
+          "type": "boolean"
+        },
+        "stream_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Stream Event Count",
+          "type": "integer"
+        },
+        "first_event_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Event Ms"
+        },
+        "last_event_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Event Ms"
+        },
+        "timeout_stage": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Stage"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        }
+      },
+      "title": "AttemptDiagnostics",
+      "type": "object"
+    },
+    "BudgetFailure": {
+      "properties": {
+        "dimension": {
+          "enum": [
+            "requests",
+            "output_tokens",
+            "input_bytes",
+            "elapsed_seconds",
+            "tool_calls_used"
+          ],
+          "title": "Dimension",
+          "type": "string"
+        },
+        "consumed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "ge": 0,
+          "title": "Consumed"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "ge": 0,
+          "title": "Limit"
+        },
+        "attempted_charge": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "ge": 0,
+          "title": "Attempted Charge"
+        },
+        "origin": {
+          "default": "job_budget",
+          "maxLength": 128,
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "consumed",
+        "limit",
+        "attempted_charge"
+      ],
+      "title": "BudgetFailure",
+      "type": "object"
+    },
+    "ProjectProfile": {
+      "properties": {
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "adapter": {
+          "title": "Adapter",
+          "type": "string"
+        },
+        "selected_environment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Environment"
+        },
+        "selection_required": {
+          "default": false,
+          "title": "Selection Required",
+          "type": "boolean"
+        },
+        "environments": {
+          "items": {
+            "$ref": "#/$defs/EnvironmentProfile"
+          },
+          "title": "Environments",
+          "type": "array"
+        },
+        "compilation_units": {
+          "items": {
+            "$ref": "#/$defs/CompilationUnit"
+          },
+          "title": "Compilation Units",
+          "type": "array"
+        },
+        "compiler_context_available": {
+          "default": false,
+          "title": "Compiler Context Available",
+          "type": "boolean"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "configuration_files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Configuration Files",
+          "type": "array"
+        },
+        "documentation": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Documentation",
+          "type": "array"
+        },
+        "qualification": {
+          "default": "unqualified",
+          "title": "Qualification",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter"
+      ],
+      "title": "ProjectProfile",
+      "type": "object"
+    },
+    "FirmwareUploadManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "chip": {
+          "enum": [
+            "esp32",
+            "esp32s3",
+            "esp32c3"
+          ],
+          "title": "Chip",
+          "type": "string"
+        },
+        "environment": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Environment",
+          "type": "string"
+        },
+        "board": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Board",
+          "type": "string"
+        },
+        "toolchain": {
+          "additionalProperties": true,
+          "title": "Toolchain",
+          "type": "object"
+        },
+        "images": {
+          "items": {
+            "$ref": "#/$defs/UploadImage"
+          },
+          "maxItems": 4,
+          "minItems": 3,
+          "title": "Images",
+          "type": "array"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "artifact_root": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Artifact Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "chip",
+        "environment",
+        "board",
+        "toolchain",
+        "images",
+        "sha256",
+        "artifact_root"
+      ],
+      "title": "FirmwareUploadManifest",
+      "type": "object"
+    },
+    "VerificationReport": {
+      "properties": {
+        "schema_version": {
+          "default": 2,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "task_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Revision"
+        },
+        "workspace_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Revision"
+        },
+        "references_valid": {
+          "default": false,
+          "title": "References Valid",
+          "type": "boolean"
+        },
+        "valid": {
+          "default": false,
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "verification_level": {
+          "default": "source_reference",
+          "title": "Verification Level",
+          "type": "string"
+        },
+        "hardware_verified": {
+          "default": false,
+          "title": "Hardware Verified",
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/RequirementCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "missing": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "semantic_review": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Review"
+        },
+        "acceptance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptanceReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "VerificationReport",
+      "type": "object"
+    },
+    "EngineToolCatalog": {
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "execution_authority": {
+          "const": "python",
+          "default": "python",
+          "title": "Execution Authority",
+          "type": "string"
+        },
+        "availability": {
+          "default": "Tools additionally require the current run's capability and host prerequisites.",
+          "title": "Availability",
+          "type": "string"
+        },
+        "hardware_actions": {
+          "default": "Flash and serial connection are host API actions with explicit one-time approval.",
+          "title": "Hardware Actions",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/EngineTool"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tools"
+      ],
+      "title": "EngineToolCatalog",
+      "type": "object"
+    },
+    "AgentRecoveryState": {
+      "properties": {
+        "phase": {
+          "enum": [
+            "retrying",
+            "running",
+            "cancelled",
+            "retry_wait",
+            "paused_model_unavailable",
+            "probe",
+            "blocked",
+            "ready_to_resume"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "attempt": {
+          "default": 0,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "max_attempts": {
+          "default": 3,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Id"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "request_reached_provider": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Reached Provider"
+        },
+        "retry_due_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry Due At"
+        },
+        "outage_deadline_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outage Deadline At"
+        }
+      },
+      "required": [
+        "phase"
+      ],
+      "title": "AgentRecoveryState",
+      "type": "object"
+    },
+    "EndpointHealth": {
+      "properties": {
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "closed",
+            "open",
+            "half_open"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "failures": {
+          "title": "Failures",
+          "type": "integer"
+        },
+        "retry_after_ms": {
+          "title": "Retry After Ms",
+          "type": "integer"
+        },
+        "probe_active": {
+          "title": "Probe Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider_id",
+        "model_id",
+        "state",
+        "failures",
+        "retry_after_ms",
+        "probe_active"
+      ],
+      "title": "EndpointHealth",
+      "type": "object"
+    },
+    "RecoveryActions": {
+      "properties": {
+        "inspect": {
+          "$ref": "#/$defs/RecoveryActionEligibility"
+        },
+        "continue_generation": {
+          "$ref": "#/$defs/RecoveryActionEligibility"
+        },
+        "verify_locally": {
+          "$ref": "#/$defs/RecoveryActionEligibility"
+        }
+      },
+      "required": [
+        "inspect",
+        "continue_generation",
+        "verify_locally"
+      ],
+      "title": "RecoveryActions",
+      "type": "object"
+    },
+    "ProviderDiagnostics": {
+      "properties": {
+        "requested_output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requested Output Tokens"
+        },
+        "effective_output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Output Tokens"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "total_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Tokens"
+        },
+        "text_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Text Event Count",
+          "type": "integer"
+        },
+        "reasoning_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Reasoning Event Count",
+          "type": "integer"
+        },
+        "tool_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Event Count",
+          "type": "integer"
+        },
+        "worker_exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker Exit Code"
+        },
+        "worker_cleanup_incomplete": {
+          "default": false,
+          "title": "Worker Cleanup Incomplete",
+          "type": "boolean"
+        },
+        "physical_attempt_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Physical Attempt Id"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "provider_request_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Request Id"
+        },
+        "completion_received": {
+          "default": false,
+          "title": "Completion Received",
+          "type": "boolean"
+        },
+        "stream_event_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Stream Event Count",
+          "type": "integer"
+        },
+        "first_event_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Event Ms"
+        },
+        "last_event_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Event Ms"
+        },
+        "timeout_stage": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Stage"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "outbound_request_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Outbound Request Count",
+          "type": "integer"
+        },
+        "physical_request_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Physical Request Count",
+          "type": "integer"
+        },
+        "request_reached_provider": {
+          "default": false,
+          "title": "Request Reached Provider",
+          "type": "boolean"
+        },
+        "request_dispatched": {
+          "default": false,
+          "title": "Request Dispatched",
+          "type": "boolean"
+        },
+        "retry_after_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Ms"
+        },
+        "last_attempt_succeeded": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Attempt Succeeded"
+        },
+        "safe_error_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safe Error Code"
+        },
+        "toolplan_normalized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolplan Normalized"
+        },
+        "toolplan_repair_attempted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolplan Repair Attempted"
+        },
+        "last_turn": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Turn"
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Mode"
+        },
+        "last_failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Failure Code"
+        },
+        "last_repair_outcome": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Repair Outcome"
+        },
+        "last_parse_reason": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Parse Reason"
+        },
+        "last_failure_origin": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Failure Origin"
+        },
+        "last_response_shape": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Response Shape"
+        },
+        "last_response_tool_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Response Tool Count"
+        },
+        "stream_fallback_used": {
+          "default": false,
+          "title": "Stream Fallback Used",
+          "type": "boolean"
+        },
+        "initial_failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Failure Code"
+        },
+        "recovery_failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recovery Failure Code"
+        },
+        "response_headers_received": {
+          "default": false,
+          "title": "Response Headers Received",
+          "type": "boolean"
+        },
+        "budget_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BudgetFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "repair_skip_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "physical_attempt_budget",
+                "request_budget",
+                "output_budget",
+                "time_budget"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repair Skip Reason"
+        },
+        "initial_attempt_diagnostics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptDiagnostics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "repair_attempt_diagnostics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptDiagnostics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ProviderDiagnostics",
+      "type": "object"
+    }
+  }
+}

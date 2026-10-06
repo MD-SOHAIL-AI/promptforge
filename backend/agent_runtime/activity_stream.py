@@ -17,7 +17,7 @@ class ActivityRecord(TypedDict):
     state: str
     eventType: str
     displayStatus: Literal["queued", "running", "success", "warning", "failed"]
-    status: Literal["queued", "running", "completed", "failed", "cancelled", "awaiting_approval"]
+    status: Literal["queued", "running", "completed", "warning", "failed", "cancelled", "interrupted", "awaiting_approval"]
     title: str
     startedAt: int
     durationMs: int | None
@@ -111,7 +111,11 @@ def project_activity(
     run_id = str(event.get("run_id", ""))
     old = previous or {}
     status = "queued" if event.get("status") == "queued" else "running"
-    if kind.endswith(("failed", "blocked", "timed.out")) or event.get("status") in (
+    if kind.endswith("completed.with.warning") or event.get("status") == "completed_with_warning":
+        status = "warning"
+    elif kind.endswith(("paused.model.unavailable", "skipped")) or event.get("status") in ("paused_model_unavailable", "skipped"):
+        status = "interrupted"
+    elif kind.endswith(("failed", "blocked", "timed.out")) or event.get("status") in (
         "failed",
         "blocked",
         "timed_out",
@@ -141,6 +145,8 @@ def project_activity(
             "completed",
             "failed",
             "cancelled",
+            "warning",
+            "interrupted",
         )
     )
     activity_id = (
@@ -256,7 +262,7 @@ def project_activity(
                 if any(step.get("status") == "failed" for step in details["steps"])
                 else "completed"
             )
-    terminal_previous = old.get("status") in ("completed", "failed", "cancelled")
+    terminal_previous = old.get("status") in ("completed", "warning", "failed", "cancelled", "interrupted")
     if (
         terminal_previous
         and not new_attempt
@@ -317,7 +323,7 @@ def project_activity(
 def _state_for(family: str, status: str) -> str:
     if status == "failed":
         return "error"
-    if family == "run" and status == "completed":
+    if family == "run" and status in {"completed", "warning"}:
         return "completed"
     if family == "run" and status == "queued":
         return "idle"
@@ -348,7 +354,7 @@ def _display_status(status: str, details: dict[str, object]) -> str:
     if status in {"running", "awaiting_approval"}:
         return "running"
     warnings = details.get("warnings")
-    if status in {"cancelled", "interrupted"} or (
+    if status in {"warning", "cancelled", "interrupted"} or (
         isinstance(warnings, (int, float)) and warnings > 0
     ):
         return "warning"
@@ -372,6 +378,8 @@ def _canonical_event_type(
             "completed": "agent.completed",
             "failed": "agent.error",
             "cancelled": "agent.completed",
+            "warning": "agent.completed",
+            "interrupted": "agent.interrupted",
         }.get(status, "agent.started")
     if family == "file.edit":
         return "file.created" if details.get("created") is True else "file.modified"
@@ -381,6 +389,8 @@ def _canonical_event_type(
         "completed": "completed",
         "failed": "failed",
         "cancelled": "cancelled",
+        "warning": "completed",
+        "interrupted": "interrupted",
         "awaiting_approval": "required",
     }.get(status, "updated")
     return f"{'approval' if family == 'approval' else family}.{suffix}"

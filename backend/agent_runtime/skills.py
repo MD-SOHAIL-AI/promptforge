@@ -3,19 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import os
+from backend.security.workspace_io import checked_path, read_context_text
 
 
-def _read_skill(root: Path, path: Path, limit: int) -> str:
-    for component in (root.parent, root, path.parent, path):
-        if component.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(component):
-            raise ValueError("AGENT_SKILL_PATH_UNSAFE")
-    path.resolve(strict=True).relative_to(root.resolve(strict=True))
-    with path.open("rb") as source:
-        data = source.read(limit + 1)
-    if len(data) > limit:
-        raise ValueError("AGENT_SKILL_TOO_LARGE")
-    return data.decode("utf-8")
+def _read_skill(boundary: Path, path: Path, limit: int) -> str:
+    try:
+        return read_context_text(boundary, path, limit)
+    except ValueError as exc:
+        raise ValueError("AGENT_SKILL_PATH_OR_CONTENT_UNSAFE") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +36,12 @@ class SkillRegistry:
     def discover(self) -> tuple[SkillInfo, ...]:
         found: dict[str, SkillInfo] = {}
         for root in self.roots:
-            if not root.is_dir() or root.is_symlink():
+            boundary = self.workspace_root if root != self.roots[-1] else root.parent
+            try:
+                checked_path(boundary, root)
+            except (OSError, ValueError):
+                continue
+            if not root.is_dir():
                 continue
             for skill_file in sorted(root.glob("*/SKILL.md")):
                 if skill_file.is_symlink() or not skill_file.is_file():
@@ -50,7 +50,7 @@ class SkillRegistry:
                 if not _safe_name(name):
                     continue
                 try:
-                    text = _read_skill(root, skill_file, 96_000)
+                    text = _read_skill(boundary, skill_file, 96_000)
                 except (OSError, ValueError, UnicodeError):
                     continue
                 summary = next((line.lstrip("# ").strip() for line in text.splitlines() if line.strip()), name)
@@ -66,14 +66,11 @@ class SkillRegistry:
             raise ValueError("AGENT_SKILL_NAME_INVALID")
         for root in self.roots:
             skill_file = root / name / "SKILL.md"
+            boundary = self.workspace_root if root != self.roots[-1] else root.parent
             try:
-                resolved = skill_file.resolve(strict=True)
-                resolved.relative_to(root.resolve(strict=True))
+                text = _read_skill(boundary, skill_file, 96_000)
             except (OSError, ValueError):
                 continue
-            if resolved.is_symlink() or not resolved.is_file():
-                continue
-            text = _read_skill(root, skill_file, 96_000)
             return text[:max_chars]
         raise KeyError("AGENT_SKILL_NOT_FOUND")
 

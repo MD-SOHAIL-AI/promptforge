@@ -326,7 +326,7 @@ def test_cerebras_model_endpoint_imports_account_models_and_reports_auth_failure
 
         loaded = api.get("/models/providers/cerebras/models").json()
         assert loaded["source"] == "provider"
-        assert [item["model_id"] for item in loaded["models"]] == [
+        assert [item["model_id"] for item in loaded["models"]][:3] == [
             "gpt-oss-120b", "zai-glm-4.7", "private-model"
         ]
 
@@ -334,7 +334,7 @@ def test_cerebras_model_endpoint_imports_account_models_and_reports_auth_failure
         failed = api.get("/models/providers/cerebras/models").json()
         assert failed["source"] == "fallback"
         assert "HTTP 401" in failed["error"]
-        assert [item["model_id"] for item in failed["models"]] == [
+        assert [item["model_id"] for item in failed["models"]][:3] == [
             "gpt-oss-120b", "zai-glm-4.7", "private-model"
         ]
 

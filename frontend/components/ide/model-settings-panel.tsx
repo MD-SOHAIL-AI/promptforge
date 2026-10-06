@@ -45,6 +45,7 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
   const [providerId, setProviderId] = useState(codeRoute?.provider_id ?? providers[0]?.provider_id ?? "");
   const [modelId, setModelId] = useState(codeRoute?.model_id ?? "");
   const [apiKey, setApiKey] = useState("");
+  const [providerOptions, setProviderOptions] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
   const [providerEnabled, setProviderEnabled] = useState(true);
@@ -89,6 +90,7 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
     setDefaultModel(selectedProvider.default_model ?? "");
     setProviderEnabled(selectedProvider.configured ? selectedProvider.enabled : true);
     setApiKey("");
+    setProviderOptions("");
     setModels([]);
     setModelsError(null);
     if (codeRoute?.provider_id === selectedProvider.provider_id) {
@@ -207,14 +209,20 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
     setError(null);
     setMessage(null);
     try {
-      const body: { api_key?: string; base_url?: string; default_model?: string; enabled?: boolean } = {
+      const body: { api_key?: string; base_url?: string; default_model?: string; enabled?: boolean; options?: Record<string, unknown> } = {
         enabled: providerEnabled,
         default_model: defaultModel.trim() || selectedProvider.default_model,
       };
       if (!externallyAuthenticated && baseUrl.trim()) body.base_url = baseUrl.trim();
       if (apiKey.trim()) body.api_key = apiKey.trim();
+      if (providerOptions.trim()) {
+        const options: unknown = JSON.parse(providerOptions);
+        if (!options || typeof options !== "object" || Array.isArray(options)) throw new Error("Provider options must be a JSON object.");
+        body.options = options as Record<string, unknown>;
+      }
       await promptForgeApi.configureModelProvider(selectedProvider.provider_id, body);
       setApiKey("");
+      setProviderOptions("");
       await onRefresh();
       if (selectedProvider.provider_id === "cerebras") {
         try {
@@ -423,7 +431,7 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
                     <div>
                       <div className="text-xs font-semibold text-[var(--fx-text)]">{selectedProvider.display_name}</div>
                       <div className="mt-1 text-[10px] text-[var(--fx-text-muted)]">
-                        {externallyAuthenticated ? (selectedProvider.configured ? "External OAuth ready" : "External OAuth disabled") : selectedProvider.local ? "Local provider" : selectedProvider.configured ? "Credential configured" : "Credential required"}
+                        {externallyAuthenticated ? (selectedProvider.configured ? "External OAuth configured" : "External OAuth disabled") : selectedProvider.local ? "Local provider" : selectedProvider.configured ? "Credential configured" : "Credential required"}
                       </div>
                     </div>
                     <label className="flex items-center gap-2 text-xs text-[var(--fx-code-text)]">
@@ -451,6 +459,13 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
                     </label>
                   </div>
 
+                  <p className="mt-3 text-xs leading-5 text-[var(--fx-text-muted)]">Last checked: {selectedProvider.last_checked_at ? new Date(selectedProvider.last_checked_at).toLocaleString() : "Not checked"}. Observed status: {selectedProvider.health_status ?? "Unknown"}. Configuration permits a request; completion reliability requires task qualification.</p>
+                  <details className="mt-3 text-xs text-[var(--fx-text-muted)]">
+                    <summary className="cursor-pointer">Provider configuration {selectedProvider.options_configured ? "· saved securely" : ""}</summary>
+                    <p className="my-2">Use a JSON object for cloud settings such as resourceName, region, project, location, accountId, gatewayId, credentials, or headers. Values are stored securely. Leave empty to keep saved settings.</p>
+                    {selectedProvider.configuration_fields?.length ? <p className="mb-2">Environment variables: {selectedProvider.configuration_fields.join(", ")}</p> : null}
+                    <textarea className="fx-control min-h-24 w-full p-3 font-mono text-xs" aria-label="Provider configuration JSON" autoComplete="off" spellCheck={false} value={providerOptions} onChange={(event) => setProviderOptions(event.target.value)} placeholder={'{"region":"us-east-1"}'} />
+                  </details>
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
                     {selectedProvider.custom ? (
                       <button className="fx-control flex h-8 items-center gap-1.5 px-3 text-xs text-[var(--fx-error)]" onClick={() => void deleteProvider()} disabled={Boolean(busy)}>

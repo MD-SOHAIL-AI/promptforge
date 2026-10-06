@@ -18,7 +18,7 @@ async def health(request: Request) -> HealthResponse:
     platformio_service = services(request).platformio_service
     platformio = None
     if isinstance(platformio_service, PlatformIOService):
-        platformio = ToolchainHealth.model_validate((await platformio_service.status()).to_dict())
+        platformio = ToolchainHealth.model_validate((await platformio_service.health_status()).to_dict())
     workflow = all(
         getattr(services(request), name, None) is not None
         for name in (
@@ -33,7 +33,9 @@ async def health(request: Request) -> HealthResponse:
         planner=True,
         coordinator=True,
     )
+    agent = getattr(services(request), "product_agent_service", None)
     return HealthResponse(
+        engine_ready=workflow and bool(services(request).local_api_token) and bool(getattr(agent, "orchestrator", None)),
         status="healthy" if all(service_health.model_dump().values()) else "degraded",
         service="forgex-backend",
         version=request.app.version,

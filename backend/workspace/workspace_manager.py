@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from backend.observability.runtime_logs import RuntimeLogger
 from backend.state.persistence import PersistenceManager
 from backend.utils.paths import PathManager
+from backend.security.workspace_io import iter_workspace_files
 
 __all__ = ["WorkspaceManager", "WorkspaceError", "WorkspacePathError"]
 
@@ -151,9 +152,8 @@ class WorkspaceManager:
         archive_root.mkdir(parents=True, exist_ok=True)
         archive_path = archive_root / f"{project_name}.zip"
         with ZipFile(archive_path, "w", ZIP_DEFLATED) as zf:
-            for item in sorted(path.rglob("*")):
-                if item.is_file() and not item.is_symlink():
-                    zf.write(item, Path(project_name) / item.relative_to(path))
+            for item in iter_workspace_files(path):
+                zf.write(item, Path(project_name) / item.relative_to(path))
         return archive_path
 
     def delete_project(self, project_name: str) -> bool:
@@ -315,12 +315,11 @@ class WorkspaceManager:
 
     def workspace_health(self) -> dict[str, Any]:
         total = 0
-        for path in self.workspace_root.rglob("*"):
-            if path.is_file() and not path.is_symlink():
-                try:
-                    total += path.stat().st_size
-                except OSError:
-                    pass
+        for path in iter_workspace_files(self.workspace_root):
+            try:
+                total += path.stat().st_size
+            except OSError:
+                pass
         return {
             "project_count": len(self.list_projects()),
             "build_count": len(self.list_builds()),

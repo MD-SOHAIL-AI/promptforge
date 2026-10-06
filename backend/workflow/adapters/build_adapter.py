@@ -115,6 +115,7 @@ def build_result_to_artifact(
         environment=resolved_environment,
         artifact_type=resolved_type,
         size_bytes=size,
+        manifest=result.metadata.get("artifact_manifest"),
     )
     validate_build_artifact(artifact)
     return artifact

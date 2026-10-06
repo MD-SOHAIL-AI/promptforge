@@ -1,4 +1,5 @@
 from backend.agent_runtime.orchestration_store import AgentOrchestrationStore
+import pytest
 
 
 def test_lifecycle_persists_and_replays(tmp_path):
@@ -184,3 +185,37 @@ def test_canonical_tool_settlement_closes_running_activity() -> None:
     assert settled is not None
     assert settled["id"] == started["id"]
     assert settled["status"] == "completed"
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("completed_with_warning", "warning"),
+    ("paused_model_unavailable", "interrupted"),
+])
+def test_terminal_run_activity_freezes_and_retry_does_not_restart_it(tmp_path, status, expected):
+    store = AgentOrchestrationStore(tmp_path / "events.db")
+    started = store.append_event("s", {
+        "run_id": "r", "event_type": "runtime.queued",
+        "created_at": "2026-10-06T00:00:00Z",
+    })["activity_record"]
+    settled = store.append_event("s", {
+        "run_id": "r", "event_type": f"runtime.{status}", "status": status,
+        "created_at": "2026-10-06T00:00:10Z",
+    })["activity_record"]
+    retried = store.append_event("s", {
+        "run_id": "r", "event_type": "runtime.retried", "status": status,
+        "replacement_run_id": "r2", "created_at": "2026-10-06T00:00:30Z",
+    })["activity_record"]
+    assert settled["id"] == retried["id"] == started["id"]
+    assert settled["status"] == retried["status"] == expected
+    assert settled["durationMs"] == retried["durationMs"] == 10_000
+    assert settled["displayStatus"] == "warning"
+    assert retried["eventType"] != "agent.started"
+
+
+def test_skipped_node_is_terminal_without_success_evidence(tmp_path):
+    activity = AgentOrchestrationStore(tmp_path / "events.db").append_event("s", {
+        "run_id": "r", "event_type": "node.skipped", "status": "skipped", "node_id": "flash",
+    })["activity_record"]
+    assert activity["status"] == "interrupted"
+    assert activity["displayStatus"] == "warning"
+    assert activity["durationMs"] == 0

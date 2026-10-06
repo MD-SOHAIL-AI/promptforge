@@ -1,12 +1,15 @@
 # ForgeX release pins. Keep direct dependencies exact for reproducible desktop builds.
 # When registry access is available, a full transitive lock can be regenerated from requirements.in.
-fastapi==0.128.2
+fastapi==0.141.1
+starlette==1.3.1
 httpx==0.28.1
 pydantic==2.13.4
 python-dotenv==1.2.2
 pyserial==3.5
+esptool==5.4.0
 pywinpty==3.0.5; platform_system == "Windows"
 pytest==9.0.2
+pytest-asyncio==1.4.0
 pytest-cov==7.0.0
 uvicorn[standard]==0.48.0
 websockets==16.0

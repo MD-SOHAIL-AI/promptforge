@@ -9,7 +9,7 @@ import os
 import time
 import uuid
 from collections.abc import AsyncIterator
-from contextlib import aclosing
+from contextlib import aclosing, asynccontextmanager
 from typing import Any
 
 from backend.observability.diagnostics import emit_diagnostic_event
@@ -45,6 +45,7 @@ from .resolver import ModelResolver
 from .runtime import ModelRuntime
 from .selection import ModelSelectionStore
 from .admission import ProviderAdmissionController
+from .circuit import ProviderCircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -92,36 +93,48 @@ class ModelRouterService(LLMService):
         )
         self.model = initial_route.model_id
         self.timeout_s = 180.0
-        self._providers = providers or {
-            "deepseek": DeepSeekProvider(self.registry),
-            "anthropic": AnthropicProvider(self.registry),
-            "openrouter": OpenRouterProvider(self.registry),
-            "openai": OpenAIProvider(self.registry),
-            "groq": GroqProvider(self.registry),
-            "cerebras": CerebrasProvider(self.registry),
-            "nvidia_nim": NvidiaNimProvider(self.registry),
-            "gemini": GeminiProvider(self.registry),
-            "lmstudio": LMStudioProvider(self.registry),
-            "ollama": OllamaProvider(self.registry),
-        }
         if providers is None:
-            for provider_id in self.registry.provider_ids():
-                if provider_id not in self._providers:
-                    definition = self.registry.definition(provider_id)
-                    self._providers[provider_id] = CompatibleProvider(
-                        self.registry, provider_id, definition.protocol
-                    )
+            from .providers.opencode import OpenCodeProvider
+            self._providers = {provider_id: OpenCodeProvider(self.registry, provider_id)
+                for provider_id in self.registry.provider_ids()}
+        else:
+            self._providers = providers
         self.catalog = ModelCatalog(self.registry)
         self.selections = ModelSelectionStore(self.registry.storage.path.with_suffix(".selections.sqlite3"))
         self.resolver = ModelResolver(self.registry, self.catalog, self.selections)
-        self.runtime = ModelRuntime(self.resolver, self._providers)
-        self.admission = ProviderAdmissionController()
+        self.runtime = ModelRuntime(self.resolver, self._providers, attempt_slot=self._physical_slot)
+        self.admission = ProviderAdmissionController(path=self.registry.storage.path.with_suffix(".provider-admission.sqlite3"))
+        self.circuit = ProviderCircuitBreaker(self.registry.storage.path.with_suffix(".provider-health.sqlite3"),
+            failure_threshold=self.runtime.retry_policy.max_attempts if providers is None else 2)
+
+    def _circuit_identity(self, provider_id: str, model_id: str) -> str:
+        return self.circuit.identity(provider_id, model_id, self.registry.provider(provider_id).base_url,
+            self.registry.api_key(provider_id))
+
+    @asynccontextmanager
+    async def _physical_slot(self, request):
+        from .models import execution_value
+        identity = self._circuit_identity(request.provider_id, request.model_id)
+        # Record default-adapter failures too. Its threshold permits the normal
+        # physical retry allowance before cooling subsequent logical turns.
+        # Fail fast on cooling endpoints before joining a capacity queue.
+        self.circuit.require_available(identity)
+        async with self.admission.slot(request.provider_id, request.model_id,
+            run_id=_metadata_str(request, "run_id"), turn_id=_metadata_str(request, "turn_id"),
+            endpoint_identity=identity, deadline=execution_value(request, "deadline", "forgex_turn_deadline")):
+            async with self.circuit.slot(identity):
+                yield
+
+    async def _physical_stream(self, request, stream):
+        async with self._physical_slot(request):
+            async with aclosing(stream(request)) as events:
+                async for event in events:
+                    yield event
 
     def install_custom_provider(self, provider_id: str) -> None:
-        definition = self.registry.definition(provider_id)
-        self._providers[provider_id] = CompatibleProvider(
-            self.registry, provider_id, definition.protocol
-        )
+        from .providers.opencode import OpenCodeProvider
+        self.registry.definition(provider_id)
+        self._providers[provider_id] = OpenCodeProvider(self.registry, provider_id)
 
     def remove_custom_provider(self, provider_id: str) -> None:
         if self.selections.references(provider_id):
@@ -175,13 +188,7 @@ class ModelRouterService(LLMService):
             project_id=_metadata_str(request, "project_id"), task_type=request.task_type,
         )
         try:
-            async with self.admission.slot(
-                resolved.provider_id,
-                resolved.model_id,
-                run_id=_metadata_str(request, "run_id"),
-                turn_id=_metadata_str(request, "turn_id"),
-            ):
-                response = await self.runtime.generate(request, resolved=resolved)
+            response = await self.runtime.generate(request, resolved=resolved)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -286,6 +293,7 @@ class ModelRouterService(LLMService):
             local_only=request.local_only,
             structured_output=request.structured_output,
             metadata=request.metadata,
+            execution_context=request.execution_context,
         )
         started = time.monotonic()
         provider_request_id = _provider_request_id(request)
@@ -306,16 +314,13 @@ class ModelRouterService(LLMService):
             streaming=True,
         )
         try:
-            async with self.admission.slot(
-                provider_id,
-                model_id,
-                run_id=_metadata_str(request, "run_id"),
-                turn_id=_metadata_str(request, "turn_id"),
-            ):
-                async with aclosing(stream(routed)) as events:
-                    async for event in events:
-                        token_usage.update(event.usage)
-                        yield event
+            from .request_recovery import managed, agent_stream, public_stream
+            physical = lambda value: self._physical_stream(value, stream)
+            event_stream = agent_stream(routed, physical) if managed(routed) else public_stream(routed, physical)
+            async with aclosing(event_stream) as events:
+                async for event in events:
+                    token_usage.update(event.usage)
+                    yield event
             success = True
         except asyncio.CancelledError:
             error_code = "CANCELLED"

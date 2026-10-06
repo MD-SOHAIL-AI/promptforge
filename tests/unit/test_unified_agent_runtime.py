@@ -136,6 +136,9 @@ def test_file_runtime_retries_unverified_multifile_draft(tmp_path: Path) -> None
 
         def request_turn(self, **kwargs):
             assert any(item.get("tool") == "previous_run_failure" for item in kwargs["tool_results"])
+            assert "RECOVERED STAGED WORK" in kwargs["task"]
+            assert "src/main.cpp" in kwargs["task"]
+            assert "include/app.h" in kwargs["task"]
             return ProductToolPlan.parse({
                 "version": PRODUCT_TOOLPLAN_VERSION, "summary": "Files repaired",
                 "tool_calls": [], "final": True,
@@ -514,6 +517,8 @@ def test_autonomous_loop_stops_repeated_searches_with_no_new_results(tmp_path: P
     assert result.classification == "AGENT_RUNTIME_NO_PROGRESS"
     assert planner.turns < 10
     assert "AGENT_NO_PROGRESS_WARNING" in events
+    assert "AGENT_REORIENTATION_STARTED" in events
+    assert 5 <= planner.turns <= 7
 
 
 def test_safe_missing_project_file_is_distinct_from_unsafe_path(tmp_path: Path) -> None:

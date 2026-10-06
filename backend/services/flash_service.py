@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from ..runtime.result import BuildResult, FlashResult
+from ..runtime.result import BuildResult, FlashResult, ResultStatus
 from ..runtime.subprocess_mgr import SubprocessManager
 from ..tools.board_detector import BoardDetectionError, BoardDetector, BoardInfo, BoardType
 from ..tools.flash_firmware import FlashConfig
@@ -53,12 +53,14 @@ class ProjectFlashService:
         manager: SubprocessManager,
         tool_executor: Callable[..., Any],
         workspace: object | None = None,
+        artifact_store: str | Path | None = None,
     ) -> None:
         self._platformio = platformio
         self._detector = detector
         self._manager = manager
         self._tool_executor = tool_executor
         self._workspace = workspace
+        self._artifact_store = artifact_store
 
     async def build_and_flash(
         self,
@@ -72,10 +74,27 @@ class ProjectFlashService:
         verify: bool = True,
         timeout_s: float = 60.0,
         expected_artifact_hash: str | None = None,
+        artifact_manifest: dict | None = None,
     ) -> FlashProjectOutcome:
         root = Path(project_path)
         try:
-            build = await self._platformio.build(root, environment=environment)
+            if expected_artifact_hash:
+                from .firmware_manifest import verify_upload_set
+                try:
+                    verify_upload_set(artifact_manifest, store=self._artifact_store, environment=environment)
+                    application = next(item for item in artifact_manifest["images"] if item["role"] == "application")
+                    if application["sha256"] != expected_artifact_hash:
+                        raise ValueError("ARTIFACT_HASH_MISMATCH")
+                    build = BuildResult(success=True, status=ResultStatus.SUCCESS,
+                        message="Approved firmware upload set verified; no build executed.",
+                        firmware_path=str(Path(artifact_manifest["artifact_root"]) / application["filename"]),
+                        build_size_bytes=application["size_bytes"], board=artifact_manifest["board"],
+                        metadata={"artifact_manifest": artifact_manifest, "artifact_environment": artifact_manifest["environment"],
+                                  "flash_ready": True})
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    raise FlashServiceError(409, "SEALED_UPLOAD_INVALID", str(exc)) from exc
+            else:
+                build = await self._platformio.build(root, environment=environment)
         except (OSError, ValueError) as exc:
             raise FlashServiceError(
                 422,
@@ -88,6 +107,9 @@ class ProjectFlashService:
             _save_flash_build_workspace(self._workspace, project_id, build)
         if not build.success:
             return FlashProjectOutcome(project_id=project_id, build=build, flash=None)
+
+        if not build.metadata.get("artifact_manifest"):
+            raise FlashServiceError(409, "SEALED_UPLOAD_REQUIRED", "Build a complete upload set before preparing a flash approval.", build=build)
 
         try:
             artifact = BuildAdapter.to_artifact(build, environment=environment)
@@ -139,6 +161,14 @@ class ProjectFlashService:
                 {"requested": requested_type.value, "detected": board.board_type.value},
                 build=build,
             )
+        from .firmware_manifest import verify_upload_set
+        chip = {BoardType.ESP32: "esp32", BoardType.ESP32_S3: "esp32s3", BoardType.ESP32_C3: "esp32c3"}.get(board.board_type)
+        if chip is None:
+            raise FlashServiceError(409, "UPLOAD_CHIP_UNSUPPORTED", "This sealed upload adapter supports ESP32 devices.", build=build)
+        try:
+            verify_upload_set(build.metadata["artifact_manifest"], store=self._artifact_store, chip=chip)
+        except (OSError, ValueError) as exc:
+            raise FlashServiceError(409, "SEALED_UPLOAD_INVALID", str(exc), build=build) from exc
 
         board_validation = BoardValidator().validate(
             {

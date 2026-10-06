@@ -64,6 +64,7 @@ export class BackgroundAssetStore {
     }
     const detected = detectBackgroundImage(bytes);
     assertExtensionMatchesMediaType(path.extname(sourcePath), detected.mediaType);
+    assertBackgroundImageDimensions(bytes, detected.mediaType);
 
     await fs.promises.mkdir(this.directory, { recursive: true });
     const assetId = `background-${crypto.randomUUID()}.${detected.extension}`;
@@ -118,6 +119,7 @@ export class BackgroundAssetStore {
     if (bytes.length !== assetStat.size) return null;
     const detected = detectBackgroundImage(bytes);
     if (detected.mediaType !== mediaTypeFromAssetId(assetId)) return null;
+    assertBackgroundImageDimensions(bytes, detected.mediaType);
     return { bytes, mediaType: detected.mediaType };
   }
 
@@ -246,6 +248,60 @@ export function detectBackgroundImage(bytes: Uint8Array): {
     return { mediaType: "image/webp", extension: "webp" };
   }
   throw new BackgroundAssetError("Only valid PNG, JPEG, and WebP background images are supported.");
+}
+
+/** Inspect bounded headers before a renderer allocates decoded image pixels. */
+export function assertBackgroundImageDimensions(bytes: Buffer, mediaType: BackgroundImageMediaType): void {
+  let dimensions: [number, number] | null = null;
+  if (mediaType === "image/png" && bytes.length >= 33 && bytes.readUInt32BE(8) === 13 && ascii(bytes, 12, 16) === "IHDR") {
+    dimensions = [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  } else if (mediaType === "image/jpeg") {
+    let offset = 2;
+    while (offset + 4 <= bytes.length) {
+      if (bytes[offset++] !== 0xff) break;
+      while (bytes[offset] === 0xff) offset++;
+      const marker = bytes[offset++];
+      if (marker === 0xda || marker === 0xd9 || marker === undefined) break;
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) continue;
+      if (offset + 2 > bytes.length) break;
+      const length = bytes.readUInt16BE(offset);
+      if (length < 2 || offset + length > bytes.length) break;
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker) && length >= 8) {
+        dimensions = [bytes.readUInt16BE(offset + 5), bytes.readUInt16BE(offset + 3)];
+        break;
+      }
+      offset += length;
+    }
+  } else if (mediaType === "image/webp" && bytes.length >= 20) {
+    const end = bytes.readUInt32LE(4) + 8;
+    if (end <= bytes.length && end >= 20) {
+      for (let offset = 12; offset + 8 <= end;) {
+        const kind = ascii(bytes, offset, offset + 4);
+        const size = bytes.readUInt32LE(offset + 4);
+        const start = offset + 8;
+        if (start + size > end) break;
+        if (kind === "VP8X" && size >= 10) {
+          dimensions = [bytes.readUIntLE(start + 4, 3) + 1, bytes.readUIntLE(start + 7, 3) + 1];
+          break;
+        }
+        if (kind === "VP8L" && size >= 5 && bytes[start] === 0x2f) {
+          const bits = bytes.readUInt32LE(start + 1);
+          dimensions = [(bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1];
+          break;
+        }
+        if (kind === "VP8 " && size >= 10 && bytes[start] % 2 === 0 && bytes.subarray(start + 3, start + 6).equals(Buffer.from([0x9d, 0x01, 0x2a]))) {
+          dimensions = [bytes.readUInt16LE(start + 6) & 0x3fff, bytes.readUInt16LE(start + 8) & 0x3fff];
+          break;
+        }
+        offset = start + size + (size % 2);
+      }
+    }
+  }
+  if (!dimensions) throw new BackgroundAssetError("This image has an invalid or incomplete dimension header.");
+  const [width, height] = dimensions;
+  if (!width || !height || width > 8192 || height > 8192 || width * height > 32_000_000) {
+    throw new BackgroundAssetError("Choose an image up to 8192 pixels per side and 32 megapixels.");
+  }
 }
 
 function assertExtensionMatchesMediaType(extension: string, mediaType: BackgroundImageMediaType): void {

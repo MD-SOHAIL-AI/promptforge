@@ -95,7 +95,7 @@ test("frontend identity probe requires a fresh keyed proof", async () => {
 });
 
 test("packaged application root is independent of process cwd", () => {
-  assert.equal(resolveApplicationRoot(true, "C:\\qa\\ForgeX\\resources", "C:\\repo"), "C:\\qa\\ForgeX");
+  assert.equal(resolveApplicationRoot(true, "C:\\qa\\ForgeX\\resources", "C:\\repo"), "C:\\qa\\ForgeX\\resources\\forgex");
   assert.equal(resolveApplicationRoot(false, "C:\\qa\\ForgeX\\resources", "C:\\repo"), "C:\\repo");
 });
 

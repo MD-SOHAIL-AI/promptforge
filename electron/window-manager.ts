@@ -1,3 +1,4 @@
+import { desktopLog } from "./desktop-logging";
 import { BrowserWindow, app } from "electron";
 import http from "node:http";
 import https from "node:https";
@@ -6,6 +7,7 @@ import { pathToFileURL } from "node:url";
 
 import { emitDiagnosticEvent, serializeError } from "./diagnostics";
 import { resolveFrontendStaticIndex, resolveFrontendUrl } from "./paths";
+import { attachRendererRecovery } from "./renderer-recovery";
 
 interface MainWindowOptions {
   preloadPath: string;
@@ -35,6 +37,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
   });
 
   attachRendererDiagnostics(window);
+  attachRendererRecovery(window.webContents, (event) => emitDiagnosticEvent({component: "desktop", event, level: "WARNING"}));
   installNavigationGuards(window, options.frontendUrl ?? resolveFrontendUrl());
   void loadFrontend(window, options.frontendUrl);
   if (!app.isPackaged && shouldOpenDevTools()) {
@@ -94,9 +97,9 @@ function shouldOpenDevTools(): boolean {
 async function loadFrontend(window: BrowserWindow, requestedFrontendUrl?: string): Promise<void> {
   const frontendUrl = requestedFrontendUrl ?? resolveFrontendUrl();
   if (!app.isPackaged || requestedFrontendUrl) {
-    console.log(`[forgex-desktop] Loading frontend URL: ${sanitizeUrl(frontendUrl)}`);
+    desktopLog.log(`[forgex-desktop] Loading frontend URL: ${sanitizeUrl(frontendUrl)}`);
     await waitForUrl(frontendUrl, 15_000).catch((error) => {
-      console.error("[forgex-desktop] frontend readiness check failed", error);
+      desktopLog.error("[forgex-desktop] frontend readiness check failed", error);
       emitDiagnosticEvent({
         component: "desktop",
         event: "desktop.frontend.readiness_failed",
@@ -113,13 +116,13 @@ async function loadFrontend(window: BrowserWindow, requestedFrontendUrl?: string
   const staticIndex = resolveFrontendStaticIndex();
   if (staticIndex) {
     const staticUrl = pathToFileURL(staticIndex).toString();
-    console.log(`[forgex-desktop] Loading frontend URL: ${staticUrl}`);
+    desktopLog.log(`[forgex-desktop] Loading frontend URL: ${staticUrl}`);
     await window.loadURL(staticUrl);
     return;
   }
 
   const fallback = pathToFileURL(path.join(__dirname, "missing-frontend.html")).toString();
-  console.log(`[forgex-desktop] Loading frontend URL: ${fallback}`);
+  desktopLog.log(`[forgex-desktop] Loading frontend URL: ${fallback}`);
   await window.loadURL(fallback);
 }
 
@@ -134,7 +137,7 @@ function sanitizeUrl(value: string): string {
 
 function attachRendererDiagnostics(window: BrowserWindow): void {
   window.webContents.on("did-finish-load", () => {
-    console.log("[forgex-desktop] Renderer did-finish-load");
+    desktopLog.log("[forgex-desktop] Renderer did-finish-load");
     emitDiagnosticEvent({
       component: "desktop",
       event: "desktop.renderer.loaded",
@@ -143,7 +146,7 @@ function attachRendererDiagnostics(window: BrowserWindow): void {
     });
   });
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
-    console.error(
+    desktopLog.error(
       `[forgex-desktop] Renderer did-fail-load code=${errorCode} description=${errorDescription} url=${validatedURL}`,
     );
     emitDiagnosticEvent({
@@ -157,7 +160,7 @@ function attachRendererDiagnostics(window: BrowserWindow): void {
     });
   });
   window.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    console.log(
+    desktopLog.log(
       `[forgex-renderer] level=${level} source=${sourceId}:${line} ${message}`,
     );
     emitDiagnosticEvent({
@@ -171,7 +174,7 @@ function attachRendererDiagnostics(window: BrowserWindow): void {
     });
   });
   window.webContents.on("render-process-gone", (_event, details) => {
-    console.error(
+    desktopLog.error(
       `[forgex-desktop] Renderer render-process-gone reason=${details.reason} exitCode=${details.exitCode}`,
     );
     emitDiagnosticEvent({

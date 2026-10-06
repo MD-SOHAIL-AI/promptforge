@@ -1,5 +1,7 @@
+import { desktopLog } from "./desktop-logging";
+import { BackendRecoveryPolicy } from "./backend-recovery";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -17,6 +19,8 @@ export interface BackendStatus {
   pid?: number;
   lastError?: string;
   health?: unknown;
+  recoveryAttempts?: number;
+  restartScheduled?: boolean;
 }
 
 export interface BackendHealthProbeResult {
@@ -40,6 +44,7 @@ interface BackendManagerOptions {
   expectedRuntimeContract?: string;
   expectedSourceFingerprint?: string | null;
   localToken?: string;
+  restartDelaysMs?: readonly number[];
 }
 
 export const BACKEND_RUNTIME_CONTRACT = "forgex-agent-runtime-v3";
@@ -60,6 +65,12 @@ export class BackendManager {
   private readonly expectedSourceFingerprint: string | null;
   private readonly localToken: string | undefined;
   private ownsProcess = false;
+  private intentionalStop = false;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private healthCheckRunning = false;
+  private readonly recovery: BackendRecoveryPolicy;
+  private starting: Promise<BackendStatus> | null = null;
 
   constructor(options: BackendManagerOptions = {}) {
     this.port = options.port ?? resolveBackendPort();
@@ -74,6 +85,7 @@ export class BackendManager {
       ? computeBackendSourceFingerprint(this.cwd)
       : options.expectedSourceFingerprint;
     this.localToken = options.localToken?.trim() || undefined;
+    this.recovery = new BackendRecoveryPolicy(options.restartDelaysMs);
   }
 
   get url(): string {
@@ -81,21 +93,31 @@ export class BackendManager {
   }
 
   async start(): Promise<BackendStatus> {
-    console.log(`[forgex-backend] Checking port ${this.port}...`);
+    this.intentionalStop = false;
+    if (this.state === "ready" && this.ownsProcess && this.process) return this.getStatus();
+    if (this.starting) return this.starting;
+    this.starting = this.startInternal();
+    try { return await this.starting; }
+    finally { this.starting = null; }
+  }
+
+  private async startInternal(): Promise<BackendStatus> {
+    desktopLog.log(`[forgex-backend] Checking port ${this.port}...`);
     const existing = await this.fetchHealth();
+    if (this.intentionalStop) throw new Error("Backend startup stopped");
     if (existing.reachable) {
       if (!existing.forgeX) {
         this.state = "crashed";
         this.lastError = `Port ${this.port} is already in use by another process. Close that process or configure a different ForgeX backend port.`;
         this.health = existing.body;
-        console.error(`[forgex-backend] ${this.lastError}`);
+        desktopLog.error(`[forgex-backend] ${this.lastError}`);
         throw new Error(this.lastError);
       }
       if (!existing.healthy) {
         this.state = "crashed";
         this.lastError = `Existing ForgeX backend detected on port ${this.port}, but it is not healthy. Restart it or configure a different ForgeX backend port.`;
         this.health = existing.body;
-        console.error(`[forgex-backend] ${this.lastError}`);
+        desktopLog.error(`[forgex-backend] ${this.lastError}`);
         throw new Error(this.lastError);
       }
       const incompatibility = this.compatibilityError(existing.body);
@@ -103,7 +125,7 @@ export class BackendManager {
         this.state = "crashed";
         this.lastError = incompatibility;
         this.health = existing.body;
-        console.error(`[forgex-backend] ${this.lastError}`);
+        desktopLog.error(`[forgex-backend] ${this.lastError}`);
         throw new Error(this.lastError);
       }
       this.health = existing.body;
@@ -111,20 +133,20 @@ export class BackendManager {
       this.ownsProcess = false;
       this.process = null;
       this.lastError = undefined;
-      console.log(`Existing ForgeX backend detected on port ${this.port}. Reusing backend.`);
+      desktopLog.log(`Existing ForgeX backend detected on port ${this.port}. Reusing backend.`);
       return this.getStatus();
     }
     if (existing.timedOut) {
       this.state = "crashed";
       this.lastError = `Backend health check timed out on port ${this.port}. Port may be occupied by an unresponsive service.`;
-      console.error(`[forgex-backend] ${this.lastError}`);
+      desktopLog.error(`[forgex-backend] ${this.lastError}`);
       throw new Error(this.lastError);
     }
 
     if (existing.error) {
-      console.log(`[forgex-backend] No reusable backend detected on port ${this.port}: ${existing.error}`);
+      desktopLog.log(`[forgex-backend] No reusable backend detected on port ${this.port}: ${existing.error}`);
     } else {
-      console.log(`[forgex-backend] No reusable backend detected on port ${this.port}. Starting a new backend.`);
+      desktopLog.log(`[forgex-backend] No reusable backend detected on port ${this.port}. Starting a new backend.`);
     }
 
     this.state = "starting";
@@ -132,23 +154,24 @@ export class BackendManager {
     this.health = undefined;
     this.ownsProcess = false;
 
-    console.log("[forgex-backend] Resolving Python environment...");
+    desktopLog.log("[forgex-backend] Resolving Python environment...");
     let python: PythonResolution;
     try {
       python = this.resolvePython(this.cwd);
     } catch (error) {
       this.state = "crashed";
       this.lastError = error instanceof Error ? error.message : String(error);
-      console.error(`[forgex-backend] ${this.lastError}`);
+      desktopLog.error(`[forgex-backend] ${this.lastError}`);
       throw error;
     }
     const pythonExecutable = python.executable;
-    console.log(`[forgex-backend] Using Python: ${pythonExecutable}`);
-    console.log("[forgex-backend] Starting FastAPI backend...");
+    desktopLog.log(`[forgex-backend] Using Python: ${pythonExecutable}`);
+    desktopLog.log("[forgex-backend] Starting FastAPI backend...");
     try {
       this.process = this.spawnBackend(
         pythonExecutable,
         [
+          "-B",
           "-m",
           "uvicorn",
           "backend.api.app:create_app",
@@ -165,6 +188,7 @@ export class BackendManager {
             ...process.env,
             FORGEX_BACKEND_PORT: String(this.port),
             FORGEX_DESKTOP: "1",
+            FORGEX_NODE_EXECUTABLE: process.execPath,
             FORGEX_BACKEND_URL: this.url,
             ...(this.localToken ? { FORGEX_LOCAL_TOKEN: this.localToken } : {}),
           },
@@ -176,37 +200,45 @@ export class BackendManager {
       this.lastError = `Failed to start ForgeX backend process: ${error instanceof Error ? error.message : String(error)}`;
       this.process = null;
       this.ownsProcess = false;
-      console.error(`[forgex-backend] ${this.lastError}`);
+      desktopLog.error(`[forgex-backend] ${this.lastError}`);
       throw new Error(this.lastError);
     }
 
     this.ownsProcess = true;
-    console.log(`[forgex-backend] Spawned backend pid=${this.process.pid ?? "unknown"} port=${this.port}`);
+    const child = this.process;
+    const backendInstance = randomUUID();
+    desktopLog.log(`[forgex-backend] Spawned backend pid=${this.process.pid ?? "unknown"} port=${this.port}`);
     this.process.stdout.on("data", (chunk: Buffer) => {
-      console.log(`[forgex-backend] ${safeLogChunk(chunk)}`);
+      desktopLog.log(`[forgex-backend] ${safeLogChunk(chunk)}`);
     });
     this.process.stderr.on("data", (chunk: Buffer) => {
-      console.error(`[forgex-backend] ${safeLogChunk(chunk)}`);
+      desktopLog.error(`[forgex-backend] ${safeLogChunk(chunk)}`);
     });
     this.process.on("exit", (code, signal) => {
+      if (this.process !== child) return;
+      desktopLog.error(`[forgex-backend] ${JSON.stringify({ event: "backend.exited", instance: backendInstance, pid: this.process?.pid, code, signal, expected: this.state === "stopped", timestamp: new Date().toISOString() })}`);
       if (this.state !== "stopped") {
         this.state = "crashed";
         this.lastError = `Backend exited with code ${code ?? "null"} and signal ${signal ?? "null"}`;
-        console.error(`[forgex-backend] ${this.lastError}`);
+        desktopLog.error(`[forgex-backend] ${this.lastError}`);
       }
       this.process = null;
       this.ownsProcess = false;
+      if (!this.intentionalStop) this.scheduleOwnedRestart();
     });
     this.process.on("error", (error) => {
+      if (this.process !== child) return;
       this.state = "crashed";
       this.lastError = error.message;
-      console.error(`[forgex-backend] ${this.lastError}`);
+      desktopLog.error(`[forgex-backend] ${this.lastError}`);
       this.process = null;
       this.ownsProcess = false;
+      if (!this.intentionalStop) this.scheduleOwnedRestart();
     });
 
     try {
       await this.waitForReady();
+      this.startHealthSupervisor();
       return this.getStatus();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -218,6 +250,11 @@ export class BackendManager {
   }
 
   async stop(): Promise<void> {
+    this.intentionalStop = true;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.restartTimer = null;
+    if (this.healthTimer) clearInterval(this.healthTimer);
+    this.healthTimer = null;
     this.state = "stopped";
     await this.terminateOwnedProcess();
     this.lastError = undefined;
@@ -262,17 +299,63 @@ export class BackendManager {
       pid: this.process?.pid,
       lastError: this.lastError,
       health: this.health,
+      recoveryAttempts: this.recovery.used,
+      restartScheduled: this.restartTimer !== null,
     };
+  }
+
+  private scheduleOwnedRestart(): void {
+    if (this.intentionalStop || this.restartTimer) return;
+    if (this.healthTimer) clearInterval(this.healthTimer);
+    this.healthTimer = null;
+    const delayMs = this.recovery.nextDelay();
+    if (delayMs === null) {
+      this.lastError = "Backend recovery stopped after three attempts. Saved work is preserved. Restart ForgeX to retry.";
+      return;
+    }
+    desktopLog.error(`[forgex-backend] Scheduled owned backend restart in ${delayMs}ms`);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      if (this.intentionalStop) return;
+      void this.start().catch(error => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        this.scheduleOwnedRestart();
+      });
+    }, delayMs);
+    this.restartTimer.unref();
+  }
+
+  private startHealthSupervisor(): void {
+    if (this.healthTimer) clearInterval(this.healthTimer);
+    let failures = 0;
+    this.healthTimer = setInterval(() => {
+      if (this.intentionalStop || !this.ownsProcess || this.state !== "ready" || this.healthCheckRunning) return;
+      this.healthCheckRunning = true;
+      const child = this.process;
+      void this.fetchHealth().catch((error): BackendHealthProbeResult => ({reachable:false, forgeX:false, healthy:false,
+        error:error instanceof Error ? error.message : String(error)})).then(async result => {
+        if (this.process !== child || this.intentionalStop) return;
+        if (result.healthy && !this.compatibilityError(result.body)) { failures = 0; return; }
+        if (++failures < 2) return;
+        this.state = "crashed";
+        this.lastError = "The owned backend stopped responding. Reconnecting to saved work.";
+        await this.terminateOwnedProcess();
+        if (!this.intentionalStop) this.scheduleOwnedRestart();
+      }).catch(() => { failures += 1; }).finally(() => { this.healthCheckRunning = false; });
+    }, 10_000);
+    this.healthTimer.unref();
   }
 
   private async waitForReady(): Promise<void> {
     const deadline = Date.now() + this.readinessTimeoutMs;
     let lastProbe: BackendHealthProbeResult | null = null;
     while (Date.now() < deadline) {
+      if (this.intentionalStop) throw new Error("Backend startup stopped");
       if (this.state === "crashed" && !this.process) {
         throw new Error(this.lastError ?? "Backend process exited before it became healthy");
       }
       const result = await this.fetchHealth();
+      if (this.intentionalStop) throw new Error("Backend startup stopped");
       lastProbe = result;
       if (result.reachable && !result.forgeX) {
         this.state = "crashed";
@@ -289,7 +372,7 @@ export class BackendManager {
         this.health = result.body;
         this.state = "ready";
         this.lastError = undefined;
-        console.log(`[forgex-backend] Backend healthy at ${this.url}`);
+        desktopLog.log(`[forgex-backend] Backend healthy at ${this.url}`);
         return;
       }
       await delay(this.readinessIntervalMs);

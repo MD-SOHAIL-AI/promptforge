@@ -86,6 +86,9 @@ def normalize_tool_name(value: str) -> ToolName:
 
 
 def scheduler_class(tool: ToolName) -> SchedulerClass:
+    from .tool_registry import NEW_TOOLS
+    if tool in NEW_TOOLS:
+        return SchedulerClass(NEW_TOOLS[tool].scheduler)
     if tool in _READ_TOOLS:
         return SchedulerClass.READ
     if tool in _WORKSPACE_TOOLS:
@@ -98,6 +101,9 @@ def scheduler_class(tool: ToolName) -> SchedulerClass:
 
 
 def retry_class(tool: ToolName) -> RetryClass:
+    from .tool_registry import NEW_TOOLS
+    if tool in NEW_TOOLS:
+        return RetryClass(NEW_TOOLS[tool].recovery)
     if tool in _READ_TOOLS:
         return RetryClass.PURE
     if tool in _WORKSPACE_TOOLS:

@@ -1,4 +1,5 @@
 import type { ForgeXSettingValue } from "@/types";
+import { resolveBackgroundImage } from "@/lib/background-image";
 
 export interface ForgeXThemeDefinition {
   id: string;
@@ -26,7 +27,7 @@ export const FORGEX_THEMES: ForgeXThemeDefinition[] = [
 export const ACCENT_COLORS = {
   purple: "#7c5cff",
   blue: "#3b82f6",
-  cyan: "#06b6d4",
+  cyan: "#55cbd8",
   green: "#22c55e",
   amber: "#f59e0b",
   orange: "#f97316",
@@ -36,7 +37,7 @@ export const ACCENT_COLORS = {
 
 export const DEFAULT_FORGEX_SETTINGS: Record<string, ForgeXSettingValue> = {
   "appearance.theme": "forgex-dark",
-  "appearance.accent": "purple",
+  "appearance.accent": "cyan",
   "appearance.font_size": 14,
   "appearance.ui_density": "comfortable",
   "appearance.panel_borders": true,
@@ -73,16 +74,20 @@ export function applyForgeXTheme(settings?: Record<string, ForgeXSettingValue> |
     : FORGEX_THEMES.some((item) => item.id === requestedTheme) ? requestedTheme : "forgex-dark";
   const accent = String(merged["appearance.accent"] ?? "purple") as keyof typeof ACCENT_COLORS;
   const fontSize = Number(merged["appearance.font_size"] ?? 14);
-  const terminalFontSize = Number(merged["appearance.terminal_font_size"] ?? 13);
+  const terminalFontSize = Number(merged["terminal.font_size"] ?? merged["appearance.terminal_font_size"] ?? 13);
   const surfaceOpacity = clamp(Number(merged["appearance.surface_opacity"] ?? 94), 65, 100);
   const backgroundDim = clamp(Number(merged["appearance.background_dim"] ?? 72), 0, 100);
   const backgroundBlur = clamp(Number(merged["appearance.background_blur"] ?? 0), 0, 30);
   const cornerRadius = clamp(Number(merged["appearance.corner_radius"] ?? 10), 0, 20);
   const glowIntensity = clamp(Number(merged["appearance.glow_intensity"] ?? 35), 0, 100);
   const backgroundAssetId = String(merged["appearance.background_asset_id"] ?? "");
-  const accentValue = ACCENT_COLORS[accent] ?? ACCENT_COLORS.purple;
+  const mode = FORGEX_THEMES.find(item => item.id === theme)?.mode ?? "dark";
+  const lightAccents: Record<string, string> = { cyan: "#096978", purple: "#6842bd", blue: "#245bc0", green: "#08724e", amber: "#875200", orange: "#a9440e", rose: "#b02742", neutral: "#526176" };
+  const accentValue = mode === "light" ? lightAccents[accent] ?? lightAccents.cyan : ACCENT_COLORS[accent] ?? ACCENT_COLORS.cyan;
 
   document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.mode = FORGEX_THEMES.find(item => item.id === theme)?.mode ?? "dark";
+  document.documentElement.style.colorScheme = document.documentElement.dataset.mode;
   document.documentElement.dataset.density = String(merged["appearance.ui_density"] ?? "comfortable");
   document.documentElement.dataset.motion = String(merged["appearance.motion"] ?? "subtle");
   document.documentElement.dataset.panelBorders = String(merged["appearance.panel_borders"] !== false);
@@ -92,24 +97,32 @@ export function applyForgeXTheme(settings?: Record<string, ForgeXSettingValue> |
   document.documentElement.style.setProperty("--fx-glow", `${accentValue}${Math.round((glowIntensity / 100) * 102).toString(16).padStart(2, "0")}`);
   document.documentElement.style.setProperty("--fx-font-size", `${Number.isFinite(fontSize) ? fontSize : 14}px`);
   document.documentElement.style.setProperty("--fx-terminal-font-size", `${Number.isFinite(terminalFontSize) ? terminalFontSize : 13}px`);
+  document.documentElement.style.setProperty("--fx-terminal-scrollback", String(clamp(Number(merged["terminal.scrollback_lines"] ?? 1000), 200, 20000)));
   document.documentElement.style.setProperty("--fx-surface-opacity", `${surfaceOpacity}%`);
   document.documentElement.style.setProperty("--fx-background-dim", String(backgroundDim / 100));
   document.documentElement.style.setProperty("--fx-background-blur", `${backgroundBlur}px`);
-  document.documentElement.style.setProperty("--fx-background-fit", String(merged["appearance.background_fit"] ?? "cover"));
+  document.documentElement.style.setProperty("--fx-background-fit", merged["appearance.background_fit"] === "fill" ? "100% 100%" : String(merged["appearance.background_fit"] ?? "cover"));
   document.documentElement.style.setProperty("--fx-background-position", String(merged["appearance.background_position"] ?? "center"));
   document.documentElement.style.setProperty("--fx-radius", `${cornerRadius}px`);
   document.documentElement.style.setProperty("--fx-radius-sm", `${Math.max(3, cornerRadius - 3)}px`);
-  document.documentElement.dataset.contrast = String(merged["appearance.contrast"] ?? "standard");
-  document.documentElement.dataset.backgroundAsset = backgroundAssetId;
-  document.documentElement.style.setProperty("--fx-background-image", "none");
-
-  if (backgroundAssetId && window.forgexDesktop?.resolveBackgroundImage) {
-    void window.forgexDesktop.resolveBackgroundImage(backgroundAssetId).then((asset) => {
-      if (!asset || document.documentElement.dataset.backgroundAsset !== backgroundAssetId) return;
-      const safeUrl = asset.url.replaceAll('"', "%22");
-      document.documentElement.style.setProperty("--fx-background-image", `url("${safeUrl}")`);
-      window.dispatchEvent(new Event("forgex-theme-change"));
-    }).catch(() => null);
+  document.documentElement.dataset.contrast = theme.startsWith("high-contrast") ? "high" : String(merged["appearance.contrast"] ?? "standard");
+  if (document.documentElement.dataset.backgroundAsset !== backgroundAssetId) {
+    document.documentElement.dataset.backgroundAsset = backgroundAssetId;
+    delete document.documentElement.dataset.backgroundError;
+    if (!backgroundAssetId) document.documentElement.style.setProperty("--fx-background-image", "none");
+    else if (window.forgexDesktop?.resolveBackgroundImage) {
+      void resolveBackgroundImage(backgroundAssetId).then(asset => {
+        if (document.documentElement.dataset.backgroundAsset !== backgroundAssetId) return;
+        if (!asset) throw new Error("Your saved background is missing. Choose another image or remove the saved selection.");
+        document.documentElement.style.setProperty("--fx-background-image", `url("${asset.url.replaceAll('"', "%22")}")`);
+        window.dispatchEvent(new Event("forgex-theme-change"));
+      }).catch(error => {
+        if (document.documentElement.dataset.backgroundAsset !== backgroundAssetId) return;
+        document.documentElement.style.setProperty("--fx-background-image", "none");
+        document.documentElement.dataset.backgroundError = error instanceof Error ? error.message : "Background unavailable.";
+        window.dispatchEvent(new Event("forgex-theme-change"));
+      });
+    }
   }
 
   window.dispatchEvent(new Event("forgex-theme-change"));

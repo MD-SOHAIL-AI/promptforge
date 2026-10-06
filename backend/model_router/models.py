@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, Mapping
+from backend.contracts.transport import TransportPolicy
 
 
 AuthType = Literal["api_key", "none", "oauth_external"]
@@ -40,6 +41,8 @@ class ModelProvider:
     models_cached: int = 0
     custom: bool = False
     protocol: str = "openai-completions"
+    configuration_fields: tuple[str, ...] = ()
+    options_configured: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -56,6 +59,8 @@ class ModelProvider:
             "models_cached": self.models_cached,
             "custom": self.custom,
             "protocol": self.protocol,
+            "configuration_fields": list(self.configuration_fields),
+            "options_configured": self.options_configured,
             "credential_configured": self.configured and self.auth_type == "api_key",
         }
         if self.base_url:
@@ -252,6 +257,25 @@ class StructuredOutputSpec:
         }
 
 
+@dataclass(slots=True)
+class RequestExecutionContext:
+    """Host-only state shared by every physical attempt and output repair."""
+
+    budget: dict[str, Any] = field(default_factory=dict)
+    attempts: dict[str, int] = field(default_factory=lambda: {"used": 0, "limit": 6})
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+    recovery_hook: Any = None
+    deadline: float | None = None
+    deadline_kind: Literal["job_deadline", "turn_deadline"] = "job_deadline"
+    managed: bool = True
+    transport_policy: TransportPolicy | None = None
+
+
+def execution_value(request, name, legacy_key, default=None):
+    context = getattr(request, "execution_context", None)
+    return getattr(context, name) if context is not None else request.metadata.get(legacy_key, default)
+
+
 @dataclass(frozen=True, slots=True)
 class ModelRequest:
     prompt: str
@@ -265,6 +289,7 @@ class ModelRequest:
     local_only: bool = False
     structured_output: StructuredOutputSpec | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    execution_context: RequestExecutionContext | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)

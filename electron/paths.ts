@@ -9,7 +9,7 @@ export function resolveRepoRoot(): string {
 export function resolveApplicationRoot(isPackaged: boolean, resourcesPath: string, cwd: string): string {
   if (!isPackaged) return cwd;
   const looksWindows = /^[A-Za-z]:[\\/]/.test(resourcesPath) || resourcesPath.includes("\\");
-  return looksWindows ? path.win32.dirname(resourcesPath) : path.posix.dirname(resourcesPath);
+  return looksWindows ? path.win32.join(resourcesPath, "forgex") : path.posix.join(resourcesPath, "forgex");
 }
 
 export function resolveBackendCwd(): string {
@@ -18,7 +18,7 @@ export function resolveBackendCwd(): string {
 
 export function resolveBackendPort(): number {
   const raw = process.env.FORGEX_BACKEND_PORT ?? process.env.PROMPTFORGE_BACKEND_PORT ?? "8000";
-  const port = Number.parseInt(raw, 10);
+  const port = /^\d+$/.test(raw) ? Number(raw) : NaN;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid backend port: ${raw}`);
   }
@@ -31,7 +31,7 @@ export function resolveBackendUrl(port = resolveBackendPort()): string {
 
 export function resolveHarnessPort(): number {
   const raw = process.env.FORGEX_HARNESS_PORT ?? "8765";
-  const port = Number.parseInt(raw, 10);
+  const port = /^\d+$/.test(raw) ? Number(raw) : NaN;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid harness port: ${raw}`);
   }
@@ -64,7 +64,7 @@ export function resolveFrontendUrl(): string {
 
 export function resolveFrontendPort(): number {
   const raw = process.env.FORGEX_FRONTEND_PORT ?? "3000";
-  const port = Number.parseInt(raw, 10);
+  const port = /^\d+$/.test(raw) ? Number(raw) : NaN;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Invalid frontend port: ${raw}`);
   }

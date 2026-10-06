@@ -119,12 +119,16 @@ def repair_verified_cpp_build_errors(
     """Apply only source repairs supported by this build's compiler diagnostics."""
     include_repair = repair_missing_arduino_core_include(workspace_root, build_result)
     collision_repair = _repair_system_name_collision(workspace_root, build_result)
+    alarm_repair = _repair_alarm_name_collision(workspace_root, build_result)
+    type_include_repair = _repair_missing_project_type_include(workspace_root, build_result)
+    prototype_repair = _repair_missing_local_prototypes(workspace_root, build_result)
     dependency_repair = _repair_misnamed_platformio_dependency(workspace_root, build_result)
     declaration_repair = _repair_missing_member_declaration(workspace_root, build_result)
     signature_repair = _repair_member_definition_signatures(workspace_root, build_result)
     constructor_repair = _repair_defaulted_constructor_definition(workspace_root, build_result)
     repairs = tuple(item for item in (
-        include_repair, collision_repair, dependency_repair, declaration_repair,
+        include_repair, collision_repair, alarm_repair, type_include_repair,
+        prototype_repair, dependency_repair, declaration_repair,
         signature_repair, constructor_repair,
     ) if item is not None)
     if not repairs:
@@ -469,6 +473,143 @@ def _repair_system_name_collision(
         changed_paths=(path.relative_to(root).as_posix(),),
         reason="Compiler identified a global system variable that collides with the C library system function.",
     )
+
+
+def _repair_alarm_name_collision(
+    workspace_root: str | Path, build_result: Mapping[str, object],
+) -> DeterministicRepair | None:
+    root = Path(workspace_root).resolve(strict=True)
+    diagnostics = build_result.get("diagnostics")
+    if not isinstance(diagnostics, str) or not re.search(
+        r"previous declaration\s+['`][^\n]*\balarm\s*\(", diagnostics,
+    ):
+        return None
+    match = re.search(
+        r"(?m)^(.+?\.cpp):\d+(?::\d+)?:\s*error:\s*"
+        r"'AlarmManager alarm' redeclared as different kind of symbol",
+        diagnostics,
+    )
+    if match is None:
+        return None
+    raw = Path(match.group(1).strip())
+    path = _safe_source_path(root, raw if raw.is_absolute() else root / raw)
+    if path is None or path.stat().st_size > _MAX_SOURCE_BYTES:
+        return None
+    try:
+        source = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return None
+    declaration = re.compile(r"(?m)^(\s*AlarmManager\s+)alarm(\s*;\s*)$")
+    if len(declaration.findall(source)) != 1 or "alarmManagerInstance" in source:
+        return None
+    rewritten = declaration.sub(r"\g<1>alarmManagerInstance\g<2>", source)
+    tokens = re.compile(
+        r"//[^\n]*|/\*[\s\S]*?\*/|\"(?:\\.|[^\"\\])*\"|"
+        r"'(?:\\.|[^'\\])*'|\balarm(?=\s*(?:\.|->))"
+    )
+    rewritten = tokens.sub(
+        lambda item: "alarmManagerInstance" if item.group() == "alarm" else item.group(), rewritten
+    )
+    if rewritten == source or not re.search(r"\balarmManagerInstance\s*(?:\.|->)", rewritten):
+        return None
+    _atomic_write(path, rewritten.encode("utf-8"))
+    return DeterministicRepair("cpp-alarm-name-collision-v1",
+        (path.relative_to(root).as_posix(),),
+        "Compiler identified a global alarm object that collides with the C library alarm function.")
+
+
+def _repair_missing_project_type_include(
+    workspace_root: str | Path, build_result: Mapping[str, object],
+) -> DeterministicRepair | None:
+    root = Path(workspace_root).resolve(strict=True)
+    diagnostics = build_result.get("diagnostics")
+    if not isinstance(diagnostics, str):
+        return None
+    changed: list[str] = []
+    for match in re.finditer(
+        r"(?m)^(.+?\.(?:h|hpp)):\d+(?::\d+)?:\s*error:\s*"
+        r"'([A-Za-z_]\w*)' does not name a type", diagnostics,
+    ):
+        raw = Path(match.group(1).strip())
+        target = _safe_source_path(root, raw if raw.is_absolute() else root / raw, _HEADER_SUFFIXES)
+        if target is None or target.stat().st_size > _MAX_SOURCE_BYTES:
+            continue
+        type_name = match.group(2)
+        candidates = []
+        for candidate in (root / "include").glob("*.h"):
+            safe = _safe_source_path(root, candidate, _HEADER_SUFFIXES)
+            if safe is None or safe == target or safe.stat().st_size > _MAX_SOURCE_BYTES:
+                continue
+            try:
+                if re.search(rf"(?m)^\s*(?:class|struct)\s+{re.escape(type_name)}\b", safe.read_text(encoding="utf-8-sig")):
+                    candidates.append(safe)
+            except (OSError, UnicodeDecodeError):
+                continue
+        if len(candidates) != 1:
+            continue
+        try:
+            source = target.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError):
+            continue
+        directive = f'#include "{candidates[0].name}"'
+        if directive in source:
+            continue
+        newline = "\r\n" if "\r\n" in source else "\n"
+        includes = list(re.finditer(r"(?m)^\s*#\s*include[^\r\n]*", source))
+        if not includes:
+            continue
+        end = includes[-1].end()
+        _atomic_write(target, (source[:end] + newline + directive + source[end:]).encode("utf-8"))
+        changed.append(target.relative_to(root).as_posix())
+    if not changed:
+        return None
+    return DeterministicRepair("cpp-project-type-include-v1", tuple(dict.fromkeys(changed)),
+        "Compiler identified a project type whose sole defining header was not included.")
+
+
+def _repair_missing_local_prototypes(
+    workspace_root: str | Path, build_result: Mapping[str, object],
+) -> DeterministicRepair | None:
+    root = Path(workspace_root).resolve(strict=True)
+    diagnostics = build_result.get("diagnostics")
+    if not isinstance(diagnostics, str):
+        return None
+    pending: dict[Path, set[str]] = {}
+    for match in re.finditer(
+        r"(?m)^(.+?\.cpp):\d+(?::\d+)?:\s*error:\s*"
+        r"'([A-Za-z_]\w*)' was not declared in this scope", diagnostics,
+    ):
+        raw = Path(match.group(1).strip())
+        path = _safe_source_path(root, raw if raw.is_absolute() else root / raw)
+        if path is not None and path.stat().st_size <= _MAX_SOURCE_BYTES:
+            pending.setdefault(path, set()).add(match.group(2))
+    changed: list[str] = []
+    for path, names in pending.items():
+        try:
+            source = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError):
+            continue
+        includes = list(re.finditer(r"(?m)^\s*#\s*include[^\r\n]*", source))
+        if not includes:
+            continue
+        insert_at = includes[-1].end()
+        verified = []
+        for name in sorted(names):
+            definition = re.search(rf"(?m)^\s*void\s+{re.escape(name)}\s*\(\s*\)\s*\{{", source)
+            if definition and definition.start() > insert_at and not re.search(
+                rf"(?m)^\s*void\s+{re.escape(name)}\s*\(\s*\)\s*;", source[:definition.start()]
+            ):
+                verified.append(name)
+        if not verified:
+            continue
+        newline = "\r\n" if "\r\n" in source else "\n"
+        declarations = newline + newline + newline.join(f"void {name}();" for name in verified)
+        _atomic_write(path, (source[:insert_at] + declarations + source[insert_at:]).encode("utf-8"))
+        changed.append(path.relative_to(root).as_posix())
+    if not changed:
+        return None
+    return DeterministicRepair("cpp-local-prototypes-v1", tuple(changed),
+        "Compiler identified calls to zero-argument functions defined later in the same source file.")
 
 
 def _uses_arduino_framework(root: Path) -> bool:

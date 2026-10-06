@@ -26,7 +26,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.10"
+          python-version: "3.13.15"
           cache: pip
 
       - name: Set up Node.js
@@ -39,7 +39,10 @@ jobs:
             frontend/package-lock.json
 
       - name: Install Python dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt pip-audit
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-runtime.lock
+          python -m pip install pytest==9.0.2 pytest-asyncio==1.4.0 pytest-cov==7.0.0 pip-audit
+          python -m pip install setuptools==84.0.0
 
       - name: Install desktop dependencies
         run: npm ci
@@ -57,13 +60,47 @@ jobs:
         run: npm run build:frontend
 
       - name: Audit Python dependencies
-        run: python -m pip_audit -r requirements.txt
+        run: python -m pip_audit -r requirements-runtime.lock --require-hashes
 
       - name: Audit desktop dependencies
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=moderate
 
       - name: Audit frontend dependencies
-        run: npm audit --prefix frontend --audit-level=high
+        run: npm audit --prefix frontend --audit-level=moderate
+
+      - name: Stage bundled Windows runtime
+        run: npm run prepare:release
+
+      - name: Scan packaged runtime
+        run: npm run scan:package
+
+      - name: Smoke test bundled runtime
+        run: python scripts/smoke-packaged.py
+
+      - name: Build unsigned installer candidate
+        env:
+          FORGEX_UNSIGNED_TEST_BUILD: "1"
+        shell: pwsh
+        run: |
+          $releaseShell = node --input-type=module -e "import { createReleaseShell } from './scripts/release-shell.mjs'; console.log(await createReleaseShell());"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx electron-builder --win --x64 --config electron-builder.config.cjs "--config.directories.app=$releaseShell"
+
+      - name: Validate final bundled package
+        run: |
+          node scripts/scan-packaged-content.mjs .forgex/installers/win-unpacked/resources/forgex
+          python scripts/smoke-packaged.py --root .forgex/installers/win-unpacked/resources/forgex
+          python scripts/smoke-desktop.py
+          python scripts/smoke-desktop.py --closed-output-pipes --screenshot test-results/packaged-desktop-closed-pipes.png
+
+      - name: Preserve installer candidate and evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-x64-unsigned-candidate
+          path: |
+            .forgex/installers/*.exe
+            .forgex/release-staging/*/forgex/release-manifest.json
+            .forgex/release-staging/*/forgex/sbom-*.json
 
       - name: Scan source release contents
         shell: pwsh

@@ -81,7 +81,10 @@ class SQLiteProviderSettingsStorage(ProviderSettingsStorage):
     def _connect(self):
         return sqlite3.connect(self.path, timeout=30)
 
-    def _read_unlocked(self):
+    def _read_unlocked(self, *, fresh: bool = False):
+        snapshot = self._snapshot.get()
+        if not fresh and snapshot is not None:
+            return snapshot
         row = self._connection.execute("SELECT version,payload FROM model_settings WHERE id=1").fetchone()
         if row is None:
             return _empty_state()
@@ -109,3 +112,5 @@ class SQLiteProviderSettingsStorage(ProviderSettingsStorage):
             "INSERT INTO model_settings VALUES(1,1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
             (json.dumps(state, ensure_ascii=True, sort_keys=True),),
         )
+        if self._snapshot.get() is not None:
+            self._snapshot.set(state)

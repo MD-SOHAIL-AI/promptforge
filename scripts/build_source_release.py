@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "scripts" / "source-release-manifest.json"
-SKIP_DIRS = {"node_modules", ".next", "dist", ".venv", "venv", "virtualenv", ".pio", ".pytest_cache", "__pycache__", ".cache", ".forgex", "hardware-signoff-reports"}
+SKIP_DIRS = {".git", "node_modules", ".next", ".next-e2e", "test-results", "playwright-report", "dist", ".venv", "venv", "virtualenv", ".pio", ".pytest_cache", "__pycache__", ".cache", ".forgex", "hardware-signoff-reports"}
 SKIP_SUFFIXES = {".pyc", ".pyo", ".tsbuildinfo", ".bin", ".elf", ".hex", ".map", ".uf2"}
 ALLOWED_WORKSPACE = {"workspace/.gitkeep", "workspace/artifacts/.gitkeep", "workspace/builds/.gitkeep", "workspace/logs/.gitkeep", "workspace/projects/.gitkeep"}
 
@@ -30,6 +30,8 @@ def verify_required(root: Path) -> None:
 
 def include_file(path: Path) -> bool:
     rel = path.relative_to(ROOT).as_posix()
+    if rel.startswith("frontend/public/vendor/monaco/"):
+        return False  # Generated from the pinned dependency by frontend prebuild.
     parts = rel.split("/")
     if any(part in SKIP_DIRS for part in parts):
         return False

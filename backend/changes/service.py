@@ -18,6 +18,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable
 
 from .models import ChangeSet, ChangedFile, SnapshotFile, WorkspaceSnapshot
+from backend.security.workspace_io import iter_workspace_files
 
 
 IGNORED_DIRS = frozenset({".git", ".pio", ".promptforge", ".forgex", ".next", "node_modules", "dist", "build"})
@@ -43,6 +44,10 @@ class ChangeSetService:
         self.staging_root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._sets: dict[str, ChangeSet] = self._load()
+        self.recovery_issues: dict[str, str] = {}
+        for identifier in tuple(self._sets):
+            if self._journal_path(identifier).exists():
+                self._recover_publish(identifier)
 
     def create_stage(self, run_id: str | None = None) -> Path:
         identifier = run_id or f"stage-{uuid.uuid4().hex}"
@@ -251,10 +256,11 @@ class ChangeSetService:
                 shutil.copy2(source, target)
 
     def prune_review_drafts(self, workspace_root: Path, *, keep: int = 3) -> None:
-        drafts = [item for item in self.list(status="draft")
-                  if Path(item.workspace_root).resolve() == workspace_root]
-        for item in drafts[keep:]:
-            self.discard(item.change_set_id)
+        # A ChangeSet is a durable reference, not an expendable cache. Only
+        # explicit discard retires it; orphan stage retention handles data
+        # with no ChangeSet/checkpoint reference. A count-based prune could
+        # silently destroy the only draft belonging to a saved run.
+        return
 
     def get(self, change_set_id: str) -> ChangeSet:
         with self._lock:
@@ -297,6 +303,9 @@ class ChangeSetService:
     def apply(self, change_set_id: str) -> ChangeSet:
         with self._lock:
             change_set = self.get(change_set_id)
+            if self._journal_path(change_set_id).exists():
+                self._recover_publish(change_set_id)
+                change_set = self.get(change_set_id)
             if change_set.status != "pending":
                 raise ChangeSetError("CHANGE_SET_NOT_PENDING", "Only pending ChangeSets can be applied.")
             active = _resolve_root(change_set.workspace_root)
@@ -369,11 +378,17 @@ class ChangeSetService:
                         backup.parent.mkdir(parents=True, exist_ok=True)
                         backup = _backup_path(stage, item.path, must_exist=False)
                         _atomic_write_bytes(backup, original)
+                # Write-ahead: every original is durable before any active file
+                # changes. Startup can reconcile even death between rename and
+                # metadata publication, without trusting an in-memory cursor.
+                self._begin_publish(change_set, "apply")
+                for item, target, staged_bytes, original in prepared:
                     _reject_reparse_path(active, target)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     _reject_symlink_components(active, target.parent)
                     if staged_bytes is None:
                         target.unlink()
+                        _sync_directory(target.parent)
                     else:
                         _atomic_write_bytes(target, staged_bytes)
                     applied.append((target, original))
@@ -389,16 +404,22 @@ class ChangeSetService:
                     except (OSError, ChangeSetError):
                         pass
                 self._mark(change_set, "failed")
+                if self._journal_path(change_set_id).exists():
+                    self._recover_publish(change_set_id, failure_status="failed")
                 raise ChangeSetError("CHANGE_APPLY_FAILED", "The ChangeSet could not be applied safely.") from exc
 
             updated = change_set.with_status("applied", applied_at=datetime.now(timezone.utc))
-            self._sets[change_set_id] = updated
             self._persist(updated)
+            self._sets[change_set_id] = updated
+            self._finish_publish(change_set_id)
             return updated
 
     def undo(self, change_set_id: str) -> ChangeSet:
         with self._lock:
             change_set = self.get(change_set_id)
+            if self._journal_path(change_set_id).exists():
+                self._recover_publish(change_set_id)
+                change_set = self.get(change_set_id)
             if change_set.status != "applied":
                 raise ChangeSetError("CHANGE_SET_NOT_APPLIED", "Only applied ChangeSets can be undone.")
             active = _resolve_root(change_set.workspace_root)
@@ -423,6 +444,7 @@ class ChangeSetService:
             # Never overwrite user edits that happened after the ChangeSet apply.
             for item in change_set.changed_files:
                 target = _safe_join(active, item.path, must_exist=False)
+                _reject_reparse_path(active, target)
                 if item.change_type == "deleted":
                     if target.exists():
                         raise ChangeSetError("CHANGE_UNDO_CONFLICT", "A deleted path has been recreated.", {"path": item.path})
@@ -435,12 +457,14 @@ class ChangeSetService:
             restored: list[tuple[Path, bytes | None]] = []
             deleted_created: list[tuple[Path, bytes]] = []
             try:
+                self._begin_publish(change_set, "undo")
                 for item in reversed(change_set.changed_files):
                     _reject_reparse_path(active, active.joinpath(*item.path.split("/")))
                     target = _safe_join(active, item.path, must_exist=item.change_type != "deleted")
                     current = None if item.change_type == "deleted" else target.read_bytes()
                     if item.change_type == "created":
                         target.unlink()
+                        _sync_directory(target.parent)
                         deleted_created.append((target, current))
                         continue
                     original = originals[item.path]
@@ -466,15 +490,94 @@ class ChangeSetService:
                         _atomic_write_bytes(target, applied_bytes)
                     except (OSError, ChangeSetError):
                         pass
+                self._recover_publish(change_set_id)
                 if isinstance(exc, ChangeSetError):
                     raise
                 raise ChangeSetError("CHANGE_UNDO_FAILED", "The ChangeSet could not be undone safely.") from exc
 
             updated = change_set.with_status("undone", undone_at=datetime.now(timezone.utc))
-            self._sets[change_set_id] = updated
             self._persist(updated)
+            self._sets[change_set_id] = updated
+            self._finish_publish(change_set_id)
             shutil.rmtree(stage, ignore_errors=True)
             return updated
+
+    def _journal_path(self, identifier: str) -> Path:
+        return self.state_root / f".publish-{identifier}.json"
+
+    def _begin_publish(self, change_set: ChangeSet, operation: str) -> None:
+        path = self._journal_path(change_set.change_set_id)
+        if path.exists():
+            raise ChangeSetError("CHANGE_RECOVERY_REQUIRED", "An interrupted publication requires recovery.")
+        _atomic_write_bytes(path, json.dumps({"schema_version": 1,
+            "change_set_id": change_set.change_set_id, "operation": operation,
+            "staged_manifest_hash": change_set.staged_manifest_hash}, sort_keys=True).encode())
+
+    def _finish_publish(self, identifier: str) -> None:
+        self._journal_path(identifier).unlink(missing_ok=True)
+        _sync_directory(self.state_root)
+        self.recovery_issues.pop(identifier, None)
+
+    def _recover_publish(self, identifier: str, *, failure_status: str | None = None) -> None:
+        """Idempotently roll back an interrupted apply/undo, preserving new edits."""
+        change_set = self._sets[identifier]
+        try:
+            journal_path = self._journal_path(identifier)
+            _reject_reparse_path(self.state_root, journal_path)
+            if journal_path.stat().st_size > 4096:
+                raise ValueError("invalid publication journal")
+            journal = json.loads(journal_path.read_bytes())
+            operation = journal["operation"]
+            if (journal.get("schema_version") != 1 or journal.get("change_set_id") != identifier
+                or operation not in {"apply", "undo"}
+                or journal.get("staged_manifest_hash") != change_set.staged_manifest_hash):
+                raise ValueError("invalid publication journal")
+            committed = "applied" if operation == "apply" else "undone"
+            if change_set.status == committed:
+                self._finish_publish(identifier)
+                return
+            active = _resolve_root(change_set.workspace_root)
+            stage = Path(change_set.staging_root).resolve(strict=True)
+            self._assert_owned_stage(stage)
+            prepared = []
+            for item in change_set.changed_files:
+                desired_hash = item.previous_hash if operation == "apply" else item.new_hash
+                opposite_hash = item.new_hash if operation == "apply" else item.previous_hash
+                target = _safe_join(active, item.path, must_exist=False)
+                _reject_reparse_path(active, target)
+                actual = hash_file(target) if target.exists() else None
+                if actual not in {desired_hash, opposite_hash}:
+                    raise ChangeSetError("CHANGE_RECOVERY_CONFLICT", "A file changed after interrupted publication.", {"path": item.path})
+                data = None
+                if desired_hash is not None and actual != desired_hash:
+                    source = (_backup_path(stage, item.path, must_exist=True) if operation == "apply"
+                              else _safe_join(stage, item.path, must_exist=True))
+                    data = source.read_bytes()
+                    if hashlib.sha256(data).hexdigest() != desired_hash:
+                        raise ChangeSetError("CHANGE_RECOVERY_BACKUP_INVALID", "Recovery content failed its integrity check.")
+                prepared.append((target, data, actual, desired_hash))
+            for target, data, actual, desired in prepared:
+                if actual == desired:
+                    continue
+                _reject_reparse_path(active, target)
+                if data is None:
+                    target.unlink(missing_ok=True)
+                    _sync_directory(target.parent)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    _reject_reparse_path(active, target)
+                    _atomic_write_bytes(target, data)
+            self._mark(change_set, failure_status or ("pending" if operation == "apply" else "applied"))
+            if operation == "apply":
+                # Pending retries must create their own backups afresh.
+                undo_root = stage / "__undo__"
+                _reject_reparse_path(stage, undo_root)
+                if undo_root.exists():
+                    shutil.rmtree(undo_root)
+            self._finish_publish(identifier)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            self.recovery_issues[identifier] = getattr(exc, "code", "CHANGE_RECOVERY_FAILED")
+            self._mark(change_set, failure_status or "conflicted")
 
     def discard(self, change_set_id: str) -> ChangeSet:
         with self._lock:
@@ -495,8 +598,8 @@ class ChangeSetService:
 
     def _mark(self, change_set: ChangeSet, status: str) -> None:
         updated = change_set.with_status(status)  # type: ignore[arg-type]
-        self._sets[change_set.change_set_id] = updated
         self._persist(updated)
+        self._sets[change_set.change_set_id] = updated
 
     def _assert_owned_stage(self, stage: Path) -> None:
         try:
@@ -612,22 +715,10 @@ def _resolve_root(value: str | Path) -> Path:
 
 
 def _iter_files(root: Path, *, ignore_common_dirs: bool = True) -> list[Path]:
-    result: list[Path] = []
-    for current_root, dirnames, filenames in os.walk(root, followlinks=False):
-        current = Path(current_root)
-        if ignore_common_dirs:
-            dirnames[:] = [
-                name for name in dirnames
-                if name.casefold() not in IGNORED_DIRS and not (current / name).is_symlink()
-            ]
-        else:
-            dirnames[:] = [name for name in dirnames if not (current / name).is_symlink()]
-        for name in filenames:
-            path = current / name
-            if path.is_symlink() or not path.is_file():
-                continue
-            result.append(path)
-    return result
+    try:
+        return list(iter_workspace_files(root, ignored_dirs=IGNORED_DIRS if ignore_common_dirs else ()))
+    except ValueError as exc:
+        raise ChangeSetError("CHANGE_WORKSPACE_ENTRY_LIMIT", "The workspace exceeds the safe file inventory limit.") from exc
 
 
 def _safe_join(root: Path, relative: str, *, must_exist: bool) -> Path:
@@ -781,7 +872,19 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        _sync_directory(path.parent)
         temporary = None
     finally:
         if temporary is not None and temporary.exists():
             temporary.unlink(missing_ok=True)
+
+
+def _sync_directory(path: Path) -> None:
+    # Windows has no portable directory fsync; file handles are flushed before
+    # replacement. POSIX also requires the directory entry to be durable.
+    if os.name != "nt":
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)

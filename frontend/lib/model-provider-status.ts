@@ -25,7 +25,7 @@ export function providerPresentationStatus(provider: ModelProviderResponse): Pro
 
 export function providerStatusLabel(status: ProviderPresentationStatus): string {
   return {
-    ready: "Ready",
+    ready: "Configured",
     needs_key: "Needs API key",
     rate_limited: "Rate limited",
     quota_exhausted: "Quota exhausted",

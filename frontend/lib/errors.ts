@@ -25,3 +25,15 @@ export function toErrorMessage(error: unknown, fallback = "Unknown error"): stri
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
+export function apiErrorCode(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.code === "string") return record.code;
+  for (const key of ["body", "detail", "error"]) {
+    const nested = record[key];
+    if (nested && typeof nested === "object" && typeof (nested as Record<string, unknown>).code === "string") {
+      return (nested as Record<string, unknown>).code as string;
+    }
+  }
+  return undefined;
+}

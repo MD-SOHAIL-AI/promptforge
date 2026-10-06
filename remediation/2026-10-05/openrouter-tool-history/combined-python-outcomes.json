@@ -1,0 +1,14 @@
+{
+  "latest_unique_outcomes": {
+    "passed": 2262,
+    "skipped": 4
+  },
+  "evidence": [
+    "remediation\\2026-10-05\\logs\\python-unit.xml",
+    "remediation\\2026-10-05\\logs\\python-other-final.xml",
+    "remediation\\2026-10-05\\logs\\regressions-complete.xml",
+    "remediation\\2026-10-05\\logs\\provider-final.xml",
+    "remediation\\2026-10-05\\logs\\context-final.xml",
+    "remediation\\2026-10-05\\openrouter-tool-history\\python-verified.xml"
+  ]
+}

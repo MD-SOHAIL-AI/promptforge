@@ -11,7 +11,8 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "general.confirm_before_flash": True,
     "general.auto_open_generated_main_cpp": True,
     "appearance.theme": "forgex-dark",
-    "appearance.accent": "purple",
+    "appearance.accent": "cyan",
+    "appearance.activity_detail": "normal",
     "appearance.font_size": 14,
     "appearance.ui_density": "comfortable",
     "appearance.panel_borders": True,
@@ -63,6 +64,7 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
 
 
 SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
+    "appearance.activity_detail": {"type": "select", "label": "Activity detail", "category": "appearance", "options": ["summary", "normal", "verbose"]},
     "general.startup_behavior": {
         "type": "select",
         "label": "Startup behavior",
@@ -112,7 +114,7 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Terminal font size",
         "category": "appearance",
         "min": 11,
-        "max": 18,
+        "max": 22,
     },
     "appearance.background_asset_id": {
         "type": "string",

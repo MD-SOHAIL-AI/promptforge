@@ -1,0 +1,2 @@
+Synthetic instruction fixture
+OPENAI_API_KEY=sk-SYNTHETIC_AUDIT_ONLY_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

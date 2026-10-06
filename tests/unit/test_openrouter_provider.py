@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from backend.model_router.request_recovery import agent_stream
+from dataclasses import replace
+
+
+def recovered_stream(provider, request):
+    request = replace(request, metadata={**request.metadata, "forgex_managed_recovery": True})
+    return agent_stream(request, provider.generate_event_stream)
+
 from pathlib import Path
 
 import pytest
@@ -283,6 +291,11 @@ def test_openrouter_stream_retries_same_model_with_slow_first_token(
     monkeypatch.setattr(
         openrouter_module, "OPENROUTER_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS", 0.01
     )
+    from backend.model_router import request_recovery
+    original_sleep = asyncio.sleep
+    async def no_delay(_):
+        await original_sleep(0)
+    monkeypatch.setattr(request_recovery.asyncio, "sleep", no_delay)
     StalledFreeStreamService.attempts = []
     provider = StalledFreeStreamOpenRouterProvider(registry(tmp_path))
 
@@ -303,11 +316,7 @@ def test_openrouter_stream_retries_same_model_with_slow_first_token(
     from backend.services.llm_service import LLMTimeoutError
     with pytest.raises(LLMTimeoutError):
         asyncio.run(consume())
-    assert StalledFreeStreamService.attempts == [
-        "cohere/north-mini-code:free",
-        "cohere/north-mini-code:free",
-        "cohere/north-mini-code:free",
-    ]
+    assert StalledFreeStreamService.attempts == ["cohere/north-mini-code:free"] * 6
 
 
 def test_openrouter_agent_stream_retries_numeric_upstream_failure_on_same_model(
@@ -327,7 +336,7 @@ def test_openrouter_agent_stream_retries_numeric_upstream_failure_on_same_model(
     async def consume() -> list[CanonicalStreamEvent]:
         return [
             event
-            async for event in provider.generate_event_stream(
+            async for event in recovered_stream(provider,
                 ModelRequest(
                     prompt="create project",
                     task_type="planning",
@@ -360,7 +369,7 @@ def test_openrouter_agent_stream_discards_partial_attempt_before_retry(
     async def consume() -> list[CanonicalStreamEvent]:
         return [
             event
-            async for event in provider.generate_event_stream(
+            async for event in recovered_stream(provider,
                 ModelRequest(
                     prompt="continue project",
                     task_type="planning",

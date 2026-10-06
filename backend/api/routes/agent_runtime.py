@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -24,6 +25,7 @@ from ...agent_runtime.product_agent_service import (
     ProductAgentService,
 )
 from ...agent_runtime.session_store import AgentSession, AgentSessionStore
+from ...agent_runtime.task_contract import create_task_contract, revise_task_contract, clarification_choices, resolve_clarification, merge_clarification_answer
 from ...agent_runtime.slash_commands import parse_agent_slash_command
 from ...agent_runtime.turn_router import (
     AgentTurnContext,
@@ -44,6 +46,7 @@ from .execute import _active_workspace, _apply_execute_overrides
 router = APIRouter(prefix="/agent-runtime", tags=["agent-runtime"])
 STABLE_STREAM_STATUSES = {
     "completed",
+    "completed_with_warning",
     "failed",
     "cancelled",
     "blocked",
@@ -51,6 +54,7 @@ STABLE_STREAM_STATUSES = {
     "awaiting_flash_confirmation",
     "paused_model_unavailable",
 }
+SSE_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
 class AgentRuntimeStartRequest(BaseModel):
@@ -63,6 +67,7 @@ class AgentRuntimeStartRequest(BaseModel):
     board_type: str | None = Field(default=None, min_length=1, max_length=64)
     environment: str | None = Field(default=None, min_length=1, max_length=128)
     start_monitor_after_flash: bool = False
+    execution_profile: Literal["standard", "advanced"] = "standard"
 
 
 class AgentRuntimeSteerRequest(BaseModel):
@@ -98,6 +103,7 @@ class AgentSessionMessageRequest(BaseModel):
     board_type: str | None = Field(default=None, min_length=1, max_length=64)
     environment: str | None = Field(default=None, min_length=1, max_length=128)
     start_monitor_after_flash: bool = False
+    execution_profile: Literal["standard", "advanced"] = "standard"
     approved_plan_id: str | None = Field(default=None, min_length=1, max_length=160)
     approved_plan_revision: int | None = Field(default=None, ge=1, le=10_000)
     approved_plan_hash: str | None = Field(default=None, min_length=64, max_length=64)
@@ -107,6 +113,124 @@ class SessionSettingsRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=128)
     provider_id: str | None = Field(default=None, max_length=128)
     model_id: str | None = Field(default=None, max_length=128)
+
+
+class JobRecoveryPolicyRequest(BaseModel):
+    policy: Literal["manual", "safe_auto"]
+
+
+class JobResumeRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1,max_length=128)
+    provider_id: str | None = Field(default=None,min_length=1,max_length=128)
+    model_id: str | None = Field(default=None,min_length=1,max_length=256)
+    checkpoint_id: str | None = Field(default=None,min_length=1,max_length=160)
+
+
+class JobBudgetRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1,max_length=128)
+    elapsed_seconds: int = Field(default=900,ge=1,le=900,strict=True)
+    tool_calls_used: int = Field(default=100,ge=1,le=100,strict=True)
+    requests: int = Field(default=120,ge=1,le=120,strict=True)
+
+
+class ProjectTrustRequest(BaseModel):
+    trusted: bool = Field(strict=True)
+
+
+def _job_owner(request):
+    _require_local_request(request)
+    owner = _service(request).orchestrator
+    if owner is None:
+        raise APIError(503,"AGENT_JOBS_UNAVAILABLE","Agent jobs are unavailable.")
+    return owner
+
+
+def _get_job(request,job_id):
+    owner = _job_owner(request)
+    try:
+        return owner,owner.jobs.get(job_id)
+    except KeyError as exc:
+        raise APIError(404,"AGENT_JOB_NOT_FOUND","Agent job was not found.") from exc
+
+
+@router.get("/jobs")
+async def agent_jobs(request: Request,project_id: str | None=None):
+    owner=_job_owner(request)
+    if project_id:
+        await resolve_project_from_request(request,project_id)
+    return {"jobs":[owner.jobs.public(job) for job in owner.jobs.list(project_id)]}
+
+
+@router.get("/tools")
+async def agent_tool_catalog(request: Request):
+    _require_local_request(request)
+    from ...agent_runtime.engine_tools import engine_tool_catalog
+    return engine_tool_catalog().model_dump(mode="json")
+
+
+@router.get("/jobs/{job_id}")
+def agent_job(job_id: str,request: Request):
+    owner,job=_get_job(request,job_id)
+    return {"job":owner.jobs.public(job),"recovery":owner.recovery_info(job["current_run_id"])}
+
+
+@router.post("/jobs/{job_id}/pause")
+async def pause_agent_job(job_id: str,request: Request):
+    owner,_=_get_job(request,job_id)
+    try:
+        return {"job":await owner.pause_job(job_id)}
+    except ValueError as exc:
+        raise APIError(409,str(exc),"This task has already settled.") from exc
+
+
+@router.post("/jobs/{job_id}/resume",status_code=202)
+async def resume_agent_job(job_id: str,body: JobResumeRequest,request: Request):
+    owner,_=_get_job(request,job_id)
+    try:
+        return {"run":(await owner.resume_job(job_id,**body.model_dump())).to_safe_dict()}
+    except ValueError as exc:
+        raise APIError(409,str(exc),"Saved work needs review before it can continue.") from exc
+
+
+@router.post("/jobs/{job_id}/budget")
+async def extend_agent_job(job_id: str,body: JobBudgetRequest,request: Request):
+    owner,_=_get_job(request,job_id)
+    try:
+        value=owner.jobs.extend_budget(job_id,body.model_dump(exclude={"idempotency_key"}),body.idempotency_key)
+    except ValueError as exc:
+        raise APIError(409,str(exc),"Budget request conflicts with an earlier request.") from exc
+    return {"job":owner.jobs.public(value)}
+
+
+@router.post("/jobs/{job_id}/recovery-policy")
+async def agent_job_policy(job_id: str,body: JobRecoveryPolicyRequest,request: Request):
+    owner,job=_get_job(request,job_id)
+    value=owner.jobs.mutate(job_id,lambda job:job.update(recovery_policy=body.policy))
+    return {"job":owner.jobs.public(value)}
+
+
+@router.get("/projects/{project_id}/trust")
+async def project_agent_trust(project_id: str,request: Request):
+    owner=_job_owner(request)
+    metadata=await resolve_project_from_request(request,project_id)
+    return {"trusted":owner.jobs.is_trusted(project_id,str(Path(metadata.project_path).resolve(strict=True)))}
+
+
+@router.post("/projects/{project_id}/trust")
+async def trust_agent_project(project_id: str,body: ProjectTrustRequest,request: Request):
+    owner=_job_owner(request)
+    metadata=await resolve_project_from_request(request,project_id)
+    value=owner.jobs.trust(project_id,str(Path(metadata.project_path).resolve(strict=True)),body.trusted)
+    owner.project_trust_changed(project_id)
+    return {"trusted":value["trusted"]}
+
+
+@router.get("/tool-catalog")
+async def agent_tool_catalog(request: Request):
+    _require_local_request(request)
+    from ...agent_runtime.capability_profiles import BUILD_REPAIR_PROFILE
+    from ...agent_runtime.tool_registry import describe_tools
+    return {"tools":describe_tools(BUILD_REPAIR_PROFILE.policy()),"availability_scope":"inspection_only; run prerequisites determine execution tools"}
 
 
 class MemoryInvalidateRequest(BaseModel):
@@ -194,7 +318,7 @@ def _activity_broker(request: Request) -> AgentActivityBroker:
 
 
 @router.get("/providers")
-async def agent_runtime_providers(request: Request) -> dict[str, object]:
+def agent_runtime_providers(request: Request) -> dict[str, object]:
     service = _service(request)
     return {
         "enabled": service.enabled,
@@ -250,7 +374,10 @@ async def create_agent_session(
 @router.get("/sessions/{session_id}")
 async def get_agent_session(session_id: str, request: Request) -> dict[str, object]:
     try:
-        session = _session_store(request).get(session_id)
+        from ...agent_runtime.session_run_projector import AgentSessionRunProjector
+        session = AgentSessionRunProjector(
+            _session_store(request), services(request).agent_event_store,
+        ).reconcile(session_id)
     except KeyError as exc:
         raise APIError(
             404, "AGENT_SESSION_NOT_FOUND", "Agent session was not found."
@@ -296,7 +423,7 @@ async def agent_session_activity_events(
                 idle_ticks = 0 if emitted else idle_ticks + 1
                 if await request.is_disconnected():
                     return
-                if idle_ticks >= 50:
+                if idle_ticks >= 5:
                     idle_ticks = 0
                     yield ": forgex-agent-activity-heartbeat\n\n"
                 await asyncio.sleep(0.1)
@@ -309,7 +436,7 @@ async def agent_session_activity_events(
                 last_sequence=sequence,
             )
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return StreamingResponse(stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 @router.post("/sessions/{session_id}/messages", status_code=202)
@@ -454,11 +581,102 @@ async def append_agent_session_message(
     decision = AgentTurnRouter().route(
         effective_content, _turn_context(metadata, active_run)
     )
+    model_choices = []
+    intake_id = (session.pending_clarification or {}).get("intake_id")
+    if decision.intent is AgentTurnIntent.UNKNOWN and not session.pending_clarification and approved_plan is None:
+        chosen = body.provider_id or session.provider_id
+        if chosen and chosen not in {"fake_planner", "verified_template"}:
+            from ...agent_runtime.task_understanding import interpret_task
+            from ...agent_runtime.api_planner_provider import ApiPlannerError
+            import time
+            owner = service.orchestrator
+            intake = owner.intakes.create(session_id, session.project_id, effective_content, body.execution_profile)
+            intake_id = intake["intake_id"]
+            intake_started = time.monotonic()
+            owner.append_chat_event(session_id, {"event_type": "intake.started", "intake_id": intake_id, "provider_id": chosen})
+            try:
+                planner=service.provider_registry.resolve(chosen,model_id=body.model_id or session.model_id,session_id=session_id)
+                binder = getattr(planner, "bind_job_budget", None)
+                if callable(binder):
+                    binder(intake, lambda _: None, reserve=lambda charges: owner.intakes.reserve(intake_id, charges))
+                decision,understanding=await interpret_task(planner,effective_content,decision)
+                model_choices=understanding["choices"]
+                owner.intakes.finish(intake_id, "ready", time.monotonic() - intake_started)
+            except (ApiPlannerError, TimeoutError, LLMError) as exc:
+                code = getattr(exc, "safe_code", getattr(exc, "code", "PROVIDER_TIMEOUT"))
+                from ...agent_runtime.jobs import TRANSIENT_PROVIDER_ERRORS
+                status = "paused_model_unavailable" if code in TRANSIENT_PROVIDER_ERRORS else "failed"
+                failure = {"error_code": code, **dict(getattr(exc, "details", {}) or {})}
+                owner.intakes.finish(intake_id, status, time.monotonic() - intake_started, failure)
+                owner.append_chat_event(session_id, {"event_type": "intake.failed", "intake_id": intake_id, "error_code": code})
+                session = store.append_message(session_id, role="assistant",
+                    content=f"Forge could not interpret this request because the selected model failed ({code}). Your request is saved. Retry it later or explicitly choose another configured model.",
+                    metadata={"status": status, "intake_id": intake_id, "failure_code": code})
+                broker.complete(session_id, message_id=message_id)
+                return _session_message_payload(session, decision, run=None, broker=broker, after_sequence=activity_start)
+            except ValueError as exc:
+                owner.intakes.finish(intake_id, "rejected", time.monotonic() - intake_started, {"error_code": str(exc)})
+                owner.append_chat_event(session_id, {"event_type": "intake.rejected", "intake_id": intake_id})
+            except asyncio.CancelledError:
+                owner.intakes.finish(intake_id, "cancelled", time.monotonic() - intake_started)
+                owner.append_chat_event(session_id, {"event_type": "intake.cancelled", "intake_id": intake_id})
+                raise
     if approved_plan is not None:
         # Plan execution is an explicit capability escalation authorised by the
         # exact plan id/revision/hash supplied above. Do not rely on the generic
         # wording of the Execute button being re-classified as an edit request.
         decision = approved_plan_execution_decision()
+
+    if session.pending_clarification and decision.intent is AgentTurnIntent.CANCEL:
+        session = store.set_clarification(session_id, None)
+    if session.pending_clarification and not _active_operation(active_run):
+        pending = session.pending_clarification
+        if pending.get("project_id") != session.project_id or pending.get("workspace_root") != str(Path(str(metadata.project_path)).resolve(strict=True)):
+            raise APIError(409, "CLARIFICATION_WORKSPACE_CHANGED", "The project changed. Submit the original request in this workspace again.")
+        accumulated_answer = merge_clarification_answer(pending, effective_content)
+        resolved, missing = resolve_clarification(pending, accumulated_answer)
+        if not missing:
+            effective_content = resolved
+            overrides = {key: value for key, value in pending.get("execution_options", {}).items()
+                         if key not in body.model_fields_set}
+            body = body.model_copy(update=overrides)
+            if "autonomy" in overrides:
+                requested_autonomy = body.autonomy
+            session = store.set_clarification(session_id, None)
+            decision = AgentTurnRouter().route(effective_content, _turn_context(metadata, active_run))
+            saved_decision = pending.get("decision") or {}
+            if decision.intent is AgentTurnIntent.UNKNOWN and saved_decision.get("routing_source") == "model_validated":
+                # This is the already validated, host-stored interpretation of
+                # the original request; answering choices does not grant tools.
+                decision = AgentTurnDecision(**{**saved_decision,
+                    "intent": AgentTurnIntent(saved_decision["intent"]),
+                    "requested_actions": tuple(saved_decision.get("requested_actions", ())),
+                    "prohibited_actions": tuple(saved_decision.get("prohibited_actions", ()))})
+        else:
+            session = store.set_clarification(session_id, {**pending, "answers": accumulated_answer})
+            content = "Please choose one option for each remaining item: " + "; ".join(
+                choice["id"] + ": " + " or ".join(choice["options"]) for choice in missing)
+            session = store.append_message(session_id, role="assistant", content=content,
+                                           metadata={"status": "awaiting_clarification"})
+            broker.complete(session_id, message_id=message_id)
+            return _session_message_payload(session, decision, run=None, broker=broker, after_sequence=activity_start)
+
+    choices = (model_choices or clarification_choices(effective_content)) if decision.requires_write and requested_autonomy not in {AUTONOMY_READ_ONLY, AUTONOMY_PLAN_ONLY} and not _active_operation(active_run) else []
+    if choices:
+        pending = {"schema_version": 1, "project_id": session.project_id,
+                   "workspace_root": str(Path(str(metadata.project_path)).resolve(strict=True)),
+                   "request": effective_content, "choices": choices, "intake_id": intake_id,
+                   "decision": decision.to_safe_dict(),
+                   "execution_options": {key: getattr(body, key) for key in (
+                       "provider_id", "model_id", "autonomy", "board_port", "board_type",
+                       "environment", "start_monitor_after_flash", "execution_profile")}}
+        session = store.set_clarification(session_id, pending)
+        content = "Before I generate the project, please choose: " + "; ".join(
+            choice["id"] + ": " + " or ".join(choice["options"]) for choice in choices)
+        session = store.append_message(session_id, role="assistant", content=content,
+                                       metadata={"status": "awaiting_clarification"})
+        broker.complete(session_id, message_id=message_id)
+        return _session_message_payload(session, decision, run=None, broker=broker, after_sequence=activity_start)
 
     if decision.requires_write and requested_autonomy == AUTONOMY_READ_ONLY:
         content = "This request needs file edits, but Ask mode is read-only. Switch to Agent mode to create or change files."
@@ -811,6 +1029,9 @@ async def append_agent_session_message(
         session_id=session_id,
         explicit_edit_authorized=decision.requires_write,
         turn_decision=decision,
+        latest_request=effective_content,
+        execution_profile=body.execution_profile,
+        intake_id=intake_id,
     )
     broker.complete(session_id, run_id=run.run_id, message_id=message_id)
     session = store.update_run(session_id, run_id=run.run_id, status=run.status)
@@ -945,6 +1166,7 @@ async def start_agent_runtime_run(
         environment=body.environment,
         start_monitor_after_flash=body.start_monitor_after_flash,
         turn_decision=decision if decision.starts_product_run else None,
+        execution_profile=body.execution_profile,
     )
     return {"run": run.to_safe_dict()}
 
@@ -964,6 +1186,9 @@ async def _start_product_run(
     explicit_edit_authorized: bool = False,
     turn_decision: AgentTurnDecision | None = None,
     requested_model_id: str | None = None,
+    latest_request: str | None = None,
+    execution_profile: Literal["standard", "advanced"] = "standard",
+    intake_id: str | None = None,
 ):
     service = _service(request)
     if not service.enabled:
@@ -984,6 +1209,37 @@ async def _start_product_run(
         workspace_root=str(getattr(metadata, "project_path")),
     )
     active_workspace["agent_autonomy"] = autonomy
+    if intake_id:
+        active_workspace["agent_intake_id"] = intake_id
+    if environment:
+        active_workspace["environment"] = environment
+    if turn_decision is None:
+        turn_decision = AgentTurnRouter().route(latest_request or instruction)
+    if (turn_decision.requires_write or turn_decision.requires_build) and autonomy not in {"read_only", "plan_only"} and (Path(metadata.project_path) / "platformio.ini").is_file():
+        from ...services.project_profile import inspect_project_profile
+        try:
+            profile = await asyncio.to_thread(inspect_project_profile, metadata.project_path, environment=environment)
+        except (OSError, ValueError) as exc:
+            raise APIError(422, "PROJECT_PROFILE_INVALID", str(exc)) from exc
+        if profile.selection_required:
+            raise APIError(422, "PROJECT_ENVIRONMENT_REQUIRED", "Select the environment for this engineering task.")
+        environment = environment or profile.selected_environment
+        if environment:
+            active_workspace["environment"] = environment
+    if turn_decision is not None and turn_decision.requires_write:
+        previous = None
+        if session_id:
+            owner = _session_store(request).get(session_id)
+            previous_run = _active_session_run(service,owner.active_run_id)
+            if previous_run:
+                previous = getattr(previous_run,"task_contract",None)
+        try:
+            active_workspace["task_contract"] = revise_task_contract(previous,
+                latest_request or instruction, project_id=project_id, session_id=session_id,
+                workspace=Path(str(metadata.project_path)), intent=turn_decision.intent.value,
+                prohibited=turn_decision.prohibited_actions)
+        except ValueError as exc:
+            raise APIError(409,str(exc),"This task has too many requirements. Start a new task with a consolidated specification.") from exc
     if turn_decision is not None:
         # This is trusted routing metadata produced by AgentTurnRouter.  The
         # embedded planner must not infer a conflicting action from the
@@ -1012,6 +1268,10 @@ async def _start_product_run(
             model_id=requested_model_id or (session_model[1] if session_model else None),
         )
         active_workspace.update(route_metadata)
+        # Fake/template providers are explicit development diagnostics. Their
+        # transport fixtures do not qualify as requirement-verified firmware.
+        if selected_provider_id in {"fake_planner", "verified_template"}:
+            active_workspace.pop("task_contract", None)
         resolved_model = route_metadata.get("model_id")
         if isinstance(resolved_model, str) and resolved_model.strip():
             model_id = resolved_model.strip()
@@ -1040,6 +1300,7 @@ async def _start_product_run(
             start_monitor_after_flash=start_monitor_after_flash,
             session_id=session_id,
             explicit_edit_authorized=explicit_edit_authorized,
+            execution_profile=execution_profile,
         )
     except PermissionError as exc:
         raise APIError(
@@ -1082,7 +1343,9 @@ async def _mirror_harness(
     if not isinstance(client, HarnessClient):
         return
     try:
-        await client.call(method, params)
+        identity = hashlib.sha256(json.dumps([method, params], sort_keys=True,
+            separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+        await client.call(method, params, idempotency_key="shadow:" + identity)
     except HarnessClientError as exc:
         emit_diagnostic_event(
             component="harness_bridge",
@@ -1121,7 +1384,7 @@ async def confirm_agent_runtime_flash(
 
 
 @router.get("/runs/{run_id}")
-async def get_agent_runtime_run(run_id: str, request: Request) -> dict[str, object]:
+def get_agent_runtime_run(run_id: str, request: Request) -> dict[str, object]:
     try:
         run = _service(request).get_run(run_id)
     except KeyError as exc:
@@ -1129,6 +1392,41 @@ async def get_agent_runtime_run(run_id: str, request: Request) -> dict[str, obje
             404, "AGENT_RUNTIME_RUN_NOT_FOUND", "Agent runtime run was not found."
         ) from exc
     return {"run": run.to_safe_dict()}
+
+
+@router.get("/runs/{run_id}/build-evidence")
+async def agent_build_evidence(run_id: str, request: Request, environment: str | None = None):
+    """A compiler success is current only for its actual source and target."""
+    import asyncio
+    from pathlib import Path
+    try:
+        run = await asyncio.to_thread(_service(request).get_run, run_id)
+    except KeyError as exc:
+        raise APIError(404, "AGENT_RUNTIME_RUN_NOT_FOUND", "Agent runtime run was not found.") from exc
+    build = run.build_result or {}
+    if not build:
+        return {"state":"idle", "scope":"workspace"}
+    if build.get("success") is not True:
+        return {"state":"failed", "scope":"workspace"}
+    scope = "saved_draft" if run.active_workspace_unchanged and run.change_set_id else "workspace"
+    owner = services(request)
+    try:
+        if scope == "saved_draft":
+            root = owner.change_set_service.get(run.change_set_id).staging_root
+        else:
+            root = (await resolve_project_from_request(request, run.project_id)).project_path
+        revision = (await asyncio.to_thread(owner.change_set_service.inspect_workspace, Path(root))).revision
+    except (OSError, ValueError, KeyError):
+        return {"state":"unavailable", "scope":scope}
+    metadata = build.get("metadata") or {}
+    expected = build.get("workspace_revision") or metadata.get("workspace_revision")
+    target = build.get("environment") or metadata.get("environment")
+    manifest = build.get("artifact_manifest") or metadata.get("artifact_manifest")
+    if not target and isinstance(manifest, Mapping):
+        target = manifest.get("environment")
+    current = bool(run.build_verified and expected and expected == revision and (environment is None or target == environment))
+    return {"state":"passed" if current else "stale", "scope":scope, "environment":target,
+            "source_revision":expected, "observed_revision":revision}
 
 
 @router.post("/runs/{run_id}/cancel")
@@ -1158,6 +1456,62 @@ async def retry_agent_runtime_run(run_id: str, request: Request) -> dict[str, ob
             409, code, "Only an interrupted, recoverable run can be retried."
         ) from exc
 
+    store = _session_store(request)
+    for session in store.list():
+        if session.active_run_id == run_id:
+            store.update_run(session.session_id, run_id=run.run_id, status=run.status)
+            break
+    return {"run": run.to_safe_dict()}
+
+
+class ResumeRequest(BaseModel):
+    checkpoint_id: str = Field(min_length=64, max_length=64, pattern="^[a-f0-9]+$")
+    idempotency_key: str = Field(min_length=8, max_length=128, pattern="^[A-Za-z0-9._:-]+$")
+    provider_id: str | None = Field(default=None, min_length=1, max_length=128)
+    model_id: str | None = Field(default=None, min_length=1, max_length=256)
+
+
+@router.post("/runs/{run_id}/verify-draft", status_code=202)
+async def verify_agent_runtime_draft(run_id: str, body: JobResumeRequest, request: Request) -> dict[str, object]:
+    _require_local_request(request)
+    try:
+        run = await _service(request).verify_saved_draft(run_id, idempotency_key=body.idempotency_key)
+    except KeyError as exc:
+        raise APIError(404, "AGENT_RUNTIME_RUN_NOT_FOUND", "Agent run was not found.") from exc
+    except ValueError as exc:
+        messages = {"AGENT_PROJECT_TRUST_REQUIRED": "Trust this project for local builds and tests before verifying the saved draft.",
+                    "AGENT_RECOVERY_DRAFT_INCOMPLETE": "The saved draft has configuration but no firmware source. Continue generation before building it.",
+                    "AGENT_JOB_BUDGET_EXHAUSTED": "Add local build time or tool budget before verifying the saved draft."}
+        raise APIError(409, str(exc), messages.get(str(exc), "The saved draft cannot be built safely. Review recovery details and project trust.")) from exc
+    store = _session_store(request)
+    for session in store.list():
+        if session.active_run_id == run_id:
+            store.update_run(session.session_id, run_id=run.run_id, status=run.status)
+            break
+    return {"run": run.to_safe_dict()}
+
+
+@router.post("/runs/{run_id}/discard-draft")
+async def discard_agent_runtime_draft(run_id: str, request: Request) -> dict[str, object]:
+    _require_local_request(request)
+    try:
+        run = await _service(request).discard_draft(run_id)
+    except KeyError as exc:
+        raise APIError(404, "AGENT_RUNTIME_RUN_NOT_FOUND", "Agent run was not found") from exc
+    except ValueError as exc:
+        raise APIError(409, str(exc), "Only a saved recovery draft can be discarded") from exc
+    return {"run": run.to_safe_dict()}
+
+
+@router.post("/runs/{run_id}/resume", status_code=202)
+async def resume_agent_runtime_run(run_id: str, body: ResumeRequest, request: Request) -> dict[str, object]:
+    _require_local_request(request)
+    try:
+        run = await _service(request).resume(run_id, **body.model_dump(exclude_none=True))
+    except KeyError as exc:
+        raise APIError(404, "AGENT_RUNTIME_RUN_NOT_FOUND", "Agent run was not found.") from exc
+    except ValueError as exc:
+        raise APIError(409, str(exc), "Saved work cannot be resumed safely. Review the recovery details.") from exc
     store = _session_store(request)
     for session in store.list():
         if session.active_run_id == run_id:
@@ -1251,7 +1605,7 @@ async def agent_runtime_events(
         try:
             while True:
                 emitted = False
-                for event in service.events(run_id, after_sequence=sequence):
+                for event in await asyncio.to_thread(service.events, run_id, after_sequence=sequence):
                     sequence = int(event["sequence"])
                     emitted = True
                     yield f"id: {sequence}\ndata: {json.dumps(event, ensure_ascii=True, sort_keys=True)}\n\n"
@@ -1265,15 +1619,19 @@ async def agent_runtime_events(
                     # Deliberately omit SSE id: reconnect cursors are durable session_seq only.
                     yield f"data: {json.dumps(event, ensure_ascii=True, sort_keys=True)}\n\n"
                 idle_ticks = 0 if emitted else idle_ticks + 1
-                run = service.get_run(run_id)
+                run = await asyncio.to_thread(service.get_run, run_id)
                 if run.status in STABLE_STREAM_STATUSES and not emitted:
                     return
                 if await request.is_disconnected():
                     return
-                if idle_ticks >= 50:
+                if idle_ticks >= 5:
                     idle_ticks = 0
                     yield ": forgex-agent-heartbeat\n\n"
-                await asyncio.sleep(0.1)
+                owner = service.orchestrator
+                if owner is not None:
+                    await owner.store.wait_for_events(owner._session_for_run[run_id], sequence, run_id=run_id)
+                else:
+                    await asyncio.sleep(0.1)
         finally:
             emit_diagnostic_event(
                 component="backend",
@@ -1283,11 +1641,11 @@ async def agent_runtime_events(
                 last_sequence=sequence,
             )
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return StreamingResponse(stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 @router.get("/runs/{run_id}/graph")
-async def agent_runtime_graph(run_id: str, request: Request) -> dict[str, object]:
+def agent_runtime_graph(run_id: str, request: Request) -> dict[str, object]:
     orchestrator = services(request).agent_orchestrator
     if orchestrator is None or not orchestrator.owns(run_id):
         raise APIError(
@@ -1330,7 +1688,7 @@ async def agent_runtime_context_artifact(
 
 
 @router.get("/sessions/{session_id}/projection")
-async def agent_session_projection(session_id: str, request: Request) -> dict[str, object]:
+def agent_session_projection(session_id: str, request: Request) -> dict[str, object]:
     _require_local_request(request)
     try:
         _session_store(request).get(session_id)
@@ -1375,17 +1733,17 @@ async def agent_session_events(
         try:
             while True:
                 emitted = False
-                for event in event_store.events(session_id, after_sequence=sequence):
+                for event in await asyncio.to_thread(event_store.events, session_id, after_sequence=sequence):
                     sequence = int(event["sequence"])
                     emitted = True
                     yield f"id: {sequence}\ndata: {json.dumps(event, ensure_ascii=True, sort_keys=True)}\n\n"
                 idle_ticks = 0 if emitted else idle_ticks + 1
                 if await request.is_disconnected():
                     return
-                if idle_ticks >= 50:
+                if idle_ticks >= 5:
                     idle_ticks = 0
                     yield ": forgex-agent-session-heartbeat\n\n"
-                await asyncio.sleep(0.1)
+                await event_store.wait_for_events(session_id, sequence)
         finally:
             emit_diagnostic_event(
                 component="backend",
@@ -1395,7 +1753,7 @@ async def agent_session_events(
                 last_sequence=sequence,
             )
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return StreamingResponse(stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 async def _start_agent_monitor(
@@ -1556,7 +1914,7 @@ def _turn_context(metadata: object, active_run: object | None) -> AgentTurnConte
             build_status = str(stage_statuses.get("build") or "")
         build_result = getattr(active_run, "build_result", None)
         if isinstance(build_result, dict) and build_result.get("success") is False:
-            build_status = "failed"
+            build_status = "blocked" if build_result.get("error_code") == "AGENT_PROJECT_TRUST_REQUIRED" else "failed"
     return AgentTurnContext(
         active_run_status=str(getattr(active_run, "status", "")) or None,
         last_run_status=str(getattr(active_run, "status", "")) or None,
@@ -1598,8 +1956,8 @@ def _autonomy_for_decision(decision: AgentTurnDecision, requested_autonomy: str)
         return AUTONOMY_READ_ONLY
     if requested_autonomy == AUTONOMY_PLAN_ONLY:
         return AUTONOMY_PLAN_ONLY
-    if requested_autonomy == AUTONOMY_STAGED_CHANGES:
-        return AUTONOMY_STAGED_CHANGES
+    if requested_autonomy in {AUTONOMY_STAGED_CHANGES, "review_changes"}:
+        return requested_autonomy
     if (
         "build" in decision.prohibited_actions
         or "execute" in decision.prohibited_actions

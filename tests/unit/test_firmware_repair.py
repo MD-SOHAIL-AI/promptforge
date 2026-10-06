@@ -171,3 +171,31 @@ def test_repair_compiler_proven_member_signature_and_empty_defaulted_constructor
     assert set(repair.changed_paths) == {"src/AlertManager.cpp", "src/AppState.cpp"}
     assert "checkMotionAlerts(uint32_t currentMillis)" in alert.read_text(encoding="utf-8")
     assert "AppState::AppState" not in state.read_text(encoding="utf-8")
+
+
+def test_repair_compiler_proven_type_include_alarm_collision_and_local_prototypes(tmp_path: Path) -> None:
+    (tmp_path / "include").mkdir()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "platformio.ini").write_text("[env:esp32dev]\nframework = arduino\n")
+    (tmp_path / "include/SystemState.h").write_text("class SystemStateManager {};\n")
+    header = tmp_path / "include/DisplayManager.h"
+    header.write_text('#include "Config.h"\nclass DisplayManager { void draw(const SystemStateManager&); };\n')
+    source = tmp_path / "src/main.cpp"
+    source.write_text('#include "AlarmManager.h"\nAlarmManager alarm;\n// alarm.update() is an example\nconst char* label = "alarm.update()";\nvoid loop() { alarm.update(); updateIndicators(); }\nvoid updateIndicators() {}\n')
+    evidence = {"diagnostics": (
+        "include/DisplayManager.h:2:40: error: 'SystemStateManager' does not name a type\n"
+        "src/main.cpp:2:14: error: 'AlarmManager alarm' redeclared as different kind of symbol\n"
+        "sys/unistd.h:21:11: note: previous declaration 'unsigned int alarm(unsigned int)'\n"
+        "src/main.cpp:3:31: error: 'updateIndicators' was not declared in this scope\n"
+    )}
+    repair = repair_verified_cpp_build_errors(tmp_path, evidence)
+    assert repair is not None
+    assert set(repair.changed_paths) == {"include/DisplayManager.h", "src/main.cpp"}
+    assert '#include "SystemState.h"' in header.read_text()
+    updated = source.read_text()
+    assert "AlarmManager alarmManagerInstance;" in updated
+    assert "alarmManagerInstance.update()" in updated
+    assert '// alarm.update() is an example' in updated
+    assert '"alarm.update()"' in updated
+    assert updated.index("void updateIndicators();") < updated.index("void loop()")
+    assert repair_verified_cpp_build_errors(tmp_path, evidence) is None

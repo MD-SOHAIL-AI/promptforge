@@ -34,6 +34,7 @@ class ProviderErrorCode(str, Enum):
     INVALID_API_KEY = "INVALID_API_KEY"
     PROVIDER_RATE_LIMITED = "PROVIDER_RATE_LIMITED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    PROVIDER_BUSY = "PROVIDER_BUSY"
     PROVIDER_INVALID_RESPONSE = "PROVIDER_INVALID_RESPONSE"
     PROVIDER_HTTP_ERROR = "PROVIDER_HTTP_ERROR"
     PROVIDER_AUTH_ERROR = "PROVIDER_AUTH_ERROR"
@@ -181,6 +182,10 @@ def normalize_provider_error(value: str | None) -> ProviderErrorCode:
         return ProviderErrorCode.TOOLPLAN_VERSION_INVALID
     if "toolplan" in text and "schema" in text:
         return ProviderErrorCode.TOOLPLAN_SCHEMA_INVALID
+    if "smoke" in text or "toolplan_unsafe" in text:
+        return ProviderErrorCode.POLICY_DENIED
+    if "toolplan" in text or "arguments_invalid" in text:
+        return ProviderErrorCode.TOOL_ARGUMENTS_INVALID
     if "tool" in text and ("forbidden" in text or "not_allowed" in text):
         return ProviderErrorCode.TOOL_NOT_ALLOWED
     if "path_unsafe" in text:
@@ -197,18 +202,43 @@ def normalize_provider_error(value: str | None) -> ProviderErrorCode:
         return ProviderErrorCode.PROVIDER_INVALID_RESPONSE
     if "content" in text or "path_unsafe" in text or "output" in text or "changeset" in text:
         return ProviderErrorCode.INVALID_GENERATED_OUTPUT
-    if text.startswith(("api_", "provider_")):
+    if text in {"api_network_error", "api_model_unavailable", "provider_unavailable"}:
         return ProviderErrorCode.PROVIDER_UNAVAILABLE
     return ProviderErrorCode.FORGEX_RUNTIME_ERROR
 
 
+def model_recovery_message(initial: str | None, terminal: str | None, recovery: str | None = None, skip: str | None = None) -> str | None:
+    causes = {
+        "MODEL_OUTPUT_TRUNCATED": "The model response was truncated before it produced a complete answer or action.",
+        "MODEL_OUTPUT_EMPTY": "The model returned no usable answer or action.",
+        "PROVIDER_STREAM_INVALID": "The provider stream ended before a complete response arrived.",
+        "TOOL_ARGUMENTS_INVALID": "The model returned incomplete or invalid tool arguments.",
+    }
+    cause = causes.get(initial or "")
+    if not cause:
+        return None
+    if terminal == "AGENT_TURN_LIMIT_EXCEEDED":
+        return cause + " ForgeX's recovery reached the local time limit. The saved draft can be continued and validated."
+    if skip:
+        return cause + " ForgeX preserved the draft because the remaining time or provider budget could not support a repair."
+    if recovery:
+        return cause + " The repair response also failed. The saved draft can be continued and validated."
+    return None
+
+
 def runtime_failure_message(classification: str | None) -> str:
+    if classification == "FORGEX_REQUEST_INVALID":
+        return "ForgeX could not serialize the request locally. No provider request was sent for this attempt. Your saved work is preserved."
     if classification == "AGENT_RUNTIME_NO_PROGRESS":
         return "ForgeX stopped after repeated tool turns produced no new information or file changes."
     if classification == "AGENT_RUNTIME_MAX_TURNS":
         return "ForgeX reached its reasoning-turn limit before completing the requested files."
     if classification == "AGENT_RUNTIME_REPEATED_CALL":
         return "ForgeX stopped repeated tool calls that were making no progress."
+    if classification == "REQUIREMENTS_UNVERIFIED":
+        return "Generated files are saved, but the requested requirements are not all verified. Review the draft or retry."
+    if classification == "AGENT_RUNTIME_INTERRUPTED":
+        return "The backend stopped during this run. Review the saved work and confirm a safe continuation."
     return "ForgeX could not continue the Agent runtime."
 
 
@@ -218,6 +248,7 @@ def actionable_message(code: ProviderErrorCode, provider_name: str) -> str:
         ProviderErrorCode.INVALID_API_KEY: f"{provider_name} rejected the configured API key. Replace it in Model Settings.",
         ProviderErrorCode.PROVIDER_RATE_LIMITED: f"{provider_name} is rate limited. Retry later or use the configured fallback.",
         ProviderErrorCode.PROVIDER_UNAVAILABLE: f"{provider_name}'s selected model endpoint is temporarily unavailable. Retry the same model; ForgeX will not silently send project data to another provider.",
+        ProviderErrorCode.PROVIDER_BUSY: "Another ForgeX task is using this model endpoint. This task paused locally before sending a provider request. Stop the other task or retry when it finishes.",
         ProviderErrorCode.PROVIDER_INVALID_RESPONSE: f"{provider_name} returned an invalid response.",
         ProviderErrorCode.PROVIDER_HTTP_ERROR: f"{provider_name} could not complete the request.",
         ProviderErrorCode.PROVIDER_AUTH_ERROR: f"{provider_name} rejected the configured credentials. Update them in Model Settings.",

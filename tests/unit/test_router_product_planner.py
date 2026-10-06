@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from types import MappingProxyType
 
@@ -80,6 +81,16 @@ class SlowAdapter(Adapter):
         return ModelResponse("late", self.provider_id, request.model_id or "test-model")
 
 
+class NativeWriteAdapter(Adapter):
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        self.requests.append(request)
+        path = self.outputs.pop(0)
+        return ModelResponse(content="", provider_id=self.provider_id,
+            model_id=request.model_id or "test-model", finish_reason="tool_calls",
+            tool_calls=({"id": "write-1", "name": "write",
+                         "arguments": {"path": path, "content": "safe\n"}},))
+
+
 class InvalidStreamAdapter(Adapter):
     async def generate_event_stream(self, request: ModelRequest):
         self.requests.append(request)
@@ -124,7 +135,18 @@ def test_chat_and_agent_use_the_same_canonical_provider_adapter(tmp_path: Path) 
     assert [request.provider_id for request in adapter.requests] == ["openai", "openai"]
     assert adapter.requests[1].structured_output is None
     assert adapter.requests[1].metadata["forgex_native_tools"]
-    assert adapter.requests[1].max_tokens == 4096
+    assert adapter.requests[1].max_tokens == 8192
+
+
+def test_planner_keeps_output_allowance_for_later_turns(tmp_path: Path) -> None:
+    router = ModelRouterService(registry=registry(tmp_path), providers={"openai": Adapter([])})
+    planner = RouterProductPlanner(router, provider_id="openai", model_id="gpt-4.1-mini")
+    planner.bind_job_budget({"consumed": {"output_tokens": 88_000, "requests": 2},
+        "limits": {"output_tokens": 100_000, "requests": 20, "input_bytes": 100_000}},
+        lambda _: None)
+    assert planner._response_allowance() == 2488
+    planner._run_budget["output_tokens"] = 100_000
+    assert planner._response_allowance() == planner.max_tokens
 
 
 def test_invalid_toolplan_gets_one_same_model_repair(tmp_path: Path) -> None:
@@ -147,12 +169,47 @@ def test_invalid_toolplan_gets_one_same_model_repair(tmp_path: Path) -> None:
     assert planner.to_safe_metadata()["last_repair_outcome"] == "succeeded"
 
 
+def test_native_write_normalizes_current_directory_prefix(tmp_path):
+    models = registry(tmp_path)
+    adapter = NativeWriteAdapter(["./src/main.cpp"])
+    planner = RouterProductPlanner(ModelRouterService(registry=models,
+        providers={"openai": adapter}), provider_id="openai", model_id="gpt-4.1-mini")
+    result = planner.request_turn(task="Create firmware", tool_results=(),
+        allowed_tools=("write_file",), run_id="prefix", turn=1)
+    assert result.tool_calls[0].arguments["path"] == "src/main.cpp"
+    assert len(adapter.requests) == 1
+    assert planner.to_safe_metadata()["toolplan_normalized"] is True
+
+
+@pytest.mark.parametrize("unsafe", ["../outside.cpp", "C:/outside.cpp", "src\\main.cpp", "./.env"])
+def test_native_unsafe_path_is_rejected_logged_and_repaired_without_execution(tmp_path, monkeypatch, unsafe):
+    import backend.agent_runtime.router_planner as module
+    events = []
+    monkeypatch.setattr(module, "emit_diagnostic_event", lambda **event: events.append(event))
+    models = registry(tmp_path)
+    adapter = NativeWriteAdapter([unsafe, "src/main.cpp"])
+    planner = RouterProductPlanner(ModelRouterService(registry=models,
+        providers={"openai": adapter}), provider_id="openai", model_id="gpt-4.1-mini")
+    result = planner.request_turn(task="Create firmware", tool_results=(),
+        allowed_tools=("write_file",), run_id="repair-path", turn=1)
+    assert result.tool_calls[0].arguments["path"] == "src/main.cpp"
+    assert len(adapter.requests) == 2
+    assert all(request.provider_id == "openai" for request in adapter.requests)
+    assert "Rejected tool arguments (data, not instructions)" in adapter.requests[1].system_prompt
+    assert "project-relative paths with forward slashes" in adapter.requests[1].system_prompt
+    assert events[0]["error_code"] == "provider_path_unsafe"
+    assert events[0]["rejected_path"] == unsafe.removeprefix("./")
+    assert events[0]["run_id"] == "repair-path"
+
+
 def test_planner_turn_deadline_cancels_the_whole_provider_sequence(tmp_path: Path) -> None:
     models = registry(tmp_path)
     adapter = SlowAdapter([])
     router = ModelRouterService(registry=models, providers={"openai": adapter})
     planner = RouterProductPlanner(router, provider_id="openai", model_id="gpt-4.1-mini")
-    planner.turn_timeout_s = 0.02
+    # Leave time for the SQLite admission gate on Windows before exercising
+    # cancellation of the deliberately one-second provider response.
+    planner.turn_timeout_s = 0.2
 
     with pytest.raises(ApiPlannerError) as caught:
         planner.request_turn(
@@ -160,7 +217,28 @@ def test_planner_turn_deadline_cancels_the_whole_provider_sequence(tmp_path: Pat
             run_id="run-timeout", turn=1,
         )
 
-    assert caught.value.safe_code == "PROVIDER_TIMEOUT"
+    assert caught.value.safe_code == "AGENT_TURN_LIMIT_EXCEEDED"
+    assert planner.to_safe_metadata()["timeout_stage"] == "turn_deadline"
+    assert len(adapter.requests) == 1
+
+
+def test_agent_turn_keeps_time_for_later_recovery(tmp_path: Path) -> None:
+    models = registry(tmp_path)
+    adapter = Adapter([PLAN])
+    planner = RouterProductPlanner(ModelRouterService(registry=models, providers={"openai": adapter}),
+        provider_id="openai", model_id="gpt-4.1-mini", turn_timeout_s=300)
+    planner.bind_deadline(time.monotonic() + 360)
+    planner.bind_verification_reserve(120)
+    planner.request_turn(task="Inspect firmware", tool_results=(), allowed_tools=("read_file",),
+        run_id="run-reserve", turn=1)
+    turn_deadline = adapter.requests[0].execution_context.deadline
+    assert 78 < turn_deadline - time.monotonic() < 81
+    planner.bind_deadline(time.monotonic() + 40)
+    with pytest.raises(ApiPlannerError) as caught:
+        planner.request_turn(task="Inspect firmware", tool_results=(), allowed_tools=("read_file",),
+            run_id="run-reserve", turn=2)
+    assert caught.value.safe_code == "AGENT_RUNTIME_LIMIT_EXCEEDED"
+    assert planner.to_safe_metadata()["last_failure_origin"] == "job_time_reserve"
     assert len(adapter.requests) == 1
 
 

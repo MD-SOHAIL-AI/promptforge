@@ -1,3 +1,4 @@
+import { desktopLog } from "./desktop-logging";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
@@ -84,9 +85,9 @@ export class FrontendManager {
       },
       windowsHide: true,
     });
-    console.log(`[forgex-frontend] Spawned frontend pid=${this.process.pid ?? "unknown"} port=${this.port}`);
-    this.process.stdout.on("data", (chunk: Buffer) => console.log(`[forgex-frontend] ${safeLogChunk(chunk)}`));
-    this.process.stderr.on("data", (chunk: Buffer) => console.error(`[forgex-frontend] ${safeLogChunk(chunk)}`));
+    desktopLog.log(`[forgex-frontend] Spawned frontend pid=${this.process.pid ?? "unknown"} port=${this.port}`);
+    this.process.stdout.on("data", (chunk: Buffer) => desktopLog.log(`[forgex-frontend] ${safeLogChunk(chunk)}`));
+    this.process.stderr.on("data", (chunk: Buffer) => desktopLog.error(`[forgex-frontend] ${safeLogChunk(chunk)}`));
     this.process.on("exit", (code, signal) => {
       if (this.state !== "stopped") {
         this.state = "crashed";

@@ -19,7 +19,7 @@ function main() {
   }
 
   console.log("[setup:platformio] Installing PlatformIO into .venv");
-  run(venvPython, ["-m", "pip", "install", "--upgrade", "platformio"]);
+  run(venvPython, ["-m", "pip", "install", "--upgrade", "platformio==6.2.0"]);
 
   if (!fs.existsSync(venvPio)) {
     throw new Error(`PlatformIO install completed but executable was not found at ${venvPio}`);

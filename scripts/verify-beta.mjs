@@ -10,6 +10,7 @@ export const BETA_CHECKS = Object.freeze([
   Object.freeze({ id: "electron", label: "Electron tests", runner: "npm", args: ["run", "test:electron"] }),
   Object.freeze({ id: "typecheck", label: "Frontend typecheck", runner: "npm", args: ["run", "typecheck:frontend"] }),
   Object.freeze({ id: "lint", label: "Frontend lint (zero warnings)", runner: "npm", args: ["run", "lint:frontend"] }),
+  Object.freeze({ id: "conversations", label: "Browser conversation tests", runner: "npm", args: ["run", "test:conversations"] }),
 ]);
 
 export class VerificationError extends Error {

@@ -14,13 +14,16 @@ interface EditorWorkbenchProps {
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   onChange: (path: string, content: string) => void;
-  onSave: (path: string) => void;
+  onSave: (path: string, content?: string) => void;
   editorSettings?: {
     fontSize?: number;
     tabSize?: number;
     wordWrap?: boolean;
     minimapEnabled?: boolean;
     showLineNumbers?: boolean;
+    showBreadcrumbs?: boolean;
+    formatOnSave?: boolean;
+    autoSave?: boolean;
   };
 }
 
@@ -52,7 +55,7 @@ export const EditorWorkbench = memo(function EditorWorkbench({
             {activeProject?.project_name ?? "ForgeX Workspace"}
           </span>
           <span className="text-[var(--fx-text-muted)]">/</span>
-          <span className="truncate">{breadcrumb(activePath)}</span>
+          {editorSettings?.showBreadcrumbs !== false ? <span className="truncate">{breadcrumb(activePath)}</span> : null}
         </div>
         <div className="hidden items-center gap-3 whitespace-nowrap lg:flex">
           <span className="flex items-center gap-1">

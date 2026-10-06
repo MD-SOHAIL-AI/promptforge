@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { ChevronRight, SquareTerminal } from "lucide-react";
 import { activityElapsed, isActivityActive, type ActivityRecord } from "@/lib/activity-stream";
 import { AgentStatusIndicator } from "./agent-status-indicator";
+
+let clockValue = Date.now();
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+const clockListeners = new Set<() => void>();
+function subscribeClock(listener: () => void) {
+  clockListeners.add(listener);
+  if (!clockTimer) { clockValue = Date.now(); clockTimer = setInterval(() => { clockValue = Date.now(); for (const update of clockListeners) update(); }, 1000); }
+  return () => { clockListeners.delete(listener); if (!clockListeners.size && clockTimer) { clearInterval(clockTimer); clockTimer = null; } };
+}
+const subscribeStill = () => () => undefined;
+const readClock = () => clockValue;
+const serverClock = () => 0;
 
 function formatDuration(ms: number) {
   const seconds = ms < 60_000 ? Number((ms / 1000).toFixed(1)) : Math.floor(ms / 1000);
@@ -11,12 +23,7 @@ function formatDuration(ms: number) {
 }
 
 export function ActivityDuration({ activity }: { activity: ActivityRecord }) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (activity.durationMs !== null) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [activity.durationMs]);
+  const now = useSyncExternalStore(activity.durationMs === null && isActivityActive(activity) ? subscribeClock : subscribeStill, readClock, serverClock);
   return <span className="fx-activity-time">{formatDuration(activityElapsed(activity, now))}</span>;
 }
 
@@ -45,7 +52,7 @@ export function ActivityCard({
   ].filter((value): value is string => Boolean(value));
 
   return (
-    <article className="fx-activity-item" data-state={activity.state} data-status={activity.status}>
+    <article className="fx-activity-item" data-activity-id={activity.id} data-state={activity.state} data-status={activity.status}>
       <button
         type="button"
         className="fx-activity-toggle"

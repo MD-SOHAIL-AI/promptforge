@@ -38,9 +38,11 @@ const server = createServer(async (request, response) => {
       throw new RpcMethodError("RPC_REQUEST_INVALID", "Invalid RPC envelope");
     }
     rpc = value as unknown as RpcRequest;
-    const invoke = () => runtime.invoke(rpc!.method, rpc!.params);
+    const mutating = rpc.method === "sessions.create" || rpc.method === "sessions.append";
+    if (mutating && !rpc.idempotencyKey) throw new RpcMethodError("RPC_IDEMPOTENCY_KEY_REQUIRED", "Mutating requests require an idempotency key.");
+    const invoke = () => runtime.invoke(rpc!.method, rpc!.params, rpc!.idempotencyKey);
     const result = rpc.idempotencyKey
-      ? await idempotency.execute(rpc.idempotencyKey, requestFingerprint(rpc.method, rpc.params), invoke)
+      ? await idempotency.execute(rpc.idempotencyKey, requestFingerprint(rpc.method, rpc.params), invoke, mutating ? invoke : undefined)
       : await invoke();
     const reply: RpcResponse = { protocol: HARNESS_PROTOCOL, id: rpc.id, ok: true, result };
     return json(response, 200, reply);

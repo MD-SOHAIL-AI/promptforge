@@ -1,9 +1,13 @@
+import { desktopLog } from "./desktop-logging";
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+export const DESKTOP_LAUNCH_ID = randomUUID();
 
 const DEFAULT_LOG_PATH = path.join(".forgex", "logs", "live-runtime.jsonl");
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const SECRET_KEY_RE = /(authorization|cookie|api[_-]?key|token|password|secret|credential|private[_-]?key)/i;
+const TOKEN_COUNT_KEYS = new Set(["input_tokens", "output_tokens", "total_tokens", "output_tokens_limit", "max_tokens", "tokens_used", "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens"]);
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const COMMON_SECRET_RE = /\b(?:sk|sk-or|ghp|AIza)[A-Za-z0-9_-]{12,}\b/g;
 const ALLOWED_LEVELS = new Set(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]);
@@ -53,6 +57,10 @@ function eventPayload(input: DiagnosticEventInput): Record<string, unknown> {
   const event = shortText(typeof input.event === "string" ? input.event : "desktop.event", 160);
   const fields = typeof input.fields === "object" && input.fields !== null ? input.fields : {};
   const payload: Record<string, unknown> = {
+    desktop_launch_id: DESKTOP_LAUNCH_ID,
+    pid: process.pid,
+    app_version: process.env.FORGEX_VERSION ?? "development",
+    source_fingerprint: process.env.FORGEX_SOURCE_FINGERPRINT ?? "development",
     timestamp: new Date().toISOString(),
     level,
     component,
@@ -62,12 +70,17 @@ function eventPayload(input: DiagnosticEventInput): Record<string, unknown> {
     payload.message = sanitizeString(String(input.message), 2000);
   }
   for (const [key, value] of Object.entries({ ...fields, ...input })) {
-    if (["timestamp", "component", "event", "level", "message", "fields"].includes(key)) continue;
+    if (["timestamp", "component", "event", "level", "message", "fields", "desktop_launch_id", "pid", "app_version", "source_fingerprint"].includes(key)) continue;
     if (!key) continue;
-    const safe = redact(value);
+    const safe = secretField(key, value) ? "[redacted]" : redact(value);
     if (safe !== undefined) payload[key] = safe;
   }
   return payload;
+}
+
+function secretField(key: string, value: unknown): boolean {
+  if (TOKEN_COUNT_KEYS.has(key) && typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return false;
+  return SECRET_KEY_RE.test(key);
 }
 
 function redact(value: unknown, depth = 0): unknown {
@@ -80,7 +93,7 @@ function redact(value: unknown, depth = 0): unknown {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
       if (!key) continue;
-      out[key] = SECRET_KEY_RE.test(key) ? "[redacted]" : redact(item, depth + 1);
+      out[key] = secretField(key, item) ? "[redacted]" : redact(item, depth + 1);
     }
     return out;
   }
@@ -88,7 +101,8 @@ function redact(value: unknown, depth = 0): unknown {
 }
 
 function sanitizeString(value: string, limit: number): string {
-  const cleaned = value.replace(/\x00/g, "").replace(BEARER_RE, "Bearer [redacted]").replace(COMMON_SECRET_RE, "[redacted]");
+  const cleaned = value.replace(/\x00/g, "").replace(BEARER_RE, "Bearer [redacted]").replace(COMMON_SECRET_RE, "[redacted]")
+    .replace(/((?:api[_-]?key|wifi[_-]?password|password|auth[_-]?token|secret)\s*[=:]\s*["']?)[^\s"';,]+/gi, "$1[redacted]");
   return cleaned.length > limit ? `${cleaned.slice(0, limit)}\n[truncated]` : cleaned;
 }
 
@@ -102,9 +116,11 @@ function normalizeLevel(value: unknown): string {
   return ALLOWED_LEVELS.has(level) ? level : "INFO";
 }
 
-function liveLogPath(): string {
+export function liveLogPath(): string {
   const configured = process.env.FORGEX_LIVE_LOG_PATH?.trim();
-  return configured ? path.resolve(configured) : path.resolve(DEFAULT_LOG_PATH);
+  const base = configured ? path.resolve(configured) : path.resolve(DEFAULT_LOG_PATH);
+  const parsed = path.parse(base);
+  return path.join(parsed.dir, `${parsed.name}.desktop-${DESKTOP_LAUNCH_ID}${parsed.ext}`);
 }
 
 function maxBytes(): number {
@@ -130,6 +146,6 @@ function printCondensed(payload: Record<string, unknown>): void {
   const component = String(payload.component ?? "desktop");
   const message = String(payload.message ?? payload.status ?? "");
   if (component === "desktop" || component === "renderer") {
-    console.log(`[${component}] ${event} ${message.slice(0, 160)}`.trim());
+    desktopLog.log(`[${component}] ${event} ${message.slice(0, 160)}`.trim());
   }
 }
