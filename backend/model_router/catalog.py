@@ -24,6 +24,10 @@ class ModelCatalog:
         return self.registry.list_providers()
 
     def models(self, provider_id: str) -> list[ModelInfo]:
+        with self.registry.storage.read_snapshot():
+            return self._models(provider_id)
+
+    def _models(self, provider_id: str) -> list[ModelInfo]:
         result: list[ModelInfo] = []
         for model in self.registry.list_models(provider_id):
             caps = self.capabilities(provider_id, model.model_id)

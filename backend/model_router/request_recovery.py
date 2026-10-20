@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.observability.diagnostics import emit_diagnostic_event
-from backend.contracts.transport import TransportPolicy
+from .transport_policy import request_transport_policy
 from backend.services.llm_service import LLMError, LLMResponseError, LLMProvider, LLMRateLimitError
 from backend.services.llm_service import LLMTimeoutError
 from .retry import RetryPolicy, retry_after_ms_from_details, transient_retry_delay_ms
@@ -76,8 +76,7 @@ async def retry_wait(request, exc, attempt):
     if isinstance(turn_deadline, (int, float)) and not isinstance(turn_deadline, bool):
         # Do not reserve and launch a retry that cannot get a useful response
         # before the parent turn times out. Durable recovery owns the next try.
-        policy = execution_value(request, "transport_policy", "forgex_transport_policy")
-        useful_window = (policy or TransportPolicy()).minimum_response_seconds
+        useful_window = request_transport_policy(request).minimum_response_seconds
         if time.monotonic() + delay / 1000 + useful_window >= turn_deadline:
             return False
     state = execution_value(request, "attempts", "forgex_request_attempts", {})
@@ -146,7 +145,7 @@ async def public_stream(request, stream):
             await asyncio.sleep(decision.delay_ms / 1000)
 
 
-async def text_stream(request, stream, generate, *, first_token_timeout=15.0):
+async def text_stream(request, stream, generate, *, first_token_timeout=None):
     """Compatibility text streams share retry policy and never replay visible text."""
     from dataclasses import replace
     from contextlib import aclosing
@@ -158,7 +157,11 @@ async def text_stream(request, stream, generate, *, first_token_timeout=15.0):
             attempts=request.metadata.get("forgex_request_attempts", {"used": 0, "limit": 6}),
             diagnostics=request.metadata.get("forgex_attempt_diagnostics", {}),
             recovery_hook=request.metadata.get("forgex_recovery_hook"),
-            deadline=request.metadata.get("forgex_turn_deadline")))
+            deadline=request.metadata.get("forgex_turn_deadline"),
+            deadline_kind="turn_deadline" if request.metadata.get("forgex_turn_deadline") is not None else "job_deadline",
+            transport_policy=request.metadata.get("forgex_transport_policy")))
+    if first_token_timeout is None:
+        first_token_timeout = request_transport_policy(request).minimum_response_seconds
     for attempt in range(1, 7):
         emitted = False
         try:

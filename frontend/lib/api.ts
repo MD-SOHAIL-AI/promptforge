@@ -1,5 +1,7 @@
 import { SingleFlight } from "./single-flight";
 import { RequestDeadlineError, withRequestDeadline } from "./request-deadline";
+import { recoverRead } from "./read-recovery";
+import { localSession } from "./local-session";
 import { rendererPolicy } from "./runtime-policy.generated";
 import type { ProjectProfile } from "@/types/engine-contracts";
 const agentReads = new SingleFlight();
@@ -42,7 +44,7 @@ import type {
   WorkspaceLogsResponse,
   WorkspaceSearchResponse,
 } from "@/types";
-import { apiErrorCode, toErrorMessage } from "@/lib/errors";
+import { apiErrorCode, apiValidationMessage, toErrorMessage } from "@/lib/errors";
 import { emitRuntimeDiagnostic, newRequestId, serializeError } from "@/lib/diagnostics";
 
 const API_BASE = "/api/forgex";
@@ -78,7 +80,10 @@ export class ForgeXApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options: { reconnect?: boolean } = {}): Promise<T> {
+  if (localSession.getSnapshot() && !options.reconnect) {
+    throw new ForgeXApiError("Reconnect to the authenticated local ForgeX session to continue.", 401, "LOCAL_AUTH_REQUIRED");
+  }
   const requestId = newRequestId("renderer-http");
   const started = performance.now();
   const method = init?.method ?? "GET";
@@ -92,7 +97,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     path,
   });
   try {
-    return await withRequestDeadline(async (signal) => {
+    return await withRequestDeadline(async (signal) => recoverRead(method, async () => {
     const response = await fetch(url, {
       ...init,
       signal,
@@ -101,6 +106,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
 
     if (!response.ok) {
+      if (response.status === 401) localSession.reject();
       let body: ApiErrorBody | unknown = {};
       try {
         body = await response.json();
@@ -115,22 +121,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         record,
         requestId,
       );
-      emitRuntimeDiagnostic({
-        component: "renderer",
-        event: "renderer.http.failed",
-        level: "ERROR",
-        request_id: requestId,
-        method,
-        path,
-        status: response.status,
-        duration_ms: Math.max(0, Math.round(performance.now() - started)),
-        error: serializeError(apiError),
-      });
       throw apiError;
     }
 
     const parsed = (await response.json()) as T;
     if (signal.aborted) throw new RequestDeadlineError(method !== "GET");
+    if (options.reconnect) localSession.restore();
     emitRuntimeDiagnostic({
       component: "renderer",
       event: "renderer.http.completed",
@@ -142,20 +138,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       duration_ms: Math.max(0, Math.round(performance.now() - started)),
     });
     return parsed;
-    }, { signal: init?.signal, mutation: method !== "GET",
+    }, {signal, onRetry: (attempt, cause) => emitRuntimeDiagnostic({component: "renderer",
+      event: "renderer.http.reconnecting", level: "INFO", request_id: requestId, method, path, attempt,
+      error: serializeError(cause)})}), { signal: init?.signal, mutation: method !== "GET",
       timeoutMs: path === "/build" || path === "/flash" ? 300_000 : 1000 * (method === "GET" ? rendererPolicy.read_seconds : rendererPolicy.mutation_seconds) });
   } catch (cause) {
-    if (cause instanceof ForgeXApiError) throw cause;
+    const cancelled = init?.signal?.aborted === true && cause != null && typeof cause === "object"
+      && "name" in cause && cause.name === "AbortError";
     emitRuntimeDiagnostic({
       component: "renderer",
-      event: "renderer.http.failed",
-      level: "ERROR",
+      event: cancelled ? "renderer.http.cancelled" : "renderer.http.failed",
+      level: cancelled ? "DEBUG" : "ERROR",
       request_id: requestId,
       method,
       path,
+      ...(cause instanceof ForgeXApiError ? {status: cause.status} : {}),
       duration_ms: Math.max(0, Math.round(performance.now() - started)),
       error: serializeError(cause),
     });
+    if (cause instanceof ForgeXApiError) throw cause;
     if (cause instanceof RequestDeadlineError) {
       throw new ForgeXApiError(cause.message, 0, cause.mutation ? "REQUEST_RESULT_UNKNOWN" : "REQUEST_TIMED_OUT", undefined, requestId);
     }
@@ -164,6 +165,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const forgeXApi = {
+  reconnect: () => request<Record<string, unknown>>("/diagnostics/runtime", undefined, {reconnect: true}),
   health: () => request<HealthResponse>("/health"),
   runtimeDiagnostics: (signal?: AbortSignal) => request<{backend_instance_id:string; runtime_contract:string; source_fingerprint:string; data_profile:string | null; observed_at:string; packaged:boolean}>("/diagnostics/runtime", {signal}),
   runDiagnostics: (runId: string) => request<Record<string, unknown>>(`/diagnostics/runs/${encodeURIComponent(runId)}/export`),
@@ -480,7 +482,8 @@ export const forgeXApi = {
 
 function errorBodyMessage(body: ApiErrorBody & { detail?: unknown; error?: unknown }) {
   return (
-    stringField(body.message)
+    apiValidationMessage(body)
+    ?? stringField(body.message)
     ?? stringField(body.detail)
     ?? stringField(body.error)
     ?? toErrorMessage(body, "")

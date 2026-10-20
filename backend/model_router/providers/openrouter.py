@@ -28,7 +28,6 @@ OPENROUTER_FREE_FALLBACK_MODELS = (
 OPENROUTER_KNOWN_UNAVAILABLE_FREE_MODELS = frozenset({
     "openai/gpt-oss-20b:free",
 })
-OPENROUTER_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS = 15.0
 OPENROUTER_STREAM_MAX_MODEL_ATTEMPTS = 3
 OPENROUTER_TRANSACTIONAL_STREAM_MAX_EVENTS = 50_000
 
@@ -51,8 +50,7 @@ class OpenRouterProvider(OpenAIProvider):
 
     async def generate_stream(self, request: ModelRequest):
         from ..request_recovery import text_stream
-        async with aclosing(text_stream(request, super().generate_stream, super().generate,
-            first_token_timeout=OPENROUTER_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS)) as source:
+        async with aclosing(text_stream(request, super().generate_stream, super().generate)) as source:
             async for event in source:
                 yield event
 

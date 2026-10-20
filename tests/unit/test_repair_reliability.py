@@ -72,19 +72,20 @@ def test_distinct_compiler_error_remains_new_evidence():
     assert diagnostic_fingerprint(one) != diagnostic_fingerprint(two)
 
 
-def test_provider_turn_stops_at_shared_deadline():
+def test_provider_turn_stops_before_consuming_verification_reserve():
     async def scenario():
         planner = object.__new__(RouterProductPlanner)
         planner.turn_timeout_s = 30
         planner._verification_reserve_s = 45
         planner._metadata = {}
+        planner._diagnostic_parent = None
         planner._deadline = time.monotonic() + 0.01
         async def slow_request(**_kwargs):
             await asyncio.sleep(1)
         planner._request_turn = slow_request
         with pytest.raises(ApiPlannerError) as captured:
             await planner._bounded_turn()
-        assert captured.value.safe_code == "AGENT_RUNTIME_LIMIT_EXCEEDED"
+        assert captured.value.safe_code == "AGENT_VERIFICATION_RESERVE_REACHED"
     asyncio.run(scenario())
 
 

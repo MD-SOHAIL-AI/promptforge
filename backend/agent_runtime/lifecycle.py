@@ -24,5 +24,4 @@ def turn_allowance(*, phase, remaining, turn_timeout, verification_reserve, boun
               AGENT_TURN_SECONDS if phase != "generation" else GENERATION_TURN_SECONDS)
     if not bounded_job:
         return cap
-    return min(cap,
-                (remaining - verification_reserve) / (3 if phase == "generation" else 1))
+    return min(cap, remaining - verification_reserve)

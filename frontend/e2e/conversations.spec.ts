@@ -1,6 +1,81 @@
 import { workspace, emit } from "./fixtures/workspace";
 import { expect, test } from "@playwright/test";
 
+test("reopening the selected project preserves an enabled prompt composer", async ({page}) => {
+  await workspace(page, {status: "completed"}, undefined, true);
+  const input = page.getByRole("textbox", {name: "Message", exact: true});
+  await expect(input).toBeEnabled();
+  await page.getByRole("button", {name: "Projects", exact: true}).click();
+  await page.getByText("Temperature monitor", {exact: true}).filter({visible: true}).click();
+  await expect(input).toBeEnabled();
+  await input.fill("Build the selected project.");
+  await expect(page.getByRole("button", {name: "Send message", exact: true})).toBeEnabled();
+});
+
+test("oversize instructions keep the draft and longer valid instructions can be sent", async ({page}) => {
+  await workspace(page, {status:"completed"}, undefined, true);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("forgex-agent-active-session:p"))).toBe("s");
+  const input = page.getByRole("textbox", {name:"Message", exact:true});
+  const send = page.getByRole("button", {name:"Send message", exact:true});
+  const oversized = "x".repeat(65537);
+  let submissions = 0;
+  let sent = "";
+  await page.route("**/api/forgex/agent-runtime/sessions/s/messages", async route => {
+    submissions++;
+    sent = route.request().postDataJSON().content;
+    await route.fulfill({json:{session:{session_id:"s",kind:"agent",project_id:"p",messages:[],run_ids:[]}}});
+  });
+  await input.fill(oversized);
+  await expect(input).toHaveAttribute("aria-invalid", "true");
+  const validation = page.locator('.fx-conversation-composer [role="alert"]');
+  await expect(validation).toContainText("65,536-character limit by 1");
+  await expect(send).toBeDisabled();
+  await input.press("Enter");
+  expect(submissions).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem("forgex-agent-draft:s") === "x".repeat(65537))).toBe(true);
+  await page.reload();
+  await expect.poll(async () => await input.inputValue() === oversized).toBe(true);
+  const valid = "Verify firmware. " + "x".repeat(25000);
+  await input.fill(valid);
+  await expect(validation).toHaveCount(0);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(() => sent).toBe(valid);
+  await expect(input).toHaveValue("");
+  expect(submissions).toBe(1);
+});
+
+test("server validation errors show the rejected field and preserve the draft", async ({page}) => {
+  await workspace(page, {status:"completed"}, undefined, true);
+  const input = page.getByRole("textbox", {name:"Message", exact:true});
+  await page.route("**/api/forgex/agent-runtime/sessions/s/messages", route => route.fulfill({status:422, json:{
+    code:"VALIDATION_ERROR", message:"Request validation failed", details:{errors:[
+      {location:["body","content"],message:"String should have at most 65536 characters",type:"string_too_long"}]}}}));
+  await input.fill("Keep this instruction after a validation failure.");
+  await page.getByRole("button", {name:"Send message",exact:true}).click();
+  await expect(page.getByText("content: String should have at most 65536 characters", {exact:true})).toBeVisible();
+  await expect(input).toHaveValue("Keep this instruction after a validation failure.");
+});
+
+test("saved conversation finishes restoring before the composer accepts a new draft", async ({page}) => {
+  await workspace(page, {status:"completed"}, undefined, true);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("forgex-agent-active-session:p"))).toBe("s");
+  let release!: () => void;
+  const held = new Promise<void>(resolve => {release = resolve;});
+  await page.route("**/api/forgex/agent-runtime/sessions/s", async route => {
+    await held;
+    await route.fallback();
+  });
+  await page.reload();
+  const composer = page.getByPlaceholder("Describe what you want to build or change…");
+  await expect(composer).toBeDisabled();
+  release();
+  await expect(composer).toBeEnabled();
+  await composer.fill("Keep the draft after restoration.");
+  await expect(page.getByRole("button", {name:"Send message", exact:true})).toBeEnabled();
+  await expect(composer).toHaveValue("Keep the draft after restoration.");
+});
+
 for (const knownMissing of [true, false]) {
   test(`missing folder stops refresh and dependent requests (${knownMissing ? "listed" : "404"})`, async ({page}) => {
     const requests: string[] = [];
@@ -226,7 +301,7 @@ test("session recovery follows its replacement run without submitting another ta
   await page.evaluate(() => {
     const streams = (window as unknown as {testStreams: Array<{url:string;closed:boolean;onmessage?:(message:{data:string})=>void}>}).testStreams;
     for(const source of streams) if(!source.closed && source.url.includes("/sessions/s/events"))
-      source.onmessage?.({data: JSON.stringify({session_id: "s", run_id: "r2", sequence: 900, event_type: "runtime.resumed"})});
+      source.onmessage?.({data: JSON.stringify({session_id: "s", run_id: "r2", source_run_id: "r", sequence: 900, event_type: "runtime.resumed"})});
   });
   await expect.poll(() => page.evaluate(() => (window as unknown as {testStreams:Array<{url:string;closed:boolean}>}).testStreams.some(source => !source.closed && source.url.includes("/runs/r2/events")))).toBe(true);
   expect(submissions).toBe(0);
@@ -283,10 +358,10 @@ test("Evidence separates source references, compilation and unqualified device b
   await page.getByRole("button", {name:"Open workspace",exact:true}).click();
   await page.getByRole("tab", {name:"Evidence",exact:true}).click();
   const levels = page.getByLabel("Verification levels").last();
-  await expect(levels.locator("div").filter({hasText:"Source references"})).toContainText("Referenced");
-  await expect(levels.locator("div").filter({hasText:"Requirement fidelity"})).toContainText("Unverified");
+  await expect(levels.locator("div").filter({hasText:"Requirement references"})).toContainText("Referenced");
+  await expect(levels.locator("div").filter({hasText:"Requirement fidelity"})).toContainText("Not started");
   await expect(levels.locator("div").filter({hasText:"Firmware compilation"})).toContainText("Built");
-  await expect(levels.locator("div").filter({hasText:"Device behavior"})).toContainText("Unqualified");
+  await expect(levels.locator("div").filter({hasText:"Device behavior"})).toContainText("Not tested");
   await page.screenshot({path:"test-results/verification-evidence.png"});
   expect(errors).toEqual([]);
 });
@@ -433,7 +508,7 @@ test("saved draft can be verified locally while its model is unavailable", async
   await page.route("**/api/forgex/agent-runtime/runs/verified", route => route.fulfill({json:{run:{run_id:"verified",session_id:"s",project_id:"p",
     status:"completed_with_warning",build_verified:true,change_set_id:"draft",recovery_actions:["retry"],events:[],plan:[],changed_files:[]}}}));
   await page.getByRole("button", {name:"Agent",exact:true}).click();
-  await page.getByRole("button", {name:"Verify saved draft",exact:true}).click();
+  await page.getByRole("button", {name:"Build saved draft",exact:true}).click();
   await expect.poll(() => verified).toBe(1);
   await expect(page.getByText("Build verified; task completion needs attention")).toBeVisible();
   await expect(page.getByText(/Task requirements and device behavior still need verification/)).toBeVisible();

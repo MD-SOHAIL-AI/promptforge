@@ -3,6 +3,7 @@
 import {
   memo,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/composer-model-options";
 import type { ModelProviderResponse, ModelRouteResponse } from "@/types";
 import { slashCommandSuggestions } from "@/lib/agent-slash-commands";
+import { MAX_MESSAGE_CHARACTERS, messageCharacterCount, messageValidationError } from "@/lib/message-validation";
 
 export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -233,7 +235,7 @@ export function ModelPicker({
                     <button
                       key={option.key}
                       type="button"
-                      disabled={option.agentCompatibility === "unsupported"}
+                      disabled={option.agentCompatibility !== "unverified"}
                       onClick={() => {
                         onSelect(option.providerId, option.modelId);
                         setOpen(false);
@@ -242,7 +244,7 @@ export function ModelPicker({
                       <span className="min-w-0">
                         <strong>{option.label}</strong>
                         {option.label !== option.modelId ? <small>{option.modelId}</small> : null}
-                        <small>{option.agentCompatibility === "unsupported" ? "Text generation unavailable" : "Agent compatibility unverified"}</small>
+                        <small>{option.agentCompatibility === "unavailable" ? "Model retired — choose another" : option.agentCompatibility === "unsupported" ? "Text generation unavailable" : "Agent compatibility unverified"}</small>
                       </span>
                       {option.providerId === providerId && option.modelId === modelId ? (
                         <Check className="shrink-0" size={14} />
@@ -298,6 +300,9 @@ export function ConversationComposer({
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
+  const validationId = useId();
+  const characterCount = useMemo(() => messageCharacterCount(value), [value]);
+  const validationError = useMemo(() => messageValidationError(value), [value]);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const latestKey = useRef(draftKey);
   latestKey.current = draftKey;
@@ -314,7 +319,7 @@ export function ConversationComposer({
   const commandSuggestions = useMemo(() => slashCommandSuggestions(value), [value]);
   useEffect(() => setCommandIndex(0), [value]);
   const send = async () => {
-    if (!value.trim() || disabled || sending) return;
+    if (!value.trim() || disabled || sending || validationError) return;
     const submittedKey = draftKey;
     const submitted = value;
     setSending(true);
@@ -361,6 +366,8 @@ export function ConversationComposer({
         ref={textarea}
         rows={2}
         aria-label="Message"
+        aria-invalid={Boolean(validationError)}
+        aria-describedby={validationError ? validationId : undefined}
         placeholder={placeholder}
         value={value}
         disabled={disabled}
@@ -404,9 +411,13 @@ export function ConversationComposer({
           }
         }}
       />
+      {validationError ? <p id={validationId} role="alert">{validationError}</p> : null}
       <div className="fx-composer-controls">
         <div className="flex min-w-0 items-center gap-2">{controls}</div>
         <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground" aria-label="Message character count">
+            {characterCount.toLocaleString()} / {MAX_MESSAGE_CHARACTERS.toLocaleString()}
+          </span>
           {canStop && onStop ? (
             <button
               type="button"
@@ -423,7 +434,7 @@ export function ConversationComposer({
             type="button"
             className="fx-send-button"
             aria-label={running ? "Send guidance" : "Send message"}
-            disabled={!value.trim() || disabled || sending}
+            disabled={!value.trim() || disabled || sending || Boolean(validationError)}
             onClick={() => void send()}
           >
             <ArrowUp size={17} />

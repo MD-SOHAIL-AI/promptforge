@@ -766,6 +766,9 @@ def test_explicit_approval_applies_successfully_built_staged_project(tmp_path: P
 
             staged = orchestrator.get_run(run.run_id)
             assert staged.classification == "CHANGESET_REVIEW_REQUIRED"
+            assert staged.requirement_report["risk_review"]["verdict"] == "request_changes"
+            review_node = next(node for node in orchestrator.graph(run.run_id)["nodes"] if node["node_id"] == "review")
+            assert review_node["status"] == "failed"
             assert staged.active_workspace_unchanged is True
             assert not (workspace / "platformio.ini").exists()
 

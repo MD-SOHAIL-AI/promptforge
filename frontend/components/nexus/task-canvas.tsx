@@ -487,7 +487,7 @@ export function TaskCanvas({
                 <button className="fx-suggestion" onClick={() => onOpenCanvas("review")}>Review saved work</button>
                 {agent.run.recovery.eligible ? <button className="fx-primary-action" disabled={agent.submitting || (agent.run.recovery.actions ? !agent.run.recovery.actions.continue_generation.allowed : budgetPaused)} onClick={() => void agent.resume()}>Resume saved work</button> : null}
                 {agent.run.recovery.eligible && selectedProviderId && selectedModelId && (selectedProviderId !== agent.run.provider_id || selectedModelId !== agent.run.model_id) ? <button className="fx-suggestion" disabled={agent.submitting || (agent.run.recovery.actions ? !agent.run.recovery.actions.continue_generation.allowed : budgetPaused)} onClick={() => void agent.resume({provider_id: selectedProviderId, model_id: selectedModelId})}>Continue with selected model</button> : null}
-                {agent.run.recovery.eligible && agent.run.change_set_id ? <button className="fx-suggestion" disabled={agent.submitting || agent.run.recovery.actions?.verify_locally.allowed === false} onClick={() => void agent.verifyDraft()}>Verify saved draft</button> : null}
+                {agent.run.recovery.eligible && agent.run.change_set_id ? <button className="fx-suggestion" disabled={agent.submitting || agent.run.recovery.actions?.verify_locally.allowed === false} onClick={() => void agent.verifyDraft()}>Build saved draft</button> : null}
               </div>
             </div>
           ) : null}
@@ -503,7 +503,7 @@ export function TaskCanvas({
               </div>
             </div>
           ) : null}
-          {agent.run?.status === "failed" && agent.run.provider_diagnostics?.last_failure_code ? (
+          {agent.run && ["failed", "completed_with_warning", "timed_out", "blocked"].includes(agent.run.status) && agent.run.provider_diagnostics?.last_failure_code ? (
             <p role="status" className="text-xs text-[var(--fx-text-muted)]">
               Agent response: {agent.run.provider_diagnostics.last_failure_code}
               {agent.run.provider_diagnostics.response_mode ? ` (${agent.run.provider_diagnostics.response_mode})` : ""}
@@ -514,6 +514,7 @@ export function TaskCanvas({
               {agent.run.provider_diagnostics.last_response_shape ? ` Response shape: ${agent.run.provider_diagnostics.last_response_shape}.` : ""}
               {agent.run.provider_diagnostics.last_parse_reason ? ` Parser: ${agent.run.provider_diagnostics.last_parse_reason}.` : ""}
               {agent.run.provider_diagnostics.last_failure_origin ? ` Source: ${agent.run.provider_diagnostics.last_failure_origin}.` : ""}
+              {agent.run.provider_diagnostics.last_argument_issue ? ` Invalid verification field ${agent.run.provider_diagnostics.last_argument_issue.field}: ${agent.run.provider_diagnostics.last_argument_issue.expected}` : ""}
             </p>
           ) : null}
           {agent.run?.provider_diagnostics?.budget_failure ? (
@@ -580,7 +581,7 @@ export function TaskCanvas({
                 ? "Guide the current task…"
                 : "Describe what you want to build or change…"
             }
-            disabled={!projectName || agent.submitting}
+            disabled={!projectName || agent.submitting || agent.restoring}
             running={running}
             canStop={running || agent.run?.status === "paused_model_unavailable"}
             stopping={agent.cancelling || agent.run?.status === "cancelling"}

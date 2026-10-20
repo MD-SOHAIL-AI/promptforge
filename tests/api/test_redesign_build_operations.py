@@ -43,6 +43,22 @@ def test_readiness_does_not_generate_model_output(tmp_path):
         assert value["qualification"]["provider"] == "not_qualified"
 
 
+@pytest.mark.parametrize("ini", ["", "board = esp32dev\n", "[env:esp32dev\nboard = esp32dev\n"])
+def test_incomplete_or_invalid_configuration_does_not_crash_readiness(tmp_path, ini):
+    from pathlib import Path
+    client, project_id, _ = make_client(tmp_path)
+    with client:
+        root = Path(client.get(f"/projects/{project_id}").json()["project_path"])
+        (root / "platformio.ini").write_text(ini)
+        result = client.get(f"/projects/{project_id}/readiness?provider_id=ollama")
+        assert result.status_code == 200, result.text
+        value = result.json()
+        assert value["workspace"]["available"] and value["capabilities"]["generate"]
+        assert not value["configuration"]["valid"] and not value["capabilities"]["build"]
+        assert value["configuration"]["warnings"]
+        assert client.get(f"/projects/{project_id}/profile").status_code == 422
+
+
 @pytest.mark.parametrize("environment_evidence", [
     {"environment":"debug"},
     {"environment":None, "metadata":{"environment":"debug"}},

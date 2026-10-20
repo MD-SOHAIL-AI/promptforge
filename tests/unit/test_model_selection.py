@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 
 from backend.model_router.models import ModelRequest
 from backend.model_router.selection import ModelRef, ModelSelectionStore
@@ -53,6 +54,26 @@ def test_subagent_role_prefers_session_binding_and_keeps_parent_pinned(tmp_path)
     assert reviewer.to_safe_metadata()["selection_source"] == "session_role"
     assert reviewer.to_safe_metadata()["selection_inherited"] is False
     assert explorer.model_id == "parent"
-    assert explorer.to_safe_metadata()["selection_source"] == "task_route"
+    assert explorer.to_safe_metadata()["selection_source"] == "parent"
     assert explorer.to_safe_metadata()["selection_inherited"] is True
     assert parent.model_id == "parent"
+
+
+@pytest.mark.parametrize("session_default", [False, True])
+def test_role_inheritance_preserves_explicit_parent_despite_other_main_defaults(tmp_path, session_default):
+    from backend.agent_runtime.router_planner import RouterProductPlanner
+    router, _ = build(tmp_path, {"openrouter": Provider("openrouter")})
+    router.selections.set(ModelRef("other-provider", "other-application-main"))
+    if session_default:
+        router.selections.set(ModelRef("other-provider", "other-session-main"), session_id="s")
+    parent = RouterProductPlanner(router, provider_id="openrouter", model_id="explicit-task-model", session_id="s")
+    parent.bind_deadline(1234567.0)
+    reviewer = parent.for_role("review")
+    assert (reviewer.provider_id, reviewer.model_id) == (parent.provider_id, "explicit-task-model")
+    assert reviewer.to_safe_metadata()["selection_source"] == "parent"
+    assert reviewer.to_safe_metadata()["selection_inherited"] is True
+    assert reviewer._run_budget is parent._run_budget
+    assert reviewer._deadline == parent._deadline
+    router.selections.set(ModelRef("openrouter", "explicit-reviewer"), role="review")
+    assert parent.for_role("review").model_id == "explicit-reviewer"
+    assert parent.for_role("review").to_safe_metadata()["selection_inherited"] is False

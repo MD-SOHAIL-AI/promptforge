@@ -286,11 +286,7 @@ def test_openrouter_empty_stream_recovers_with_same_selected_model(tmp_path: Pat
 def test_openrouter_stream_retries_same_model_with_slow_first_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from backend.model_router.providers import openrouter as openrouter_module
-
-    monkeypatch.setattr(
-        openrouter_module, "OPENROUTER_STREAM_FIRST_TOKEN_TIMEOUT_SECONDS", 0.01
-    )
+    from backend.contracts.transport import TransportPolicy
     from backend.model_router import request_recovery
     original_sleep = asyncio.sleep
     async def no_delay(_):
@@ -308,6 +304,7 @@ def test_openrouter_stream_retries_same_model_with_slow_first_token(
                         prompt="hello",
                         task_type="general_chat",
                         model_id="cohere/north-mini-code:free",
+                        metadata={"forgex_transport_policy": TransportPolicy(first_event_seconds=.01)},
                     )
                 )
             ]

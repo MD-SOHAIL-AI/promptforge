@@ -41,10 +41,11 @@ def test_legacy_execute_stages_edits_and_publishes_a_reviewable_changeset(tmp_pa
 
 
 def test_agent_body_limit_checks_chunked_bytes_without_content_length(tmp_path):
+    from backend.contracts.runtime_policy import MAX_AGENT_MESSAGE_REQUEST_BYTES
     client, project_id, _ = make_client(tmp_path)
     async def scenario():
         async def chunks():
-            for _ in range(9):
+            for _ in range(MAX_AGENT_MESSAGE_REQUEST_BYTES // 4096 + 1):
                 yield b"x" * 4096
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=client.app),
                 base_url="http://127.0.0.1:8000", headers=dict(client.headers)) as http:

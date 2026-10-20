@@ -9,23 +9,35 @@ import time
 from dataclasses import dataclass
 
 from .canonical_runtime import OrderedToolScheduler
+from backend.contracts.runtime_policy import REVIEW_UNIT_SECONDS
 
 
 @dataclass(frozen=True)
 class PhaseBudget:
     build_seconds: float = 0
-    review_seconds: float = 60
+    review_seconds: float = REVIEW_UNIT_SECONDS
     persistence_seconds: float = 5
 
     @classmethod
-    def for_task(cls, requires_build, durations=()):
+    def for_task(cls, requires_build, durations=(), *, review_count=1, cold=False):
         samples = sorted(float(value) for value in durations if isinstance(value, (int, float)) and math.isfinite(value) and value > 0)
         estimate = samples[min(len(samples) - 1, math.ceil(len(samples) * .95) - 1)] if samples else 120
-        return cls(build_seconds=min(300, max(120, estimate)) if requires_build else 0)
+        if cold:
+            estimate = max(300, estimate)
+        return cls(build_seconds=min(300, max(120, estimate)) if requires_build else 0,
+                   review_seconds=REVIEW_UNIT_SECONDS * max(1, review_count))
 
     @property
     def generation_reserve(self):
         return self.build_seconds + self.review_seconds
+
+    def generation_reserve_for(self, task_seconds):
+        """Reserve a share of the job, rather than most of a short job.
+
+        Phase estimates are ceilings, not time already spent. Actual builds
+        and reviews remain bounded by their phase and cumulative job deadlines.
+        """
+        return min(self.generation_reserve, max(0.0, float(task_seconds)) / 3)
 
     def build_deadline(self, parent_deadline, *, now=None):
         now = time.monotonic() if now is None else now
@@ -33,6 +45,10 @@ class PhaseBudget:
         # have less than a full review allocation, use the remaining phase time.
         available = parent_deadline - self.review_seconds
         return min(now + self.build_seconds, available if available > now else parent_deadline)
+
+    def dependency_deadline(self, parent_deadline, *, now=None):
+        now = time.monotonic() if now is None else now
+        return min(now + 90, parent_deadline)
 
 
 class AsyncAgentEngine:

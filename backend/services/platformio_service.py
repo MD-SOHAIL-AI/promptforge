@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import configparser
+import hashlib
 import json
 import math
 import os
@@ -33,11 +34,14 @@ from ..tools.build_firmware import BuildConfig, FirmwareBuilder
 
 __all__ = [
     "PlatformIOCommandError",
+    "PlatformIOConfigurationError",
+    "PlatformIODependencyError",
     "PlatformIOEnvironment",
     "PlatformIOError",
     "PlatformIOProject",
     "PlatformIOProjectError",
     "PlatformIOResponseError",
+    "PlatformIOSourceError",
     "PlatformIOService",
     "PlatformIOStatus",
     "resolve_platformio_executable",
@@ -77,6 +81,45 @@ class PlatformIOProjectError(PlatformIOError, ValueError):
     """A PlatformIO project or environment selection is invalid."""
 
 
+class PlatformIOConfigurationError(PlatformIOProjectError):
+    """An incomplete configuration can be repaired without running the compiler."""
+
+    def __init__(self, message: str, *, code: str = "BUILD_CONFIGURATION_INVALID",
+                 ini_path: Path | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = False  # Repair the file; replaying the same command cannot help.
+        self.details = {"repair_paths": ["platformio.ini"], "execution_attempted": False,
+                        "origin": "project_configuration", "correction":
+                        "Create or repair platformio.ini, preserving the requested board, framework and environment."}
+        if ini_path is not None:
+            self.details["configuration_sha256"] = _configuration_state(ini_path)
+
+
+class PlatformIOSourceError(PlatformIOProjectError):
+    """A contained source folder has not been generated yet; INI is valid."""
+
+    code = "LOCAL_SOURCES_INCOMPLETE"
+
+    def __init__(self, directory: str) -> None:
+        super().__init__(f"Configured source directory does not exist: {directory}")
+        self.details = {"source_directory": directory, "execution_attempted": False,
+            "origin": "source_readiness", "repairable": True,
+            "instruction": f"Create the requested source files under {directory}/ before building. "
+                "File writes create parent directories automatically. Preserve the selected board, "
+                "framework and source layout; do not rewrite valid platformio.ini just to create a directory."}
+
+
+def _configuration_state(ini_path: Path) -> str:
+    try:
+        text = ini_path.read_text(encoding="utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+    except FileNotFoundError:
+        return "missing"
+    except UnicodeError:
+        return "unreadable"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 class PlatformIOCommandError(PlatformIOError):
     """A PlatformIO command could not be started or completed successfully."""
 
@@ -94,6 +137,37 @@ class PlatformIOCommandError(PlatformIOError):
 
 class PlatformIOResponseError(PlatformIOError):
     """PlatformIO returned successful but malformed machine-readable output."""
+
+
+class PlatformIODependencyError(PlatformIOCommandError):
+    """Keep a failed registry command distinct from a registry outage."""
+
+    def __init__(self, query: str, result: ProcessResult) -> None:
+        from backend.observability.diagnostics import redact
+        diagnostic = str(redact((result.stderr_text or result.stdout_text)[-8000:]))[-8000:]
+        query = str(redact(query))
+        if result.timed_out:
+            self.code = "DEPENDENCY_REGISTRY_TIMEOUT"
+            self.retryable = True
+            message = f"PlatformIO library search timed out for {query!r}."
+        elif re.search(r"Unicode(?:Encode|Decode)Error", diagnostic):
+            self.code = "DEPENDENCY_OUTPUT_ENCODING_ERROR"
+            self.retryable = False
+            message = f"PlatformIO could not encode or decode library-search output for {query!r}."
+        elif re.search(r"(?i)(?:network.*unavailable|connection(?:error| .*?(?:reset|refused|aborted))|"
+                       r"HTTP(?:Client)?Error|HTTP\s+(?:429|5\d\d)|SSLError|ProxyError|"
+                       r"ReadTimeout|ConnectTimeout|name resolution|network is unreachable)", diagnostic):
+            self.code = "DEPENDENCY_REGISTRY_UNAVAILABLE"
+            self.retryable = True
+            message = f"PlatformIO could not reach the package registry while searching for {query!r}."
+        else:
+            self.code = "DEPENDENCY_VALIDATION_FAILED"
+            self.retryable = False
+            message = f"PlatformIO library search failed for {query!r} (exit {result.returncode})."
+        self.details = {"origin": "platformio", "query": query,
+                        "exit_code": result.returncode, "timed_out": result.timed_out,
+                        "diagnostics": diagnostic}
+        super().__init__(f"{self.code}: {message}", result=result, command=result.args)
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +303,8 @@ class PlatformIOService:
         # network and physical devices; a process group/job is insufficient.
         self._native_test_runner = native_test_runner
         self._dependency_validation_cache: dict[str, tuple[str, ...]] = {}
+        self._dependency_version_cache: dict[str, dict[str, object]] = {}
+        self._library_metadata_cache: dict[str, tuple[float, dict[str, object]]] = {}
         self._status_task: asyncio.Task | None = None
         self._cached_status: PlatformIOStatus | None = None
         self._status_checked_at = 0.0
@@ -442,18 +518,40 @@ class PlatformIOService:
                 result.metadata.update(flash_ready=False, flash_readiness_error=str(exc))
         return result
 
-    async def validate_dependencies(self, project: Path) -> dict[str, object]:
-        """Resolve declared registry IDs before compiling, without guessing owners."""
-        _, _, parser = _load_project(project)
+    def inspect_configuration(self, project: Path, *, environment: str | None = None):
+        """Inspect local configuration only; never execute commands or query a registry."""
+        _, ini_path, parser = _load_project(project)
+        try:
+            environments = _discover_from_parser(parser)
+            _validate_environment_selection(environments, environment)
+        except PlatformIOConfigurationError as exc:
+            exc.details["configuration_sha256"] = _configuration_state(ini_path)
+            raise
+        return ini_path, parser, environments
+
+    async def validate_dependencies(self, project: Path, *, environment: str | None = None) -> dict[str, object]:
+        """Resolve package identity/version and declared environment compatibility."""
+        ini_path, parser, environments = self.inspect_configuration(project, environment=environment)
+        configuration_fingerprint = _configuration_state(ini_path)
         from backend.security.build_policy import validate_build_configuration
         validate_build_configuration(parser)
-        declared = sorted({line.strip() for section in parser.sections()
-            for line in parser.get(section, "lib_deps", fallback="", raw=True).splitlines() if line.strip()})
+        if environment:
+            environments = tuple(item for item in environments if item.name == environment)
+        declared = sorted({line.strip() for item in environments
+            for line in _resolve_option(parser, item.name, "lib_deps").splitlines() if line.strip()})
         if len(declared) > 32:
             raise ValueError("BUILD_DEPENDENCY_LIMIT")
         checked, missing = [], []
         for dependency in declared:
             identity = dependency.split("@", 1)[0].strip()
+            selected = tuple(item for item in environments
+                if dependency in [line.strip() for line in _resolve_option(parser, item.name, "lib_deps").splitlines()])
+            framework_header = _esp32_framework_dependency(identity, selected)
+            if framework_header:
+                missing.append({"requested": dependency, "reason": "framework_provided",
+                    "candidates": [], "header": framework_header,
+                    "correction": f"Remove {dependency!r} from lib_deps; Arduino-ESP32 supplies {framework_header}."})
+                continue
             if identity not in self._dependency_validation_cache:
                 candidates = await self.search_libraries(identity, limit=5)
                 # Network failures must not poison subsequent requests, and a
@@ -467,11 +565,53 @@ class PlatformIOService:
             matches = [candidate for candidate in candidates if
                        (candidate if "/" in identity else candidate.split("/", 1)[-1]).casefold() == identity.casefold()]
             if len(matches) != 1:
-                missing.append({"requested": dependency, "candidates": list(candidates)})
+                missing.append({"requested": dependency, "candidates": list(candidates),
+                    "reason": "ambiguous_package" if len(matches) > 1 else "package_unresolved",
+                    "correction": "Inspect registry candidates and use a verified owner/name package ID."})
             else:
+                if dependency not in self._dependency_version_cache:
+                    version = dependency[len(identity):]
+                    resolved_spec = matches[0] + version
+                    result = await self._run([self._executable, "pkg", "show", "--type", "library", resolved_spec], timeout_s=15.0)
+                    if not result.success:
+                        if _registry_package_missing(result):
+                            metadata_result = await self._run([self._executable, "pkg", "show", "--type", "library", matches[0]], timeout_s=15.0)
+                            if not metadata_result.success and not _registry_package_missing(metadata_result):
+                                raise PlatformIODependencyError(identity, metadata_result)
+                            metadata = _registry_package_metadata(metadata_result.stdout_text) if metadata_result.success else {}
+                            # Registry `show` looks up an exact version even
+                            # though installation accepts SemVer constraints.
+                            # Verify a matching published version explicitly;
+                            # never rewrite the user's dependency declaration.
+                            candidate = _registry_range_candidate(version, metadata)
+                            if candidate:
+                                result = await self._run([self._executable, "pkg", "show", "--type", "library", matches[0] + "@" + candidate], timeout_s=15.0)
+                                if not result.success and not _registry_package_missing(result):
+                                    raise PlatformIODependencyError(identity, result)
+                            if not candidate or not result.success:
+                                missing.append({"requested": dependency, "candidates": list(matches), "reason": "version_unresolved", **metadata})
+                                continue
+                        else:
+                            raise PlatformIODependencyError(identity, result)
+                    if len(self._dependency_version_cache) >= 128:
+                        self._dependency_version_cache.clear()
+                    self._dependency_version_cache[dependency] = _registry_package_metadata(result.stdout_text)
+                metadata = self._dependency_version_cache[dependency]
+                incompatible = []
+                for item in selected:
+                    for field in ("framework", "platform"):
+                        supported = set(metadata.get(field + "s", ()))
+                        requested = set(part.strip().split("@", 1)[0] for part in getattr(item, field).split(",") if part.strip())
+                        if supported and "*" not in supported and requested and not requested & supported:
+                            incompatible.append({"environment":item.name,"field":field,"requested":sorted(requested),"supported":sorted(supported)})
+                if incompatible:
+                    missing.append({"requested":dependency,"reason":"environment_incompatible","constraints":incompatible})
+                    continue
                 checked.append(dependency)
         return {"valid": not missing, "dependencies": checked, "missing": missing,
-                "source": "platformio_registry", "versions_verified": False}
+                "source": "platformio_registry", "versions_verified": not missing,
+                "configuration_sha256": configuration_fingerprint,
+                "environments": [item.name for item in environments]}
 
     async def search_libraries(self, query: str, *, limit: int = 5) -> tuple[str, ...]:
         """Return bounded registry package IDs without trusting registry prose."""
@@ -483,7 +623,11 @@ class PlatformIOService:
             [self._executable, "pkg", "search", query], timeout_s=10.0
         )
         if not result.success:
-            raise RuntimeError("DEPENDENCY_REGISTRY_UNAVAILABLE")
+            from backend.observability.diagnostics import emit_diagnostic_event
+            error = PlatformIODependencyError(query, result)
+            emit_diagnostic_event(component="build", event="platformio.dependency.failed", level="ERROR",
+                                  message=str(error), error_code=error.code, **error.details)
+            raise error
         packages: list[str] = []
         for line in result.stdout_text.splitlines():
             candidate = line.strip()
@@ -494,6 +638,33 @@ class PlatformIOService:
             if len(packages) >= max(1, min(limit, 5)):
                 break
         return tuple(packages)
+
+    async def resolve_library(self, query: str, *, limit: int = 5) -> dict[str, object]:
+        """Search plus bounded metadata for the best candidate, without installing."""
+        candidates = await self.search_libraries(query, limit=limit)
+        exact = [item for item in candidates if item.casefold() == query.casefold()]
+        selected = exact[:1] or list(candidates[:1])
+        packages = []
+        for package in selected:
+            cached = self._library_metadata_cache.get(package)
+            if cached and time.monotonic() - cached[0] < 300:
+                packages.append({**cached[1], "cached": True})
+                continue
+            result = await self._run([self._executable, "pkg", "show", "--type", "library", package], timeout_s=15.0)
+            if not result.success:
+                packages.append({"id": package, "metadata_verified": False,
+                    "available_versions": [], "reason": "registry_metadata_unavailable"})
+                continue
+            from datetime import datetime, timezone
+            item = {"id": package, **_registry_package_metadata(result.stdout_text),
+                "metadata_verified": True, "checked_at": datetime.now(timezone.utc).isoformat(),
+                "source": "platformio_registry", "cached": False}
+            if len(self._library_metadata_cache) >= 128:
+                self._library_metadata_cache.clear()
+            self._library_metadata_cache[package] = (time.monotonic(), item)
+            packages.append(item)
+        return {"candidates": list(candidates), "packages": packages, "installed": False,
+            "metadata_scope": "best_candidate_only", "source": "platformio_registry"}
 
     async def test_native(self, project_path, *, environment, trusted=False):
         """Run project-controlled native code only through an isolated runner."""
@@ -680,7 +851,8 @@ def _load_project(
         )
     ini_path = root / _PLATFORMIO_INI
     if not ini_path.is_file():
-        raise PlatformIOProjectError(f"missing {_PLATFORMIO_INI}: {ini_path}")
+        raise PlatformIOConfigurationError(f"missing {_PLATFORMIO_INI}: {ini_path}",
+            code="BUILD_CONFIGURATION_MISSING", ini_path=ini_path)
 
     parser = configparser.RawConfigParser(
         strict=True,
@@ -689,10 +861,10 @@ def _load_project(
     try:
         with ini_path.open("r", encoding="utf-8-sig") as handle:
             parser.read_file(handle)
-    except (OSError, UnicodeError, configparser.Error) as exc:
-        raise PlatformIOProjectError(
-            f"invalid {_PLATFORMIO_INI}: {exc}"
-        ) from exc
+    except (UnicodeError, configparser.Error) as exc:
+        raise PlatformIOConfigurationError(f"invalid {_PLATFORMIO_INI}: {exc}", ini_path=ini_path) from exc
+    except OSError as exc:
+        raise PlatformIOProjectError(f"cannot read {_PLATFORMIO_INI}: {exc}") from exc
     return root, ini_path, parser
 
 
@@ -766,6 +938,55 @@ def resolve_platformio_executable(
     )
 
 
+def _esp32_framework_dependency(identity, environments):
+    """Bare framework facility names must not become registry installations."""
+    if not environments or not all(item.platform.split("@", 1)[0].strip() == "espressif32"
+            and item.framework.strip() == "arduino" for item in environments):
+        return None
+    return {"Preferences": "Preferences.h", "ESP32 Arduino OTA": "ArduinoOTA.h",
+            "Arduino_FreeRTOS": "freertos/FreeRTOS.h", "timers": "freertos/timers.h",
+            "semaphores": "freertos/semphr.h", "queues": "freertos/queue.h",
+            "event_groups": "freertos/event_groups.h"}.get(identity)
+
+
+def _registry_package_metadata(output):
+    """Extract bounded identifiers from PlatformIO's installed CLI table format."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    versions = re.findall(r"^\s*(\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.-]+)?)\s+\S+\s+\d{4}-", plain, re.M)
+    metadata = {"available_versions": list(dict.fromkeys(versions))[:32]}
+    for key, label in (("platforms", "Compatible Platforms"), ("frameworks", "Compatible Frameworks")):
+        match = re.search(r"^" + label + r"\s+([^\n\r]+)$", plain, re.M)
+        if match:
+            metadata[key] = [value.strip() for value in match[1].split(",")
+                             if re.fullmatch(r"[A-Za-z0-9_*-]{1,40}", value.strip())][:32]
+    return metadata
+
+
+def _registry_package_missing(result):
+    return bool(re.search(r"Could not find|UnknownPackageError|No matching|does not exist",
+        result.stderr_text + "\n" + result.stdout_text, re.I))
+
+
+def _registry_range_candidate(version, metadata):
+    """Use PlatformIO's installed SemVer semantics on bounded registry facts."""
+    expression = version.removeprefix("@").strip()
+    if not expression or re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", expression):
+        return None  # A rejected exact version must remain rejected.
+    try:
+        import semantic_version
+        requirement = semantic_version.SimpleSpec(expression)
+    except (ImportError, ValueError):
+        return None
+    versions = []
+    for value in metadata.get("available_versions", ())[:32]:
+        try:
+            versions.append(semantic_version.Version(value))
+        except (ValueError, TypeError):
+            continue
+    selected = requirement.select(versions)
+    return str(selected) if selected is not None else None
+
+
 def _parse_platformio_version_output(*parts: str) -> str | None:
     output = "\n".join(part.strip() for part in parts if part.strip())
     if not output:
@@ -789,7 +1010,7 @@ def _discover_from_parser(
         if section.startswith("env:") and section[4:].strip()
     )
     if not names:
-        raise PlatformIOProjectError(
+        raise PlatformIOConfigurationError(
             f"{_PLATFORMIO_INI} contains no [env:<name>] sections"
         )
     return tuple(
@@ -813,7 +1034,7 @@ def _resolve_option(
     try:
         return resolve_option(parser, environment, option)
     except PartitionPreflightError as exc:
-        raise PlatformIOProjectError(str(exc).lower()) from exc
+        raise PlatformIOConfigurationError(str(exc).lower()) from exc
 
 
 def _validate_source_directory(
@@ -831,6 +1052,13 @@ def _validate_source_directory(
     if not source.is_absolute():
         source = project_root / source
     if not source.resolve().is_dir():
+        try:
+            relative = source.resolve().relative_to(project_root.resolve()).as_posix()
+        except ValueError:
+            # An external folder is not a model-writable generation target.
+            pass
+        else:
+            raise PlatformIOSourceError(relative)
         raise PlatformIOProjectError(
             f"configured source directory does not exist: {source.resolve()}"
         )
@@ -846,7 +1074,7 @@ def _validate_environment_selection(
     normalized = environment.strip()
     names = {item.name for item in environments}
     if normalized not in names:
-        raise PlatformIOProjectError(
+        raise PlatformIOConfigurationError(
             f"environment {normalized!r} is not defined in {_PLATFORMIO_INI}"
         )
 

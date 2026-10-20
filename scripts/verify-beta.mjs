@@ -7,6 +7,7 @@ export const BETA_CHECKS = Object.freeze([
   Object.freeze({ id: "python", label: "Python tests", runner: "python", args: ["-m", "pytest", "-q"] }),
   Object.freeze({ id: "harness", label: "Harness tests", runner: "npm", args: ["run", "test:harness"] }),
   Object.freeze({ id: "ui-state", label: "Frontend state tests", runner: "npm", args: ["run", "test:ui-state"] }),
+  Object.freeze({ id: "read-recovery", label: "Read and local session recovery", runner: "npm", args: ["run", "test:read-recovery"] }),
   Object.freeze({ id: "electron", label: "Electron tests", runner: "npm", args: ["run", "test:electron"] }),
   Object.freeze({ id: "typecheck", label: "Frontend typecheck", runner: "npm", args: ["run", "typecheck:frontend"] }),
   Object.freeze({ id: "lint", label: "Frontend lint (zero warnings)", runner: "npm", args: ["run", "lint:frontend"] }),

@@ -13,6 +13,8 @@ class BudgetFailure(BaseModel):
     limit: int | float = Field(ge=0)
     attempted_charge: int | float = Field(ge=0)
     origin: str = Field(default="job_budget", max_length=128)
+    phase: str | None = Field(default=None, max_length=128)
+    remaining_job_seconds: float | None = Field(default=None, ge=0)
 
 
 class AttemptDiagnostics(BaseModel):
@@ -30,6 +32,8 @@ class AttemptDiagnostics(BaseModel):
     tool_event_count: int = Field(default=0, ge=0)
     worker_exit_code: int | None = None
     worker_cleanup_incomplete: bool = False
+    worker_phase: Literal["spawn", "input", "response"] | None = None
+    worker_failure_kind: Literal["memory_limit", "invalid_runtime_options", "abnormal_exit"] | None = None
     physical_attempt_id: str | None = Field(default=None, max_length=256)
     http_status: int | None = Field(default=None, ge=100, le=599)
     provider_request_id: str | None = Field(default=None, max_length=256)
@@ -38,7 +42,15 @@ class AttemptDiagnostics(BaseModel):
     first_event_ms: int | None = Field(default=None, ge=0)
     last_event_ms: int | None = Field(default=None, ge=0)
     timeout_stage: str | None = Field(default=None, max_length=128)
+    failure_shape: Literal["invalid_stream_event"] | None = None
     duration_ms: int | None = Field(default=None, ge=0)
+
+
+class ToolArgumentIssue(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    field: str = Field(max_length=256, pattern=r"^checks(?:\[\d+\](?:\.(?:id|status|evidence)(?:\[\d+\](?:\.(?:path|quote|start_line|end_line))?)?)?)?$")
+    constraint: Literal["type", "count", "fields", "string", "enum", "line_order", "line_span"]
+    expected: str = Field(min_length=1, max_length=256)
 
 
 class ProviderDiagnostics(AttemptDiagnostics):
@@ -59,7 +71,9 @@ class ProviderDiagnostics(AttemptDiagnostics):
     last_failure_code: str | None = Field(default=None, max_length=128)
     last_repair_outcome: str | None = Field(default=None, max_length=128)
     last_parse_reason: str | None = Field(default=None, max_length=512)
+    last_argument_issue: ToolArgumentIssue | None = None
     last_failure_origin: str | None = Field(default=None, max_length=128)
+    budget_persistence_cause: str | None = Field(default=None, max_length=128)
     last_response_shape: str | None = Field(default=None, max_length=128)
     last_response_tool_count: int | None = Field(default=None, ge=0)
     stream_fallback_used: bool = False

@@ -216,7 +216,10 @@ class ProductAgentRun:
     last_failure_code: str | None = None
     last_repair_outcome: str | None = None
     last_parse_reason: str | None = None
+    last_argument_issue: dict[str, str] | None = None
     last_failure_origin: str | None = None
+    budget_persistence_cause: str | None = None
+    failure_shape: str | None = None
     budget_failure: dict[str, object] | None = None
     last_response_shape: str | None = None
     last_response_tool_count: int | None = None
@@ -243,6 +246,8 @@ class ProductAgentRun:
     tool_event_count: int = 0
     worker_exit_code: int | None = None
     worker_cleanup_incomplete: bool = False
+    worker_phase: str | None = None
+    worker_failure_kind: str | None = None
     repair_skip_reason: str | None = None
     initial_attempt_diagnostics: dict[str, object] | None = None
     repair_attempt_diagnostics: dict[str, object] | None = None
@@ -340,6 +345,9 @@ class ProductAgentRun:
                 *self.deleted_files,
             ],
             next_suggested_action=(
+                "Allow local builds for this project, then verify the saved draft."
+                if self.classification == "AGENT_PROJECT_TRUST_REQUIRED"
+                else
                 "Confirm flash to upload the built firmware to the selected board."
                 if self.status == "awaiting_flash_confirmation"
                 else (
@@ -362,6 +370,9 @@ class ProductAgentRun:
                             else error_code.value
                         ),
                         "message": (
+                            str((self.build_result or {}).get("message"))[:1000]
+                            if str(self.classification or "").startswith("DEPENDENCY_")
+                            and (self.build_result or {}).get("message") else
                             runtime_failure_message(self.classification)
                             if error_code is ProviderErrorCode.FORGEX_RUNTIME_ERROR
                             else actionable_message(error_code, self.provider_id)
@@ -386,6 +397,7 @@ class ProductAgentRun:
                           "initial_failure_code": self.initial_failure_code, "recovery_failure_code": self.recovery_failure_code,
                           "physical_request_count": self.physical_request_count, "http_status": self.http_status,
                           "job_id": self.job_id, "diagnostics": run_provider_diagnostics(self),
+                          "references_valid": bool((self.requirement_report or {}).get("references_valid")),
                           "remaining_allowances": (self.job or {}).get("budget", {}).get("remaining", {}),
                           **({"budget": self.budget_failure} if self.budget_failure else {})}),
             "recovery": dict(self.recovery) if self.recovery else None,

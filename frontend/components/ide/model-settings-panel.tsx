@@ -69,6 +69,7 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
   const [roleBusy, setRoleBusy] = useState<AgentRole | "load" | null>(null);
 
   const selectedProvider = providers.find((provider) => provider.provider_id === providerId) ?? null;
+  const selectedModel = models.find(model => model.model_id === modelId);
   const externallyAuthenticated = selectedProvider?.auth_type === "oauth_external";
   const providerGroups = useMemo(() => {
     const groups = [
@@ -295,7 +296,7 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
       const result = await promptForgeApi.testModelProvider(selectedProvider.provider_id);
       const health = result.health;
       if (health.ok) {
-        setMessage(`${selectedProvider.display_name} is ready${health.latency_ms ? ` · ${health.latency_ms} ms` : ""}.`);
+        setMessage(`${selectedProvider.display_name} connection check passed${health.latency_ms ? ` · ${health.latency_ms} ms` : ""}. Task completion requires separate qualification.`);
       } else {
         setError(health.message || "Provider readiness check found a blocking issue.");
       }
@@ -502,7 +503,14 @@ export function ModelSettingsPanel({ providers, routes, onRefresh, onLog }: Mode
                     <label>
                       <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-[.1em] text-[var(--fx-text-muted)]">{selectedProvider.display_name} model ID</span>
                       <input className="fx-control h-9 w-full px-3 text-xs text-[var(--fx-text)] outline-none" list={`models-${providerId}`} value={modelId} onChange={(event) => setModelId(event.target.value)} placeholder={selectedProvider.default_model} />
-                      <datalist id={`models-${providerId}`}>{models.map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}</datalist>
+                      <datalist id={`models-${providerId}`}>{models.filter(model => model.availability !== "retired").map((model) => <option key={model.model_id} value={model.model_id}>{model.display_name}</option>)}</datalist>
+                      {models.some(model => model.model_id === modelId && model.availability === "retired") ? <p role="alert">This model has been retired. Choose another model to continue your saved work.</p> : null}
+                      <p className="mt-2 text-xs text-[var(--fx-text-muted)]" aria-label="Model task qualification">
+                        {selectedModel?.qualification?.message ?? "Task qualification has not been checked for this model and runtime. Load the model list to view published test scopes."}
+                      </p>
+                      {selectedModel?.qualification?.scopes?.map(scope => <p className="mt-1 text-xs text-[var(--fx-text-muted)]" key={`${scope.target}:${scope.framework}:${scope.execution_profile}`}>
+                        Tested: {scope.target} / {scope.framework} · {scope.execution_profile} profile.
+                      </p>)}
                     </label>
                   </div>
 

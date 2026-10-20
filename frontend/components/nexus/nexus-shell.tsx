@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   CircuitBoard,
   Code2,
@@ -47,7 +47,8 @@ import { useForgeXSettings } from "@/hooks/use-forgex-settings";
 import { WorkspacePreferences } from "@/hooks/workspace-preferences";
 import { usePromptForgeWorkspace } from "@/hooks/use-promptforge-workspace";
 import { useModelRuntimeState } from "@/hooks/use-model-runtime-state";
-import { promptForgeApi } from "@/lib/api";
+import { ForgeXApiError, promptForgeApi } from "@/lib/api";
+import { localSession } from "@/lib/local-session";
 import type {
   DetectedBoard,
   ProjectResponse,
@@ -100,6 +101,8 @@ const WORKSPACE_TABS: Array<{ id: Detail; label: string; icon: typeof Code2; sho
   { id: "terminal", label: "Terminal", icon: SquareTerminal, shortcut: "Ctrl+`" },
 ];
 export function NexusShell() {
+  const localSessionBlocked = useSyncExternalStore(localSession.subscribe, localSession.getSnapshot, localSession.getServerSnapshot);
+  const [reconnectingSession, setReconnectingSession] = useState(false);
   const dialogs = useForgeXDialogs();
   const settingsState = useForgeXSettings();
   const workspace = usePromptForgeWorkspace(settingsState.settings, settingsState.loading);
@@ -356,6 +359,10 @@ export function NexusShell() {
         }
       }
     } catch (e) {
+      if (e instanceof ForgeXApiError && e.code === "AGENT_SESSION_ACTIVE") {
+        await agent.resumeSession(id);
+        setView("agent");
+      }
       await report(e);
     }
   };
@@ -668,6 +675,12 @@ export function NexusShell() {
           <button className="fx-runtime-status" aria-label="Open runtime status" title={workspace.health ? `Backend: ${workspace.health.status}` : "Backend disconnected"} onClick={() => { setSettingsCategory("about"); navigate("settings"); }}><span data-connected={Boolean(workspace.health)} /> <span className="hidden xl:inline">{workspace.health ? workspace.health.status === "degraded" ? "Limited" : "Connected" : "Offline"}</span></button>
         </header>
         <div className="fx-product-content">
+          {localSessionBlocked ? <div role="alert" className="fx-runtime-recovery-banner">The local ForgeX session needs authentication. Saved work is preserved. Reopen ForgeX if the session has changed. <button disabled={reconnectingSession} onClick={async () => {
+            setReconnectingSession(true);
+            try { await promptForgeApi.reconnect(); window.location.reload(); }
+            catch (error) { await report(error); }
+            finally { setReconnectingSession(false); }
+          }}>{reconnectingSession ? "Reconnecting…" : "Reconnect"}</button></div> : null}
           {workspace.backendRecovery && !["ready", "stopped"].includes(workspace.backendRecovery.state) ? <div role="status" className="fx-runtime-recovery-banner">{workspace.backendRecovery.restartScheduled || workspace.backendRecovery.state === "starting" ? "Backend reconnecting. Saved work is preserved; execution waits for recovery checks." : workspace.backendRecovery.lastError ?? "Backend unavailable. Saved work is preserved."}</div> : null}
           {workspace.missingProject ? <div role="alert" className="m-3 rounded border border-amber-500/40 p-3">
             <p>The folder for {workspace.activeProject?.project_name} is missing. Select its location or open another folder to continue.</p>

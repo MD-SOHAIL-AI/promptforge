@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { mergeActivityEvents } from "@/lib/activity-stream";
 import { promptForgeApi } from "@/lib/api";
-import { recoveryRequestKey } from "@/lib/agent-recovery";
+import { localSession } from "@/lib/local-session";
+import { messageValidationError } from "@/lib/message-validation";
+import { canApplyAgentChanges, recoveryRequestKey } from "@/lib/agent-recovery";
 import {
   RUN_POLL_INTERVAL_MS,
   SSE_OPEN_FALLBACK_MS,
@@ -39,7 +41,7 @@ import type {
 const stable = isStableRunStatus;
 
 export type ForgeAgentConnectionState =
-  "idle" | "connecting" | "live" | "polling" | "stale";
+  "idle" | "connecting" | "live" | "polling" | "stale" | "authentication_required";
 
 function activeSessionKey(projectId: string) {
   return `forgex-agent-active-session:${projectId}`;
@@ -59,7 +61,9 @@ export function useForgeAgentSession(projectId: string | null) {
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [applyingChanges, setApplyingChanges] = useState(false);
+  const applyInFlight = useRef(false);
   const [restoring, setRestoring] = useState(false);
+  const [restoredProjectId, setRestoredProjectId] = useState<string | null>(null);
   const [connectionState, setConnectionState] =
     useState<ForgeAgentConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +93,18 @@ export function useForgeAgentSession(projectId: string | null) {
   const followRecoveredRun = useRef<((runId: string) => void) | null>(null);
   const projectRef = useRef(projectId);
   projectRef.current = projectId;
+  useEffect(() => localSession.subscribe(() => {
+    if (!localSession.getSnapshot()) return;
+    source.current?.close();
+    source.current = null;
+    activitySource.current?.close();
+    activitySource.current = null;
+    if (poll.current !== null) window.clearInterval(poll.current);
+    poll.current = null;
+    if (streamOpenFallback.current !== null) window.clearTimeout(streamOpenFallback.current);
+    streamOpenFallback.current = null;
+    setConnectionState("authentication_required");
+  }), []);
 
   const routeableProviders = useMemo(
     () => providers.filter((provider) => provider.routeable),
@@ -191,7 +207,7 @@ export function useForgeAgentSession(projectId: string | null) {
 
   const connectActivity = useCallback(
     (sessionId: string) => {
-      if (!sessionId) return;
+      if (!sessionId || localSession.getSnapshot()) return;
       const currentUrl = activitySource.current
         ? (activitySource.current as EventSource & { url?: string }).url
         : "";
@@ -425,18 +441,22 @@ export function useForgeAgentSession(projectId: string | null) {
 
   const startPolling = useCallback(
     (runId: string) => {
+      if (localSession.getSnapshot()) return;
       if (poll.current !== null) return;
       setConnectionState((current) =>
         current === "live" ? current : "polling",
       );
+      let pending = false;
       poll.current = window.setInterval(() => {
+        if (pending || localSession.getSnapshot()) return;
+        pending = true;
         void refreshRun(runId).catch((cause) => {
-          if (runRef.current?.run_id !== runId) return;
+          if (runRef.current?.run_id !== runId || localSession.getSnapshot()) return;
           setConnectionState("stale");
           setError(
             toErrorMessage(cause, "Agent status could not be refreshed."),
           );
-        });
+        }).finally(() => { pending = false; });
       }, RUN_POLL_INTERVAL_MS);
     },
     [refreshRun],
@@ -447,10 +467,10 @@ export function useForgeAgentSession(projectId: string | null) {
     if (!runId || stable(run.status)) return;
     let pending = false;
     const timer = window.setInterval(() => {
-      if (pending || poll.current !== null || Date.now() - lastObservedRef.current < OBSERVATION_FRESHNESS_MS) return;
+      if (pending || localSession.getSnapshot() || poll.current !== null || Date.now() - lastObservedRef.current < OBSERVATION_FRESHNESS_MS) return;
       pending = true;
       void refreshRun(runId).catch(cause => {
-        if (runRef.current?.run_id !== runId) return;
+        if (runRef.current?.run_id !== runId || localSession.getSnapshot()) return;
         setConnectionState("stale");
         setError(toErrorMessage(cause, "Agent status could not be refreshed."));
       }).finally(() => { pending = false; });
@@ -460,6 +480,7 @@ export function useForgeAgentSession(projectId: string | null) {
 
   const connect = useCallback(
     (runId: string) => {
+      if (localSession.getSnapshot()) return;
       if (runRef.current?.run_id === runId && stable(runRef.current.status)) {
         stopStream();
         return;
@@ -569,6 +590,7 @@ export function useForgeAgentSession(projectId: string | null) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let delay = JOB_POLL_INTERVAL_MS;
     const tick = async () => {
+      if (localSession.getSnapshot()) return;
       const requestedRunId = runRef.current?.run_id;
       try {
         const result = await promptForgeApi.agentJob(jobId);
@@ -587,7 +609,7 @@ export function useForgeAgentSession(projectId: string | null) {
       } catch {
         delay = Math.min(30_000, delay * 2);
       } finally {
-        if (!disposed) timer = setTimeout(tick, document.hidden ? 30_000 : delay);
+        if (!disposed && !localSession.getSnapshot()) timer = setTimeout(tick, document.hidden ? 30_000 : delay);
       }
     };
     timer = setTimeout(tick, delay);
@@ -718,6 +740,11 @@ export function useForgeAgentSession(projectId: string | null) {
       if (!projectId || submitting) return null;
       const prompt = content.trim();
       if (!prompt) return null;
+      const validationError = messageValidationError(prompt);
+      if (validationError) {
+        setError(validationError);
+        return null;
+      }
       setSubmitting(true);
       setError(null);
       try {
@@ -933,7 +960,9 @@ export function useForgeAgentSession(projectId: string | null) {
 
   const applyChanges = useCallback(async () => {
     const current = runRef.current;
-    if (!current?.change_set_id || applyingChanges) return null;
+    if (current?.classification === "CHANGESET_APPLIED") return current;
+    if (!current || !canApplyAgentChanges(current) || applyInFlight.current) return null;
+    applyInFlight.current = true;
     setApplyingChanges(true);
     setError(null);
     try {
@@ -953,9 +982,10 @@ export function useForgeAgentSession(projectId: string | null) {
       );
       return null;
     } finally {
+      applyInFlight.current = false;
       setApplyingChanges(false);
     }
-  }, [applyingChanges, refreshGraph, refreshSession]);
+  }, [refreshGraph, refreshSession]);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
@@ -981,12 +1011,14 @@ export function useForgeAgentSession(projectId: string | null) {
     setGraph(null);
     if (!projectId) {
       setSessions([]);
+      setRestoring(false);
+      setRestoredProjectId(null);
       return;
     }
     let disposed = false;
     setRestoring(true);
     void refreshSessions()
-      .then((loaded) => {
+      .then(async (loaded) => {
         if (disposed) return;
         const saved = window.localStorage.getItem(activeSessionKey(projectId));
         const selected =
@@ -994,11 +1026,17 @@ export function useForgeAgentSession(projectId: string | null) {
           loaded[0] ??
           null;
         if (selected) {
-          void resumeSession(selected.session_id);
+          await resumeSession(selected.session_id);
         }
       })
+      .catch((cause) => {
+        if (!disposed) setError(toErrorMessage(cause, "Saved task could not be restored."));
+      })
       .finally(() => {
-        if (!disposed) setRestoring(false);
+        if (!disposed) {
+          setRestoredProjectId(projectId);
+          setRestoring(false);
+        }
       });
     return () => {
       disposed = true;
@@ -1042,7 +1080,7 @@ export function useForgeAgentSession(projectId: string | null) {
     submitting,
     cancelling,
     applyingChanges,
-    restoring,
+    restoring: restoring || Boolean(projectId && restoredProjectId !== projectId),
     connectionState,
     lastObservedAt,
     error,

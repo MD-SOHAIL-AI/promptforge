@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import json
 from typing import Mapping
 
 
@@ -143,6 +144,7 @@ class RuntimeClassification(str, Enum):
     CANCELLED = "AGENT_RUNTIME_CANCELLED"
     MAX_TURNS = "AGENT_RUNTIME_MAX_TURNS"
     NO_PROGRESS = "AGENT_RUNTIME_NO_PROGRESS"
+    REQUIREMENTS_UNVERIFIED = "REQUIREMENTS_UNVERIFIED"
     LIMIT_EXCEEDED = "AGENT_RUNTIME_LIMIT_EXCEEDED"
 
 
@@ -280,6 +282,38 @@ PRODUCT_TOOLPLAN_VERSION = "forgex.toolplan.v2"
 LEGACY_PRODUCT_TOOLPLAN_VERSION = "forgex.toolplan.v1"
 
 
+def _normalize_structured_arguments(tool: ToolName, arguments: Mapping[str, object]) -> dict[str, object]:
+    """Decode one JSON layer only for schema-declared arrays and objects."""
+    properties = _tool_arguments_json_schema(tool).get("properties", {})
+    result = dict(arguments)
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("product_tool_arguments_invalid")
+            value[key] = item
+        return value
+
+    def invalid_constant(value):
+        raise ValueError("product_tool_arguments_invalid")
+
+    for key, value in result.items():
+        expected = properties.get(key, {}).get("type")
+        if expected not in ("array", "object") or not isinstance(value, str):
+            continue
+        try:
+            if len(value) > 524288 or len(value.encode("utf-8")) > 524288:
+                raise ValueError("product_tool_arguments_invalid")
+            decoded = json.loads(value, object_pairs_hook=unique_object, parse_constant=invalid_constant)
+        except (ValueError, RecursionError) as exc:
+            raise ValueError("product_tool_arguments_invalid") from exc
+        if not isinstance(decoded, list if expected == "array" else dict):
+            raise ValueError("product_tool_arguments_invalid")
+        result[key] = decoded
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class ProductToolCall:
     call_id: str
@@ -337,6 +371,10 @@ class ProductToolCall:
             tool = parse_tool_name(tool_type)
         except ValueError as exc:
             raise ValueError("product_tool_not_available") from exc
+        arguments = _normalize_structured_arguments(tool, arguments)
+        if tool is ToolName.VERIFY_REQUIREMENTS:
+            from .requirement_arguments import split_requirement_spans
+            arguments = {**arguments, "checks": split_requirement_spans(arguments.get("checks"))}
         _validate_product_tool_arguments(tool, arguments)
         # Provider aliases are wire compatibility only. Runtime plans always
         # carry the canonical enum spelling so policy allowlists cannot diverge.
@@ -436,7 +474,7 @@ class ProductToolPlan:
 def provider_function_schema(tool: ToolName) -> dict[str, object]:
     from .tool_registry import NEW_TOOLS
     descriptions = {
-        ToolName.READ_FILE: "Read a UTF-8 project file from the contained workspace.",
+        ToolName.READ_FILE: "Read current UTF-8 project text with numbered_content, raw content and a full-file content_sha256. Line numbers are 1-based. Defaults to 200 lines; follow next_offset until null for complete coverage. truncated_lines marks oversized lines that are not complete citation spans.",
         ToolName.WRITE_FILE: "Stage a complete file write inside the ForgeX ChangeSet workspace.",
         ToolName.EDIT_FILE_SIMPLE: "Stage an exact text replacement in one project file.",
         ToolName.LIST_FILES: "List contained project files.",
@@ -452,7 +490,7 @@ def provider_function_schema(tool: ToolName) -> dict[str, object]:
         ToolName.SESSION_EVENT_SEARCH: "Search this Agent session\'s durable public runtime history.",
         ToolName.SESSION_TRACE: "Inspect a compact public execution trace for this Agent session.",
         ToolName.BUILD_FIRMWARE: "Build the staged embedded project with PlatformIO.",
-        ToolName.VERIFY_REQUIREMENTS: "Submit every task requirement with exact executable-source quotes. This checks source references; finalization separately requires independent requirement review. Recheck after edits.",
+        ToolName.VERIFY_REQUIREMENTS: "Submit authoritative task IDs in batches of at most 8. checks is an array, not a string. Follow the host's evidence_kinds; do not change requirement types. Prefer evidence {path,start_line,end_line} from read_file line numbers (inclusive, at most 80 lines); the host extracts exact current text. Exact {path,quote} is also supported. Source needs implementation; documentation needs relevant README or text. Build, unit_tests and simulation require successful current host tool results; evidence may be empty for those kinds. Correct rejected citations before retrying. References still require independent review. Recheck after edits.",
         ToolName.RUN_SIMULATION: "Run the configured simulator as a verification step.",
         ToolName.APPLY_PATCH: "Stage a precise unified patch inside the contained workspace.",
         ToolName.DELETE_FILE: "Stage deletion of one file. Never deletes active workspace files before ChangeSet approval.",
@@ -491,8 +529,13 @@ def _tool_arguments_json_schema(tool: ToolName) -> dict[str, object]:
         ToolName.VERIFY_REQUIREMENTS: {"properties": {"checks": {"type": "array", "minItems": 1, "maxItems": 256,
             "items": {"type": "object", "additionalProperties": False, "properties": {
                 "id": string, "status": {"enum": ["implemented", "unmet"]},
-                "evidence": {"type": "array", "maxItems": 8, "items": {"type": "object", "additionalProperties": False,
-                    "properties": {"path": path, "quote": string}, "required": ["path", "quote"]}}},
+                "evidence": {"type": "array", "maxItems": 8, "items": {
+                    "anyOf": [
+                        {"type": "object", "additionalProperties": False, "properties": {"path": path, "quote": string}, "required": ["path", "quote"]},
+                        {"type": "object", "additionalProperties": False, "properties": {"path": path,
+                            "start_line": {"type": "integer", "minimum": 1, "maximum": 10000000},
+                            "end_line": {"type": "integer", "minimum": 1, "maximum": 10000000}},
+                         "required": ["path", "start_line", "end_line"]}]}}},
                 "required": ["id", "status", "evidence"]}}}, "required": ["checks"]},
         ToolName.LIST_FILES: {"properties": {"path": path}, "required": []},
         ToolName.GLOB_FILES: {
@@ -552,6 +595,12 @@ def _tool_arguments_json_schema(tool: ToolName) -> dict[str, object]:
                             "text": {"type": "string", "minLength": 1, "maxLength": 300},
                             "status": {"enum": ["pending", "in_progress", "completed", "failed", "skipped", "cancelled"]},
                             "verification": {"enum": ["inspection", "edit", "build", "simulation"]},
+                            "key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+                            "paths": {"type": "array", "maxItems": 64, "uniqueItems": True, "items": path},
+                            "requirement_ids": {"type": "array", "maxItems": 64, "uniqueItems": True,
+                                "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+                            "depends_on": {"type": "array", "maxItems": 32, "uniqueItems": True,
+                                "items": {"type": "string", "minLength": 1, "maxLength": 64}},
                         },
                         "required": ["text", "status"],
                     },
@@ -626,20 +675,15 @@ def _validate_product_tool_arguments(
             not isinstance(item, str) or not item for item in argv
         ):
             raise ValueError("product_tool_arguments_invalid")
-    if tool is ToolName.UPDATE_PLAN and not isinstance(arguments.get("steps"), list):
-        raise ValueError("product_tool_arguments_invalid")
+    if tool is ToolName.UPDATE_PLAN:
+        from .generation_controller import validate_plan_steps
+        try:
+            validate_plan_steps(arguments.get("steps"))
+        except ValueError as exc:
+            raise ValueError("product_tool_arguments_invalid") from exc
     if tool is ToolName.VERIFY_REQUIREMENTS:
-        checks = arguments.get("checks")
-        if not isinstance(checks, list) or not 1 <= len(checks) <= 256:
-            raise ValueError("product_tool_arguments_invalid")
-        for check in checks:
-            if not isinstance(check, Mapping) or set(check) != {"id", "status", "evidence"} or not isinstance(check["id"], str) or check["status"] not in {"implemented", "unmet"}:
-                raise ValueError("product_tool_arguments_invalid")
-            if not isinstance(check["evidence"], list) or len(check["evidence"]) > 8:
-                raise ValueError("product_tool_arguments_invalid")
-            for evidence in check["evidence"]:
-                if not isinstance(evidence, Mapping) or set(evidence) != {"path", "quote"} or any(not isinstance(evidence[key], str) or not 1 <= len(evidence[key]) <= 4096 for key in ("path", "quote")):
-                    raise ValueError("product_tool_arguments_invalid")
+        from .requirement_arguments import validate_requirement_checks
+        validate_requirement_checks(arguments.get("checks"))
     if tool is ToolName.PRESENT_FILES:
         files = arguments.get("files")
         if not isinstance(files, list) or not 1 <= len(files) <= 32:

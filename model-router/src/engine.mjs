@@ -6,7 +6,7 @@ import { RequestExecutor } from "../../third_party/opencode/packages/llm/src/rou
 import { ToolCallPart, ToolResultPart } from "../../third_party/opencode/packages/llm/src/schema/messages.ts";
 import * as Providers from "../../third_party/opencode/packages/llm/src/providers/index.ts";
 import { isContextOverflow } from "../../third_party/opencode/packages/llm/src/provider-error.ts";
-import { jsonSchema, Output, streamText, tool } from "ai";
+import { generateText, jsonSchema, Output, streamText, tool } from "ai";
 import quarantinedSDKs from "../../backend/model_router/data/provider-quarantine.json";
 
 const sdkFactories = {
@@ -50,13 +50,15 @@ export class TransportTimeout extends Error {
   constructor(stage, ms) { super(`Provider ${stage} timed out after ${ms}ms`); this.stage = stage; this.name = "ProviderTimeoutError"; }
 }
 
-// Adapted from OpenCode provider.ts timeoutFetch/wrapSSE. All body reads have
-// idle deadlines, including Bedrock's binary event stream and error bodies.
+// All raw reads are bounded, including binary streams and error bodies.
+// Python separately watches meaningful model progress. A raw read must allow
+// the full first-event window: headers/keepalives do not mean generation began.
 export function timeoutFetch(policy = {}, outerSignal, observe = () => {}) {
   return async (input, init = {}) => {
     const abort = new AbortController();
     const headersMs = policy.header_ms ?? 300_000;
     const idleMs = policy.idle_ms ?? 300_000;
+    const readMs = Math.max(policy.first_event_ms ?? headersMs, idleMs);
     let timer = setTimeout(() => { observe({ type: "transport_error", stage: "response_headers" }); abort.abort(new TransportTimeout("response_headers", headersMs)); }, headersMs);
     const signal = AbortSignal.any([abort.signal, ...(outerSignal ? [outerSignal] : []), ...(init.signal ? [init.signal] : [])]);
     let res;
@@ -69,7 +71,7 @@ export function timeoutFetch(policy = {}, outerSignal, observe = () => {}) {
     let bytes = 0;
     const body = new ReadableStream({
       async pull(controller) {
-        timer = setTimeout(() => { observe({ type: "transport_error", stage: "stream_idle" }); abort.abort(new TransportTimeout("stream_idle", idleMs)); }, idleMs);
+        timer = setTimeout(() => { observe({ type: "transport_error", stage: "stream_idle" }); abort.abort(new TransportTimeout("stream_idle", readMs)); }, readMs);
         try {
           const part = await reader.read();
           if (part.done) { controller.close(); return; }
@@ -259,7 +261,7 @@ export async function execute(input, emit, signal) {
   }
   const transport = providerFetch(input, timeoutFetch(input.policy, signal, emit));
   const model = nativeModel(input);
-  if (!model) return executeSDK(input, transport, emit, signal);
+  if (!model || input.stream === false && input.npm === "@ai-sdk/openai-compatible") return executeSDK(input, transport, emit, signal);
   const tools = (input.tools ?? []).map(item => ({ name: item.function?.name ?? item.name, description: item.function?.description ?? item.description ?? "", inputSchema: item.function?.parameters ?? item.inputSchema ?? { type: "object", properties: {} } }));
   const request = LLM.request({
     model, ...nativeMessages(input), tools,
@@ -274,6 +276,7 @@ export async function execute(input, emit, signal) {
   const layer = LLMClient.layer.pipe(Layer.provide(RequestExecutor.singleAttemptLayer.pipe(Layer.provide(FetchHttpClient.layer))));
   const callIds = new Map();
   const program = LLM.stream(request).pipe(Stream.runForEach(event => Effect.promise(async () => {
+    if (event.type === "tool-input-start" || event.type === "tool-input-delta" && event.text) await emit({ type: "model_progress" });
     if (event.type === "text-delta") await emit({ type: "text_delta", text: event.text });
     if (event.type === "reasoning-delta") await emit({ type: "reasoning_delta", text: event.text });
     if (event.type === "tool-call") {
@@ -296,7 +299,9 @@ export async function execute(input, emit, signal) {
 }
 
 async function executeSDK(input, transport, emit, signal) {
-  const factory = await sdkFactories[input.npm]();
+  const factory = input.npm === "@ai-sdk/openai-compatible"
+    ? (await import("@ai-sdk/openai-compatible")).createOpenAICompatible
+    : await sdkFactories[input.npm]();
   if (typeof factory !== "function") throw new Error(`Provider factory missing for ${input.npm}`);
   const opts = { ...input.options, apiKey: input.api_key, ...(input.base_url ? { baseURL: input.base_url } : {}), headers: input.headers, fetch: transport };
   if (input.npm === "@ai-sdk/amazon-bedrock/mantle") Object.assign(opts, input.options?.credentials ?? {});
@@ -307,7 +312,7 @@ async function executeSDK(input, transport, emit, signal) {
     : provider.languageModel ? provider.languageModel(input.model_id) : provider(input.model_id);
   // OpenCode's AI SDK 6 remains the default. A catalog package targeting the
   // v4 model interface needs the matching runtime (currently Salad Cloud).
-  const sdk = model.specificationVersion === "v4" ? await import("ai-sdk-v7") : { jsonSchema, Output, streamText, tool };
+  const sdk = model.specificationVersion === "v4" ? await import("ai-sdk-v7") : { generateText, jsonSchema, Output, streamText, tool };
   const toolNames = new Map(Object.entries(input.tool_names ?? {}));
   const messages = (input.messages ?? [{ role: "user", content: input.prompt }]).map(msg => {
     if (msg.role === "tool") return { role: "tool", content: [{ type: "tool-result", toolCallId: msg.tool_call_id, toolName: msg.name ?? toolNames.get(msg.tool_call_id) ?? "tool", output: { type: "text", value: String(msg.content) } }] };
@@ -321,17 +326,40 @@ async function executeSDK(input, transport, emit, signal) {
     })] };
   });
   const tools = Object.fromEntries((input.tools ?? []).map(item => [item.function.name, sdk.tool({ description: item.function.description, inputSchema: sdk.jsonSchema(item.function.parameters) })]));
-  const result = sdk.streamText({ model, messages, system: input.system_prompt, tools, toolChoice: input.tool_choice,
+  const requestOptions = { model, messages, system: input.system_prompt, tools, toolChoice: input.tool_choice,
     temperature: input.temperature_supported === false ? undefined : input.temperature, topP: input.top_p,
     maxOutputTokens: Math.min(input.max_tokens ?? 4096, input.output_limit ?? Infinity),
     output: input.response_format?.schema ? sdk.Output.object({ schema: sdk.jsonSchema(input.response_format.schema) }) : undefined,
-    providerOptions: input.provider_options, maxRetries: 0, abortSignal: signal });
+    providerOptions: input.provider_options, maxRetries: 0, abortSignal: signal };
+  if (input.stream === false) {
+    const result = await sdk.generateText(requestOptions);
+    if (result.text) await emit({ type: "text_delta", text: result.text });
+    for (const [index, call] of (result.toolCalls ?? []).entries()) {
+      if (call.invalid || !call.input || typeof call.input !== "object" || Array.isArray(call.input)) {
+        const error = new Error("Provider returned an invalid tool call");
+        error.code = "TOOL_ARGUMENTS_INVALID";
+        throw error;
+      }
+      await emit({ type: "tool_call_delta", tool_call_index: index, tool_call_id: call.toolCallId, tool_name: call.toolName, arguments: call.input });
+    }
+    await emit({ type: "done", finish_reason: result.finishReason, usage: usage(result.totalUsage ?? result.usage) });
+    return;
+  }
+  const result = sdk.streamText(requestOptions);
   let index = 0;
   for await (const event of result.fullStream) {
     if (event.type === "error") throw event.error;
+    if (event.type === "tool-input-start" || event.type === "tool-input-delta" && event.delta) await emit({ type: "model_progress" });
     if (event.type === "text-delta") await emit({ type: "text_delta", text: event.text });
     if (event.type === "reasoning-delta") await emit({ type: "reasoning_delta", text: event.text });
-    if (event.type === "tool-call") await emit({ type: "tool_call_delta", tool_call_index: index++, tool_call_id: event.toolCallId, tool_name: event.toolName, arguments: event.input });
+    if (event.type === "tool-call") {
+      if (event.invalid || !event.input || typeof event.input !== "object" || Array.isArray(event.input)) {
+        const error = new Error("Provider returned an invalid tool call");
+        error.code = "TOOL_ARGUMENTS_INVALID";
+        throw error;
+      }
+      await emit({ type: "tool_call_delta", tool_call_index: index++, tool_call_id: event.toolCallId, tool_name: event.toolName, arguments: event.input });
+    }
     if (event.type === "finish") await emit({ type: "done", finish_reason: event.finishReason, usage: usage(event.totalUsage) });
   }
 }
@@ -348,8 +376,22 @@ export function normalizeError(error, providerId) {
   const body = reason.http?.body ?? error.responseBody ?? "";
   const overflow = reason.classification === "context-overflow" || isContextOverflow(text + " " + body);
   const category = overflow ? "context_overflow" : ({ Authentication: "authentication", RateLimit: "rate_limit", QuotaExceeded: "quota_exceeded", ContentPolicy: "content_policy", InvalidRequest: "invalid_request", InvalidProviderOutput: "invalid_provider_output", Transport: "transport", ProviderInternal: "provider" }[reason._tag] ?? (status === 401 || status === 403 ? "authentication" : status === 429 ? "rate_limit" : "provider"));
-  const invalidTool = reason._tag === "InvalidProviderOutput" && /^Invalid JSON input for .+ tool call /.test(String(text));
+  const invalidTool = error.code === "TOOL_ARGUMENTS_INVALID" || reason._tag === "InvalidProviderOutput" && /^Invalid JSON input for .+ tool call /.test(String(text));
+  const invalidStream = !invalidTool && (reason._tag === "InvalidProviderOutput"
+    || [error.name, reason.name].some(name => ["AI_TypeValidationError", "AI_JSONParseError", "TypeValidationError"].includes(name))
+    || /^Invalid [\w/-]+ stream event/.test(String(text)));
+  if (status === 410) {
+    return { category: "model_unavailable", message: "The provider retired the selected model. Choose another model to continue the saved draft.",
+      status_code: status, retryable: false, code: "MODEL_RETIRED",
+      response_headers: http?.headers ?? error.responseHeaders, request_id: reason.http?.requestId };
+  }
   // Only bounded diagnostics leave the engine; do not echo request bodies or
   // credentials. OpenCode's executor already redacts native HTTP failures.
-  return { category, message: String(text).slice(0, 1024), status_code: status, retryable: !overflow && !invalidTool && (reason.retryable === true || error.isRetryable === true || status === 429 || status >= 500 || providerId === "openai" && status === 404), retry_after_ms: error.retryAfterMs, response_headers: http?.headers ?? error.responseHeaders, request_id: reason.http?.requestId, timeout_stage: error.stage, code: overflow ? "CONTEXT_OVERFLOW" : invalidTool ? "TOOL_ARGUMENTS_INVALID" : "PROVIDER_REQUEST_FAILED" };
+  return { category: invalidTool || invalidStream ? "invalid_provider_output" : category,
+    message: invalidStream ? "The provider returned an invalid stream event." : String(text).slice(0, 1024),
+    status_code: status, retryable: !overflow && !invalidTool && (invalidStream || reason.retryable === true || error.isRetryable === true || status === 429 || status >= 500 || providerId === "openai" && status === 404),
+    retry_after_ms: error.retryAfterMs, response_headers: http?.headers ?? error.responseHeaders,
+    request_id: reason.http?.requestId, timeout_stage: error.stage,
+    failure_shape: invalidStream ? "invalid_stream_event" : undefined,
+    code: overflow ? "CONTEXT_OVERFLOW" : invalidTool ? "TOOL_ARGUMENTS_INVALID" : invalidStream ? "PROVIDER_STREAM_INVALID" : "PROVIDER_REQUEST_FAILED" };
 }

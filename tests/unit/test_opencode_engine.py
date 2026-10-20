@@ -50,9 +50,24 @@ def stream(handler, content="OK", *, finish=True):
     handler.wfile.flush()
 
 
+def buffered(handler, content="OK", *, finish_reason="stop", reasoning=None):
+    message = {"role": "assistant", "content": content}
+    if reasoning is not None:
+        message["reasoning_content"] = reasoning
+    payload = {"id": "test-response", "object": "chat.completion", "created": 1,
+               "model": "deepseek-chat", "choices": [{"index": 0, "message": message,
+               "finish_reason": finish_reason}],
+               "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}}
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json")
+    handler.end_headers()
+    handler.wfile.write(json.dumps(payload).encode())
+    handler.wfile.flush()
+
+
 def test_real_child_normalization_and_budget_accounting(tmp_path):
     bodies = []
-    def respond(handler, body): bodies.append(body); stream(handler)
+    def respond(handler, body): bodies.append(body); buffered(handler)
     reg = registry(tmp_path)
     with upstream(respond) as url:
         reg.configure_provider("deepseek", {"api_key": "test-secret", "base_url": url})
@@ -66,6 +81,7 @@ def test_real_child_normalization_and_budget_accounting(tmp_path):
     assert context.diagnostics["completion_received"]
     assert context.diagnostics["stream_event_count"] == 2
     assert context.budget["requests"] == 1
+    assert bodies[0].get("stream", False) is False
     assert "forgex" not in json.dumps(bodies)
     assert "test-secret" not in json.dumps(context.diagnostics)
 
@@ -80,7 +96,7 @@ def test_actual_retry_reuses_provider_and_shares_physical_budget(tmp_path, monke
         bodies.append(body)
         if len(bodies) < 3:
             handler.send_response(503); handler.send_header("Retry-After", "0"); handler.end_headers(); handler.wfile.write(b'{"error":{"message":"Overloaded"}}')
-        else: stream(handler)
+        else: buffered(handler)
     reg = registry(tmp_path)
     context = RequestExecutionContext()
     with upstream(respond) as url:
@@ -90,6 +106,7 @@ def test_actual_retry_reuses_provider_and_shares_physical_budget(tmp_path, monke
     assert response.content == "OK"
     assert len(bodies) == context.attempts["used"] == context.budget["requests"] == 3
     assert {body["model"] for body in bodies} == {"deepseek-chat"}
+    assert all(body.get("stream", False) is False for body in bodies)
 
 
 def test_auth_failure_is_not_retried(tmp_path):
@@ -227,8 +244,8 @@ def test_sdk_reset_headers_are_canonical_for_durable_handoff():
 
 def test_health_accepts_completed_reasoning_only_probe(tmp_path):
     def respond(handler, body):
-        handler.send_response(200); handler.send_header("Content-Type", "text/event-stream"); handler.end_headers()
-        handler.wfile.write(b'data: {"choices":[{"index":0,"delta":{"reasoning_content":"thinking"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')
+        assert body.get("stream", False) is False
+        buffered(handler, content=None, finish_reason="length", reasoning="thinking")
     reg = registry(tmp_path)
     with upstream(respond) as url:
         reg.configure_provider("deepseek", {"api_key": "secret", "base_url": url})

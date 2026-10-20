@@ -1,6 +1,10 @@
 import { EventEmitter } from "node:events";
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { liveLogPath } from "../dist/electron/diagnostics.js";
 
 import {
   BACKEND_RUNTIME_CONTRACT,
@@ -37,6 +41,17 @@ function fakeProcess(pid = 12345) {
     return true;
   };
   return child;
+}
+
+function isolatedEvents(t) {
+  const prior = process.env.FORGEX_LIVE_LOG_PATH;
+  process.env.FORGEX_LIVE_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "forgex-supervisor-")), "events.jsonl");
+  const file = liveLogPath();
+  t.after(() => {
+    if (prior === undefined) delete process.env.FORGEX_LIVE_LOG_PATH;
+    else process.env.FORGEX_LIVE_LOG_PATH = prior;
+  });
+  return () => fs.readFileSync(file, "utf8").trim().split("\n").map(line => JSON.parse(line));
 }
 
 test("BackendManager reuses healthy existing ForgeX backend", async () => {
@@ -106,7 +121,8 @@ test("BackendManager handles health timeout without spawning", async () => {
   assert.equal(spawned, false);
 });
 
-test("BackendManager records spawned PID and stops only spawned backend", async () => {
+test("BackendManager records spawned PID and stops only spawned backend", async (t) => {
+  const events = isolatedEvents(t);
   const child = fakeProcess(24680);
   const probes = [
     {
@@ -133,6 +149,10 @@ test("BackendManager records spawned PID and stops only spawned backend", async 
   assert.equal(status.ownsProcess, true);
   assert.equal(status.pid, 24680);
   assert.deepEqual(child.killCalls, ["SIGTERM"]);
+  const exit = events().find(event => event.event === "backend.exited");
+  assert.equal(exit.backend_pid, 24680);
+  assert.equal(exit.expected, true);
+  assert.equal(exit.signal, "SIGTERM");
 });
 
 test("BackendManager cleanup does not kill reused backend", async () => {
@@ -214,6 +234,23 @@ test("BackendManager cleans up an owned backend when readiness times out", async
   assert.equal(manager.getStatus().pid, undefined);
 });
 
+test("BackendManager allows a configured cold startup beyond one minute", async (t) => {
+  const previous = process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS;
+  process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS = "180000";
+  t.after(() => {
+    if (previous === undefined) delete process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS;
+    else process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS = previous;
+  });
+  let clock = -70_000;
+  t.mock.method(Date, "now", () => {clock += 70_000; return clock;});
+  const probes = [{reachable: false, forgeX: false, healthy: false}, healthy];
+  const manager = new BackendManager({cwd: process.cwd(), readinessIntervalMs: 1,
+    healthProbe: async () => probes.shift() ?? healthy,
+    resolvePython: () => resolvedPython, spawnBackend: () => fakeProcess(55555)});
+  t.after(() => manager.stop());
+  assert.equal((await manager.start()).state, "ready");
+});
+
 test("BackendManager reports a synchronous backend spawn failure cleanly", async () => {
   const manager = new BackendManager({
     port: 8000,
@@ -235,7 +272,8 @@ test("BackendManager reports a synchronous backend spawn failure cleanly", async
   assert.equal(manager.getStatus().ownsProcess, false);
 });
 
-test("BackendManager clears ownership when the owned backend exits", async () => {
+test("BackendManager clears ownership when the owned backend exits", async (t) => {
+  const events = isolatedEvents(t);
   const child = fakeProcess(44444);
   const probes = [
     { reachable: false, forgeX: false, healthy: false, error: "ECONNREFUSED" },
@@ -257,6 +295,14 @@ test("BackendManager clears ownership when the owned backend exits", async () =>
   assert.equal(manager.getStatus().state, "crashed");
   assert.equal(manager.getStatus().ownsProcess, false);
   assert.equal(manager.getStatus().pid, undefined);
+  const records = events();
+  const spawned = records.find(event => event.event === "backend.spawned");
+  const exited = records.find(event => event.event === "backend.exited");
+  assert.equal(exited.backend_instance, spawned.backend_instance);
+  assert.equal(exited.backend_pid, 44444);
+  assert.equal(exited.exit_code, 1);
+  assert.equal(exited.expected, false);
+  assert.ok(records.some(event => event.event === "backend.restart.scheduled"));
   await manager.stop();
 });
 

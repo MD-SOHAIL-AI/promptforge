@@ -18,6 +18,54 @@ async function server(handler) {
 }
 const input = (url, extra = {}) => ({ provider_id: "deepseek", model_id: "test-model", protocol: "openai-completions", npm: "@ai-sdk/openai-compatible", api_key: "fake-secret", base_url: url, prompt: "hello", temperature: 0.2, max_tokens: 50, policy: { header_ms: 3000, idle_ms: 3000 }, ...extra });
 
+test("NVIDIA malformed stream keeps a repairable category without upstream content", () => {
+  const result = normalizeError({ reason: { _tag: "InvalidProviderOutput", message: "Invalid nvidia_nim/openai-compatible-chat stream event private source" } }, "nvidia_nim");
+  assert.equal(result.code, "PROVIDER_STREAM_INVALID");
+  assert.equal(result.retryable, true);
+  assert.equal(result.failure_shape, "invalid_stream_event");
+  assert.ok(!result.message.includes("private source"));
+});
+
+test("HTTP 200 with a malformed NVIDIA event yields a safe stream failure and no tool", async () => {
+  const app = await server(async (_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.end('data: {"choices":"private-project-bearing-invalid-shape"}\n\ndata: [DONE]\n\n');
+  });
+  try {
+    const events = [];
+    await assert.rejects(execute(input(app.url, {provider_id:"nvidia_nim"}), event => events.push(event)), error => {
+      const normalized = normalizeError(error,"nvidia_nim");
+      assert.equal(normalized.code,"PROVIDER_STREAM_INVALID");
+      assert.equal(normalized.failure_shape,"invalid_stream_event");
+      assert.ok(!normalized.message.includes("private-project"));
+      return true;
+    });
+    assert.equal(events.filter(event => event.type === "tool_call_delta").length,0);
+  } finally { await app.close(); }
+});
+
+test("compatible recovery sends a real non-streaming request and normalizes tools", async () => {
+  let body;
+  const app = await server(async (req, res) => {
+    const parts = []; for await (const part of req) parts.push(part);
+    body = JSON.parse(Buffer.concat(parts));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ id: "reply", created: 1, model: "test-model", object: "chat.completion",
+      choices: [{ index: 0, message: { role: "assistant", content: null,
+        tool_calls: [{ id: "call-1", type: "function", function: { name: "read_file", arguments: '{"path":"main.cpp"}' } }] }, finish_reason: "tool_calls" }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }));
+  });
+  try {
+    const events = [];
+    await execute(input(app.url, { provider_id: "nvidia_nim", stream: false,
+      tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } } }] }), e => events.push(e));
+    assert.notEqual(body.stream, true);
+    assert.equal(body.model, "test-model");
+    assert.deepEqual(events.find(e => e.type === "tool_call_delta").arguments, { path: "main.cpp" });
+    assert.equal(events.find(e => e.type === "done").usage.output_tokens, 5);
+  } finally { await app.close(); }
+});
+
 test("actual OpenCode chat protocol normalizes text, usage, finish, and tool calls", async () => {
   let body;
   const app = await server(async (req, res) => {
@@ -179,6 +227,38 @@ test("header and idle deadlines abort the actual network read", async () => {
     await assert.rejects(fn(app.url), e => e.stage === "response_headers");
     const response = await fn(app.url + "/idle");
     await assert.rejects(response.text(), e => e.stage === "stream_idle");
+  } finally { await app.close(); }
+});
+
+test("fast headers allow a delayed first body beyond the idle window", async () => {
+  const app = await server((req, res) => {
+    res.writeHead(200); res.flushHeaders();
+    setTimeout(() => res.end("ready"), 180);
+  });
+  try {
+    const response = await timeoutFetch({ header_ms: 1500, first_event_ms: 1000, idle_ms: 80 })(app.url);
+    assert.equal(await response.text(), "ready");
+  } finally { await app.close(); }
+});
+
+test("SDK invalid tool input produces a safe repairable error without a partial call", async () => {
+  const app = await server((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.end('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"id":"bad-call","type":"function","function":{"name":"write","arguments":"{broken"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n');
+  });
+  const events = [];
+  try {
+    await assert.rejects(execute(input(app.url, { provider_id: "mistral", npm: "@ai-sdk/mistral",
+      tools: [{ type: "function", function: { name: "write", parameters: { type: "object", properties: {} } } }],
+    }), event => events.push(event)), error => {
+      const normalized = normalizeError(error, "mistral");
+      assert.equal(normalized.code, "TOOL_ARGUMENTS_INVALID");
+      assert.equal(normalized.category, "invalid_provider_output");
+      assert.equal(normalized.retryable, false);
+      assert.ok(!normalized.message.includes("{broken"));
+      return true;
+    });
+    assert.ok(!events.some(event => event.type === "tool_call_delta"));
   } finally { await app.close(); }
 });
 

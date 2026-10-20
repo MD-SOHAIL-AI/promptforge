@@ -21,10 +21,11 @@ def stable_value(value):
 
 
 def diagnostic_fingerprint(build: Mapping) -> str:
-    diagnostics = build.get("compiler_diagnostics") or build.get("structured_diagnostics") or build.get("diagnostics") or []
+    diagnostics = [*(build.get("compiler_diagnostics") or ()), *(build.get("linker_diagnostics") or ())]
+    diagnostics = diagnostics or build.get("structured_diagnostics") or build.get("diagnostics") or []
     if isinstance(diagnostics, (list, tuple)):
         errors = [
-            {key: item.get(key) for key in ("path", "severity", "message")}
+            {key: item.get(key) for key in ("path", "severity", "message", "symbol")}
             for item in diagnostics if isinstance(item, Mapping)
             and str(item.get("severity", "error")).lower() not in {"warning", "note"}
         ]

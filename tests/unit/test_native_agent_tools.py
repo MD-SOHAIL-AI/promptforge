@@ -33,6 +33,9 @@ class Registry:
     def __init__(self, context_window=None):
         self.context_window = context_window
 
+    def model_is_free(self, _provider, _model):
+        return False
+
     def model_capabilities(self, _provider, _model):
         return ModelCapabilities(
             streaming=False,
@@ -181,6 +184,120 @@ def test_native_results_survive_a_shrinking_compacted_observation_view():
                  if message["role"] == "tool"]
     assert [item["call_id"] for item in delivered] == ["first", "second"]
     assert all(item["status"] == "completed" for item in delivered)
+
+
+@pytest.mark.parametrize("keep_settled_observation", [True, False])
+def test_native_continuation_after_final_answer_keeps_completed_tool_exchange(keep_settled_observation):
+    router = Router([
+        ModelResponse("", "nvidia_nim", "native-model", tool_calls=(
+            {"id": "read-source", "name": "read", "arguments": {"path": "src/main.cpp"}},)),
+        ModelResponse("Firmware built successfully.", "nvidia_nim", "native-model"),
+        ModelResponse("", "nvidia_nim", "native-model", tool_calls=(
+            {"id": "read-requirements", "name": "read", "arguments": {"path": "README.md"}},)),
+        ModelResponse("Verification complete.", "nvidia_nim", "native-model"),
+    ])
+    planner = RouterProductPlanner(router, provider_id="nvidia_nim", model_id="native-model")
+    source = {"call_id": "read-source", "tool": "read_file", "status": "completed",
+              "output": {"content": "void setup() {}"}}
+    verification = {"call_id": "requirements_2", "tool": "requirement_validation",
+                    "status": "completed", "output": {"message": "Verify the source evidence before finishing."}}
+
+    async def turn(number, observations):
+        return await planner.request_turn_async(
+            task="Build and verify firmware", tool_results=observations,
+            allowed_tools=("read_file",), run_id="run", turn=number, stream=False,
+        )
+
+    assert asyncio.run(turn(1, ())).tool_calls[0].call_id == "read-source"
+    assert asyncio.run(turn(2, (source,))).final
+    observations = (source, verification) if keep_settled_observation else (
+        {"call_id": "checkpoint-1", "tool": "context_compaction", "status": "completed"},
+        verification,
+    )
+    continued = asyncio.run(turn(3, observations))
+    assert continued.tool_calls[0].call_id == "read-requirements"
+    messages = router.requests[2].metadata["forgex_messages"]
+    delivered = [message for message in messages if message["role"] == "tool"]
+    assert len(delivered) == 1 and delivered[0]["tool_call_id"] == "read-source"
+    assert json.loads(delivered[0]["content"]) == source
+    assert "Verify the source evidence before finishing." in messages[-1]["content"]
+    assert asyncio.run(turn(4, ({"call_id": "read-requirements", "tool": "read_file",
+                               "status": "completed", "output": {"content": "Requirements"}},))).final
+    assert len(router.requests) == 4
+
+
+@pytest.mark.parametrize("settled_call_ids", [(), ("read-source",)])
+def test_native_missing_tool_result_still_stops_before_provider_request(settled_call_ids):
+    from backend.agent_runtime.api_planner_provider import ApiPlannerError
+
+    router = Router(ModelResponse("", "nvidia_nim", "native-model", tool_calls=(
+        {"id": "read-source", "name": "read", "arguments": {"path": "src/main.cpp"}},
+        {"id": "read-requirements", "name": "read", "arguments": {"path": "README.md"}},
+    )))
+    planner = RouterProductPlanner(router, provider_id="nvidia_nim", model_id="native-model")
+    asyncio.run(planner.request_turn_async(
+        task="Inspect", tool_results=(), allowed_tools=("read_file",),
+        run_id="run", turn=1, stream=False,
+    ))
+    committed = json.dumps(planner._native_messages)
+    with pytest.raises(ApiPlannerError) as caught:
+        asyncio.run(planner.request_turn_async(
+            task="Inspect", tool_results=tuple(
+                {"call_id": call_id, "tool": "read_file", "status": "completed"}
+                for call_id in settled_call_ids
+            ), allowed_tools=("read_file",), run_id="run", turn=2, stream=False,
+        ))
+    assert caught.value.safe_code == "AGENT_TOOL_RESULT_MISSING"
+    assert caught.value.details["call_id"] == ("read-requirements" if settled_call_ids else "read-source")
+    assert len(router.requests) == 1
+    assert json.dumps(planner._native_messages) == committed
+
+
+def test_autonomous_native_loop_finishes_after_host_build_and_verification(tmp_path, monkeypatch):
+    from backend.agent_runtime.autonomous_loop import AutonomousForgeAgentLoop
+    from backend.agent_runtime.capability_profiles import BUILD_REPAIR_PROFILE
+    from tests.unit.test_agent_verification_freshness import Builder
+
+    (tmp_path / "main.cpp").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+    router = Router([
+        ModelResponse("", "nvidia_nim", "native-model", tool_calls=(
+            {"id": "read-source", "name": "read", "arguments": {"path": "main.cpp"}},)),
+        ModelResponse("Source is ready to build.", "nvidia_nim", "native-model"),
+        ModelResponse("Build passed; verify the firmware.", "nvidia_nim", "native-model"),
+        ModelResponse("Build and verification passed.", "nvidia_nim", "native-model"),
+    ])
+    planner = RouterProductPlanner(router, provider_id="nvidia_nim", model_id="native-model")
+    builder = Builder()
+    events = []
+
+    async def progress(event, payload):
+        events.append((event, payload))
+
+    loop = AutonomousForgeAgentLoop(
+        workspace_root=tmp_path, planner=planner, platformio=builder, progress=progress,
+        policy=BUILD_REPAIR_PROFILE.policy(), trusted_project=True,
+    )
+
+    async def simulate(_timeout, *, call_id):
+        assert loop.build_passed and loop._refresh_verification()
+        loop.simulation_attempted = loop.simulation_passed = True
+        loop.last_simulation = {"success": True, "message": "Host verification passed."}
+        return {"call_id": call_id, "tool": "run_simulation", "status": "completed",
+                "output": loop.last_simulation}
+
+    monkeypatch.setattr(loop, "_simulate", simulate)
+    result = asyncio.run(loop.run(
+        task="Inspect, build and verify firmware", require_build=True, require_simulation=True,
+    ))
+    assert result.success, (result.classification, result.message)
+    assert result.classification == "AGENT_V3_COMPLETED"
+    assert result.build_verified and loop.simulation_passed and builder.calls == 1
+    assert len(router.requests) == 4
+    final_messages = router.requests[-1].metadata["forgex_messages"]
+    assert sum(message.get("tool_call_id") == "read-source" for message in final_messages) == 1
+    assert "Host verification passed." in json.dumps(final_messages)
+    assert not any(event == "MODEL_ATTEMPT_SETTLED" and payload.get("status") == "failed"
+                   for event, payload in events)
 
 
 def test_native_latest_task_revision_reaches_provider_messages():

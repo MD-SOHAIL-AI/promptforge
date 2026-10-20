@@ -53,6 +53,25 @@ def test_provider_setup_writes_use_fresh_state_inside_snapshot(tmp_path):
     assert credentials.get("nvidia_nim") == "private-key"
 
 
+def test_provider_catalog_snapshot_uses_one_database_connection(tmp_path, monkeypatch):
+    from backend.agent_runtime.product_provider_registry import ProductProviderRegistry
+    from backend.model_router.registry import ProviderRegistry
+    store = SQLiteProviderSettingsStorage(tmp_path / "models.sqlite3",
+                                          credential_store=MemoryCredentialStore())
+    registry = ProductProviderRegistry(model_provider_registry=ProviderRegistry(store))
+    connections = []
+    connect = store._connect
+    def counted_connect():
+        connection = connect()
+        connections.append(connection)
+        return connection
+    monkeypatch.setattr(store, "_connect", counted_connect)
+    statuses = registry.safe_statuses()
+    assert len(statuses) > 50
+    assert len(connections) == 1
+    assert store._connection is None
+
+
 def test_corrupt_migration_can_be_retried_after_source_repair(tmp_path):
     legacy = tmp_path / "legacy.json"
     legacy.write_text("{bad", encoding="utf-8")

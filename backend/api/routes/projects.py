@@ -26,9 +26,15 @@ async def project_readiness(project_id: str, request: Request, provider_id: str 
     """Read local configuration and cached observations without model generation."""
     import asyncio
     from datetime import datetime, timezone
-    from ...services.project_profile import inspect_project_profile
+    import configparser
+    from ...services.project_profile import ProjectProfile, inspect_project_profile
     record = await resolve_project_from_request(request, project_id)
-    profile = await asyncio.to_thread(inspect_project_profile, record.project_path, environment=environment)
+    configuration_error = None
+    try:
+        profile = await asyncio.to_thread(inspect_project_profile, record.project_path, environment=environment)
+    except (OSError, ValueError, configparser.Error) as exc:
+        configuration_error = str(exc)[:512]
+        profile = ProjectProfile(adapter="unknown", warnings=[configuration_error])
     owner = services(request)
     provider = None
     if provider_id:
@@ -50,10 +56,11 @@ async def project_readiness(project_id: str, request: Request, provider_id: str 
     trusted = bool(orchestrator and orchestrator.jobs.is_trusted(project_id, record.project_path))
     environment_ready = not profile.selection_required
     can_generate = bool(provider and provider["configured"] and provider["enabled"])
-    can_build = bool(trusted and toolchain and toolchain["available"] and environment_ready and profile.adapter != "unknown")
+    can_build = bool(configuration_error is None and trusted and toolchain and toolchain["available"] and environment_ready and profile.adapter != "unknown")
     return {"project_id": project_id, "observed_at": datetime.now(timezone.utc).isoformat(),
         "workspace": {"available": True, "path": record.project_path}, "provider": provider,
         "toolchain": toolchain, "environment": {"selected": profile.selected_environment, "selection_required": profile.selection_required},
+        "configuration": {"valid": configuration_error is None and profile.adapter != "unknown", "warnings": profile.warnings},
         "permissions": {"local_builds": trusted}, "capabilities": {"generate": can_generate, "build": can_build},
         "qualification": {"provider": "not_qualified", "hardware": "not_qualified"}}
 
@@ -62,10 +69,11 @@ async def project_readiness(project_id: str, request: Request, provider_id: str 
 async def project_profile(project_id: str, request: Request, environment: str | None = None):
     from ...services.project_profile import inspect_project_profile
     import asyncio
+    import configparser
     record = await resolve_project_from_request(request, project_id)
     try:
         return await asyncio.to_thread(inspect_project_profile, record.project_path, environment=environment)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, configparser.Error) as exc:
         raise APIError(422, "PROJECT_PROFILE_INVALID", str(exc)) from exc
 
 

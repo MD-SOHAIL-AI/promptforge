@@ -1,3 +1,4 @@
+import { localSession } from "./local-session.ts";
 const API_BASE = "/api/forgex";
 
 const SECRET_KEY_RE = /(authorization|cookie|api[_-]?key|token|password|secret|credential|private[_-]?key)/i;
@@ -19,7 +20,7 @@ export function emitRuntimeDiagnostic(event: RuntimeDiagnosticEvent): void {
     void window.forgexDesktop.emitDiagnostic(payload).catch(() => null);
     return;
   }
-  if (typeof fetch !== "function") return;
+  if (typeof fetch !== "function" || localSession.getSnapshot()) return;
   const { component, event: eventName, level, message, fields, ...rest } = payload;
   void fetch(`${API_BASE}/diagnostics/events`, {
     method: "POST",
@@ -27,7 +28,7 @@ export function emitRuntimeDiagnostic(event: RuntimeDiagnosticEvent): void {
     body: JSON.stringify({ component, event: eventName, level, message, fields: { ...(fields ?? {}), ...rest } }),
     cache: "no-store",
     keepalive: true,
-  }).catch(() => null);
+  }).then(response => { if (response.status === 401) localSession.reject(); }).catch(() => null);
 }
 
 export function serializeError(value: unknown): Record<string, unknown> {

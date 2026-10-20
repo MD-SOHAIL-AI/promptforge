@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Request
 from pydantic import Field
 
@@ -167,30 +166,12 @@ async def provider_health(provider_id: str, request: Request) -> dict[str, Any]:
     "/providers/{provider_id}/models",
     responses={**error_responses(404, 500), "default": {"model": ErrorResponse}},
 )
-async def list_provider_models(provider_id: str, request: Request) -> dict[str, Any]:
+async def list_provider_models(provider_id: str, request: Request, refresh: bool = False) -> dict[str, Any]:
     service = _router_service(request)
     provider = service._providers.get(provider_id)
     if provider is None:
         raise APIError(404, "MODEL_PROVIDER_NOT_FOUND", f"Unknown model provider: {provider_id}", {"provider_id": provider_id})
-    try:
-        discovered = await provider.list_models()
-        service.registry.save_models(provider_id, discovered)
-        models = service.catalog.models(provider_id)
-        return {"models": [model.to_dict() for model in models], "count": len(models), "source": "provider", "error": None}
-    except Exception as exc:
-        fallback = service.registry.list_models(provider_id)
-        if isinstance(exc, httpx.HTTPStatusError):
-            reason = f"HTTP {exc.response.status_code}"
-        elif isinstance(exc, ValueError):
-            reason = str(exc)
-        else:
-            reason = type(exc).__name__
-        return {
-            "models": [model.to_dict() for model in service.catalog.models(provider_id)],
-            "count": len(fallback),
-            "source": "fallback",
-            "error": f"Could not fetch model list. Showing cached or starter models; enter a model ID manually if needed. ({reason})",
-        }
+    return await service.catalog_requests.models(provider_id, refresh=refresh)
 
 
 @router.get("/selection", responses={**error_responses(500), "default": {"model": ErrorResponse}})

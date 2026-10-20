@@ -444,7 +444,7 @@ def test_service_rejects_invalid_configuration(kwargs: dict[str, Any]) -> None:
 ])
 def test_dependency_preflight_requires_exact_or_unique_registry_identity(tmp_path, monkeypatch, declared, candidates, valid):
     root = make_project(tmp_path / "project", f"[env:esp32dev]\nplatform=espressif32\nboard=esp32dev\nframework=arduino\nlib_deps={declared}\n")
-    service = PlatformIOService(FakeSubprocessManager())
+    service = PlatformIOService(FakeSubprocessManager(process_result()))
     async def search(*args, **kwargs):
         return candidates
     monkeypatch.setattr(service, "search_libraries", search)
@@ -453,7 +453,7 @@ def test_dependency_preflight_requires_exact_or_unique_registry_identity(tmp_pat
 
 def test_dependency_preflight_does_not_cache_failed_registry_request(tmp_path, monkeypatch):
     root = make_project(tmp_path / "project", "[env:esp32dev]\nplatform=espressif32\nboard=esp32dev\nframework=arduino\nlib_deps=claws/BH1750\n")
-    service = PlatformIOService(FakeSubprocessManager())
+    service = PlatformIOService(FakeSubprocessManager(process_result()))
     responses = iter([(), ("claws/BH1750",)])
     async def search(*args, **kwargs):
         return next(responses)

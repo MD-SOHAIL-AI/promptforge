@@ -9,6 +9,7 @@ from backend.contracts.engine import FirmwareUploadManifest, VerificationReport,
 from backend.services.project_profile import ProjectProfile
 from backend.contracts.recovery import AgentRecoveryState, EndpointHealth, RecoveryActions
 from backend.contracts.diagnostics import ProviderDiagnostics
+from backend.contracts.progress import TaskExecution, LinkerDiagnostic, ModelQualification
 
 
 def typescript(schema):
@@ -50,7 +51,7 @@ def generate():
     reference += "\nJob profiles, recovery limits, renderer defaults and failure codes: [runtime-policy.generated.json](runtime-policy.generated.json).\n\nThese are defaults. Effective phase and job deadlines can shorten an attempt. A local deadline is never a provider outage.\n"
     (ROOT / "docs/runtime-policy.generated.md").write_text(reference, encoding="utf-8")
     schemas, definitions = {}, {}
-    for model in (ProjectProfile, FirmwareUploadManifest, VerificationReport, EngineToolCatalog, AgentRecoveryState, EndpointHealth, RecoveryActions, ProviderDiagnostics):
+    for model in (ProjectProfile, FirmwareUploadManifest, VerificationReport, EngineToolCatalog, AgentRecoveryState, EndpointHealth, RecoveryActions, ProviderDiagnostics, TaskExecution, LinkerDiagnostic, ModelQualification):
         schema = model.model_json_schema()
         definitions.update(schema.pop("$defs", {}))
         schemas[model.__name__] = schema

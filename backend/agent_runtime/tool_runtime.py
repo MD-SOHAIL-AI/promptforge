@@ -24,7 +24,9 @@ from .checkpoint_files import copy_checkpoint_tree
 from .context_assembler import ContextAssembler
 from .public_progress import LivePlan, public_text
 from .skills import SkillRegistry
+from .requirement_evidence import RejectedEvidenceTracker
 from .tool_contracts import (
+    PRODUCT_TOOLPLAN_VERSION,
     ProductToolPlan,
     RuntimeClassification,
     RuntimeEvent,
@@ -84,6 +86,7 @@ class ToolRuntimeResult:
             "tool_execution_count": self.tool_execution_count,
             "plan": [dict(item) for item in self.plan],
             "assistant_message": self.assistant_message,
+            "requirement_report": dict(self.requirement_report),
             "events": [event.to_safe_dict() for event in self.events],
         }
 
@@ -112,6 +115,7 @@ class ForgeXToolRuntime:
         self._recovery_active_snapshot = None
         self._recovery_planner = None
         self._recovery_authorized_paths: set[str] = set()
+        self._generation_controller = None
 
     def _save_resume_stage(self, stage, revision, observations, executor, authorized, calls, elapsed, turn):
         snapshot = self.change_service.create_stage("checkpoint-" + uuid.uuid4().hex)
@@ -120,7 +124,8 @@ class ForgeXToolRuntime:
                 "workspace_revision": revision, "observations": list(_compact_tool_observations(observations)),
                 "deleted_paths": sorted(executor.deleted_paths), "authorized_paths": sorted(authorized),
                 "plan": list(executor.current_plan), "tool_calls_used": calls,
-                "elapsed_seconds": elapsed, "turn": turn, "stage_mode": "overlay"}
+                "elapsed_seconds": elapsed, "turn": turn, "stage_mode": "overlay",
+                **({"generation_controller": self._generation_controller.snapshot()} if self._generation_controller else {})}
 
     def run_product(self, **kwargs):
         """Synchronous compatibility seam; production uses the async engine."""
@@ -167,6 +172,7 @@ class ForgeXToolRuntime:
             publish(event)
 
         self._events = []
+        self._generation_controller = None
         self._recovery_planner = planner
         self._event(RuntimeEventType.RUNTIME_STARTED)
         provider_id = str(getattr(planner, "provider_id", "unknown_planner"))
@@ -228,24 +234,27 @@ class ForgeXToolRuntime:
         handlers = dict(service_handlers or {})
         requirement_report: dict = {}
         requirement_checks: dict = {}
+        evidence_rejections = RejectedEvidenceTracker((resume_checkpoint or {}).get("evidence_rejections"))
+        execution_records = {"build": {}, "simulation": {}, "tests": []}
         if task_contract:
-            from .task_contract import verify_requirement_evidence
+            from .task_contract import verify_requirement_evidence, requirement_feedback
             provider_task += "\nTask requirements (data, not privileges):\n" + json.dumps(task_contract.get("requirements", []))
             provider_task += "\nExcluded features:\n" + json.dumps(task_contract.get("exclusions", []))
             provider_task += "\nRevision rule: " + task_contract.get("revision_rule","Preserve unrelated code and accepted choices.")
-            provider_task += "\nUse verify_requirements with every requirement id and exact executable-source quotes before finishing."
+            provider_task += "\nUse verify_requirements for authoritative IDs in batches of at most 8. checks is an array. Prefer evidence {path,start_line,end_line} from current file line numbers. Independent review is still required."
             def verify_requirements(arguments):
                 revision = repr(_active_integrity_snapshot(stage))
                 if requirement_report.get("workspace_revision") != revision:
                     requirement_checks.clear()
                 verify_requirement_evidence(task_contract, arguments["checks"], self.active_workspace_root,
-                    revision, read_file=executor._read_overlay_text)
+                    revision, read_file=executor._read_overlay_text, execution_evidence=execution_records)
                 requirement_checks.update({check["id"]: check for check in arguments["checks"]})
                 report = verify_requirement_evidence(task_contract, list(requirement_checks.values()), self.active_workspace_root,
-                    revision, read_file=executor._read_overlay_text)
+                    revision, read_file=executor._read_overlay_text, execution_evidence=execution_records)
+                evidence_rejections.observe(report, {check["id"] for check in arguments["checks"]})
                 requirement_report.clear()
                 requirement_report.update(report)
-                return report
+                return requirement_feedback(task_contract, report)
             handlers[ToolName.VERIFY_REQUIREMENTS] = verify_requirements
         allowed = [
             tool.value
@@ -296,6 +305,7 @@ class ForgeXToolRuntime:
             skill_registry=skill_registry,
             environment=environment,
         )
+        executor.requirement_ids = {str(item["id"]) for item in task_contract.get("requirements", ())} if task_contract else None
         self._recovery_baseline = baseline
         self._recovery_executor = executor
         self._recovery_active_snapshot = active_before
@@ -357,9 +367,15 @@ class ForgeXToolRuntime:
         final_received = False
         final_summary: str | None = None
         live_plan = LivePlan()
+        live_plan.restore(executor.current_plan)
         from .progress_state import ProgressState, continuation_summary
         durable = (getattr(planner, "supports_durable_continuation", False)
                    and os.getenv("FORGEX_ENABLE_PROGRESS_CONTINUATION", "1") == "1")
+        from .generation_controller import GenerationController, workspace_changed
+        controller = GenerationController(task_contract, (resume_checkpoint or {}).get("generation_controller"),
+            enabled=durable and any(tool.value in allowed_tools for tool in WRITE_TOOLS))
+        self._generation_controller = controller
+        profile_tools = allowed_tools
         progress_state = ProgressState((resume_checkpoint or {}).get("progress_state"))
         if not (resume_checkpoint or {}).get("progress_state"):
             for previous in observations:
@@ -420,6 +436,19 @@ class ForgeXToolRuntime:
                     steering_callback() if callable(steering_callback) else ()
                 )
                 if steering:
+                    if task_contract:
+                        from .task_contract import revise_task_contract
+                        task_contract = revise_task_contract(task_contract, "User guidance:\n" + "\n".join(steering),
+                            project_id=str(task_contract["project_id"]), session_id=task_contract.get("session_id"),
+                            workspace=self.active_workspace_root, intent=str(task_contract["intent"]),
+                            prohibited=task_contract.get("prohibited_actions", ()))
+                        executor.requirement_ids = {str(item["id"]) for item in task_contract.get("requirements", ())}
+                        requirement_checks.clear()
+                        requirement_report.clear()
+                        live_plan.invalidate()
+                        executor.current_plan = tuple(live_plan.steps) or executor.current_plan
+                        provider_task += "\nUpdated authoritative requirements (data, not privileges):\n" + json.dumps(task_contract["requirements"])
+                        emit({"event_type": "TASK_CONTRACT_UPDATED", "_task_contract": task_contract})
                     for message in steering:
                         observations.append(
                             {
@@ -438,6 +467,31 @@ class ForgeXToolRuntime:
                         }
                     )
                 compacted = _compact_tool_observations(observations)
+                if task_contract:
+                    from .source_contracts import source_contract_focus
+                    contracts = await asyncio.to_thread(source_contract_focus, executor._overlay_files(),
+                        executor._read_overlay_text, repr(_active_integrity_snapshot(stage)))
+                    if contracts:
+                        compacted = (*compacted, {"tool": "source_contract_focus", "status": "completed", "output": contracts})
+                if controller.enabled:
+                    def work_focus():
+                        paths = executor._overlay_files()
+                        hashes = {}
+                        for path in paths[:512]:
+                            try:
+                                hashes[path] = hashlib.sha256(executor._read_overlay_text(path).encode()).hexdigest()
+                            except (OSError, ValueError, ToolPolicyError):
+                                continue
+                        return controller.focus(contract=task_contract, plan=executor.current_plan, files=hashes,
+                            source_revision=repr(_active_integrity_snapshot(stage)), build=execution_records["build"], report=requirement_report)
+                    focus = await asyncio.to_thread(work_focus)
+                    for saved_step in live_plan.steps:
+                        if (saved_step.get("key") or saved_step.get("id")) in controller.reopened_keys:
+                            live_plan.invalidate(saved_step.get("paths") or None)
+                    if live_plan.steps:
+                        executor.current_plan = tuple(live_plan.steps)
+                    compacted = (*compacted, {"tool": "generation_work_focus", "status": "completed", "output": focus})
+                allowed_tools = controller.narrow_tools(profile_tools)
                 if compacted and compacted[0].get("tool") == "context_compaction":
                     count = int(compacted[0]["output"]["compacted_observations"])
                     if count > compacted_prefix_count:
@@ -449,161 +503,172 @@ class ForgeXToolRuntime:
                         compacted_prefix_count = count
                 turn_id = f"{capability_run_id or stage.name}:turn-{turn}"
                 step = turn
-                loop_guard.before_step()
-                attempt = AttemptAccumulator(turn=turn, step=step)
-                emit(
-                    {
-                        "event_type": "turn.started",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "message": f"Agent turn {turn}",
-                    }
-                )
-                emit(
-                    {
-                        "event_type": "step.started",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "message": f"Agent step {step}",
-                    }
-                )
-                emit(
-                    {
-                        "event_type": "model.attempt.started",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "attempt_id": attempt.attempt_id,
-                        "message": "Waiting for model",
-                        "model_id": str(getattr(planner, "model_id", "")),
-                    }
-                )
-                # Legacy migration events remain until all existing projections consume
-                # the canonical journal vocabulary above.
-                emit(
-                    {
-                        "event_type": "agent.turn.started",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "attempt_id": attempt.attempt_id,
-                        "message": "Forge is deciding the next tool action",
-                    }
-                )
-                emit(
-                    {
-                        "event_type": "thinking.started",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "attempt_id": attempt.attempt_id,
-                        "message": "Forge is deciding the next tool action",
-                    }
-                )
-                emit(
-                    {
-                        "event_type": "agent.model.requested",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "attempt_id": attempt.attempt_id,
-                        "message": "Requesting next model tool plan",
-                        "model_id": str(getattr(planner, "model_id", "")),
-                    }
-                )
-                request_turn_stream = getattr(planner, "request_turn_stream", None)
-                streamed_summary = ""
-
-                def on_summary(message: str) -> None:
-                    nonlocal streamed_summary
-                    current = public_text(str(message), 1200)
-                    delta = (
-                        current[len(streamed_summary) :]
-                        if current.startswith(streamed_summary)
-                        else current
-                    )
-                    streamed_summary = current
-                    if delta:
-                        frame = attempt.content_delta(delta)
-                        emit(
-                            {
-                                **frame.to_event(),
-                                "status": "running",
-                                "turn_id": turn_id,
-                                "message": delta,
-                            }
-                        )
-                    # Compatibility channel for existing clients during migration.
+                from .verification import repeated_reference_handoff
+                review_handoff = repeated_reference_handoff(task_contract, requirement_report, observations,
+                    repr(_active_integrity_snapshot(stage)), build=execution_records["build"],
+                    evidence=execution_records["tests"], simulation=execution_records["simulation"])
+                if review_handoff:
+                    # Enter the existing review gate without another generation
+                    # attempt; acceptance still depends on the real review.
+                    plan = ProductToolPlan.parse({"version": PRODUCT_TOOLPLAN_VERSION, "summary": "The requested task passed current-source verification and independent review.",
+                        "tool_calls": [], "final": True})
+                    emit({"event_type": "verification.handoff", "message": "Accepted references handed to independent review without another generation request.", "turn": turn})
+                else:
+                    loop_guard.before_step()
+                    attempt = AttemptAccumulator(turn=turn, step=step)
                     emit(
                         {
-                            "event_type": "assistant.summary.delta",
+                            "event_type": "turn.started",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "message": f"Agent turn {turn}",
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "step.started",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "message": f"Agent step {step}",
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "model.attempt.started",
                             "status": "running",
                             "turn": turn,
                             "step": step,
                             "turn_id": turn_id,
                             "attempt_id": attempt.attempt_id,
-                            "message": current,
-                            "transient": True,
+                            "message": "Waiting for model",
+                            "model_id": str(getattr(planner, "model_id", "")),
                         }
                     )
-
-                raw_plan = await engine.request(planner, task=provider_task,
-                    tool_results=compacted, allowed_tools=allowed_tools,
-                    run_id=capability_run_id or stage.name, turn=turn, on_summary=on_summary)
-                plan = (
-                    raw_plan
-                    if isinstance(raw_plan, ProductToolPlan)
-                    else ProductToolPlan.parse(
-                        raw_plan, max_calls=bounds.max_tool_calls_per_turn
+                    # Legacy migration events remain until all existing projections consume
+                    # the canonical journal vocabulary above.
+                    emit(
+                        {
+                            "event_type": "agent.turn.started",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "message": "Forge is deciding the next tool action",
+                        }
                     )
-                )
-                if len(plan.tool_calls) > bounds.max_tool_calls_per_turn:
-                    return self._abort_stage(
-                        stage,
-                        RuntimeClassification.LIMIT_EXCEEDED,
-                        provider_id,
-                        total_calls,
+                    emit(
+                        {
+                            "event_type": "thinking.started",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "message": "Forge is deciding the next tool action",
+                        }
                     )
+                    emit(
+                        {
+                            "event_type": "agent.model.requested",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "message": "Requesting next model tool plan",
+                            "model_id": str(getattr(planner, "model_id", "")),
+                        }
+                    )
+                    request_turn_stream = getattr(planner, "request_turn_stream", None)
+                    streamed_summary = ""
 
-                # The attempt settles durably before any provider-originated call can
-                # enter validation or execution. This is the canonical execution barrier.
-                settlement = engine.settle(attempt,
-                    plan.tool_calls,
-                    content=public_text(plan.summary),
-                )
-                emit({**settlement.to_event(), "status": "completed", "turn_id": turn_id})
-                emit(
-                    {
-                        "event_type": "agent.model.responded",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "attempt_id": attempt.attempt_id,
-                        "tool_count": len(plan.tool_calls),
-                        "message": public_text(plan.summary),
-                        "model_id": str(getattr(planner, "model_id", "")),
-                    }
-                )
-                emit(
-                    {
-                        "event_type": "assistant.summary",
-                        "status": "running",
-                        "turn": turn,
-                        "step": step,
-                        "turn_id": turn_id,
-                        "attempt_id": attempt.attempt_id,
-                        "message": public_text(plan.summary),
-                    }
-                )
+                    def on_summary(message: str) -> None:
+                        nonlocal streamed_summary
+                        current = public_text(str(message), 1200)
+                        delta = (
+                            current[len(streamed_summary) :]
+                            if current.startswith(streamed_summary)
+                            else current
+                        )
+                        streamed_summary = current
+                        if delta:
+                            frame = attempt.content_delta(delta)
+                            emit(
+                                {
+                                    **frame.to_event(),
+                                    "status": "running",
+                                    "turn_id": turn_id,
+                                    "message": delta,
+                                }
+                            )
+                        # Compatibility channel for existing clients during migration.
+                        emit(
+                            {
+                                "event_type": "assistant.summary.delta",
+                                "status": "running",
+                                "turn": turn,
+                                "step": step,
+                                "turn_id": turn_id,
+                                "attempt_id": attempt.attempt_id,
+                                "message": current,
+                                "transient": True,
+                            }
+                        )
+
+                    raw_plan = await engine.request(planner, task=provider_task,
+                        tool_results=compacted, allowed_tools=allowed_tools,
+                        run_id=capability_run_id or stage.name, turn=turn, on_summary=on_summary)
+                    plan = (
+                        raw_plan
+                        if isinstance(raw_plan, ProductToolPlan)
+                        else ProductToolPlan.parse(
+                            raw_plan, max_calls=bounds.max_tool_calls_per_turn
+                        )
+                    )
+                    if len(plan.tool_calls) > bounds.max_tool_calls_per_turn:
+                        return self._abort_stage(
+                            stage,
+                            RuntimeClassification.LIMIT_EXCEEDED,
+                            provider_id,
+                            total_calls,
+                        )
+
+                    # The attempt settles durably before any provider-originated call can
+                    # enter validation or execution. This is the canonical execution barrier.
+                    settlement = engine.settle(attempt,
+                        plan.tool_calls,
+                        content=public_text(plan.summary),
+                    )
+                    emit({**settlement.to_event(), "status": "completed", "turn_id": turn_id})
+                    emit(
+                        {
+                            "event_type": "agent.model.responded",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "tool_count": len(plan.tool_calls),
+                            "message": public_text(plan.summary),
+                            "model_id": str(getattr(planner, "model_id", "")),
+                        }
+                    )
+                    emit(
+                        {
+                            "event_type": "assistant.summary",
+                            "status": "running",
+                            "turn": turn,
+                            "step": step,
+                            "turn_id": turn_id,
+                            "attempt_id": attempt.attempt_id,
+                            "message": public_text(plan.summary),
+                        }
+                    )
                 if plan.final:
                     if task_contract and (not requirement_report.get("references_valid") or
                             requirement_report.get("workspace_revision") != repr(_active_integrity_snapshot(stage))):
@@ -781,6 +846,8 @@ class ForgeXToolRuntime:
                         }
                     )
                     try:
+                        record_execution = call.tool in {ToolName.BUILD_FIRMWARE, ToolName.RUN_SIMULATION, ToolName.RUN_UNIT_TESTS}
+                        before_execution = repr(_active_integrity_snapshot(stage)) if record_execution else None
                         result = await asyncio.to_thread(executor.execute, call)
                     except Exception as exc:
                         missing_file = (
@@ -821,11 +888,23 @@ class ForgeXToolRuntime:
                                 "_forgex_classification": RuntimeClassification.FILE_NOT_FOUND.value,
                             }
                         if isinstance(exc, ValueError) and not isinstance(exc, ToolPolicyError):
-                            return {"_forgex_error": str(exc)[:500]}
+                            return {"_forgex_error": str(exc)[:500],
+                                    "_forgex_details": getattr(exc, "details", {})}
                         raise
+                    current_revision = repr(_active_integrity_snapshot(stage)) if record_execution else None
+                    if (record_execution and isinstance(result, Mapping) and result.get("success") is True
+                            and before_execution == current_revision):
+                        if call.tool in {ToolName.BUILD_FIRMWARE, ToolName.RUN_SIMULATION}:
+                            kind = "build" if call.tool is ToolName.BUILD_FIRMWARE else "simulation"
+                            execution_records[kind] = {"success": True, "workspace_revision": current_revision,
+                                                       "call_id": invocation.call_id}
+                        elif call.tool is ToolName.RUN_UNIT_TESTS:
+                            execution_records["tests"].append({"success": True, "source_revision": current_revision,
+                                                              "kind": "unit_tests", "call_id": invocation.call_id})
                     boundary_observations[invocation.invocation_index] = _safe_tool_observation(
                         invocation.call_id, call.tool, result, bounds.max_observation_chars)
                     if call.tool in WRITE_TOOLS:
+                        controller.observe(boundary_observations[invocation.invocation_index])
                         product_call = calls_by_id[invocation.call_id]
                         if product_call.path:
                             boundary_authorized.add(product_call.path)
@@ -856,6 +935,7 @@ class ForgeXToolRuntime:
                             "tool": invocation.tool.value,
                             "status": "failed",
                             "error": scheduled_result.result["_forgex_error"],
+                            "output": scheduled_result.result.get("_forgex_details", {}),
                             **(
                                 {"classification": scheduled_result.result["_forgex_classification"]}
                                 if "_forgex_classification" in scheduled_result.result else {}
@@ -911,6 +991,9 @@ class ForgeXToolRuntime:
                     product_call = calls_by_id[invocation.call_id]
                     call = ToolCall(invocation.tool, dict(invocation.arguments))
                     result = outcome.get("result")
+                    if call.tool in WRITE_TOOLS and workspace_changed({"status": "completed", "output": result}):
+                        live_plan.invalidate([str(result.get(key)) for key in ("path", "destination") if result.get(key)])
+                        executor.current_plan = tuple(live_plan.steps) or executor.current_plan
                     if call.tool in WRITE_TOOLS and product_call.path:
                         authorized_paths.add(product_call.path)
                         if isinstance(result, Mapping) and isinstance(result.get("path"), str):
@@ -920,6 +1003,7 @@ class ForgeXToolRuntime:
                     live_plan.observe(
                         invocation.call_id,
                         call.tool is not ToolName.UPDATE_PLAN
+                        and (call.tool not in WRITE_TOOLS or workspace_changed({"status": "completed", "output": result}))
                         and not (
                             isinstance(result, Mapping)
                             and result.get("success") is False
@@ -945,7 +1029,7 @@ class ForgeXToolRuntime:
                             **invocation.to_event_payload(),
                             "turn_id": turn_id,
                             "logical_result_index": invocation.invocation_index,
-                            "message": _tool_completion(call),
+                            "message": _tool_result_summary(result).get("message", _tool_completion(call)),
                             "result": _tool_result_summary(result),
                         }
                     )
@@ -958,7 +1042,7 @@ class ForgeXToolRuntime:
                             "turn_id": turn_id,
                             "tool_execution_count": total_calls,
                             "duration_ms": duration_by_index.get(invocation.invocation_index, 0),
-                            "message": _tool_completion(call),
+                            "message": _tool_result_summary(result).get("message", _tool_completion(call)),
                             "result": _tool_result_summary(result),
                         }
                     )
@@ -966,11 +1050,29 @@ class ForgeXToolRuntime:
                 changed = stage_before_turn != _active_integrity_snapshot(stage) or deleted_before_turn != executor.deleted_paths
                 for observation in observations[observation_start:]:
                     changed = progress_state.observe(observation) or changed
+                    controller.observe(observation)
+                controller.settle()
+                task_projection = None
+                if controller.enabled:
+                    focus = await asyncio.to_thread(work_focus)
+                    from .task_state import task_state_v1
+                    task_projection = task_state_v1(contract=task_contract, plan=executor.current_plan,
+                        observations=observations, build=execution_records["build"], report=requirement_report,
+                        repair_history=(), source_revision=repr(_active_integrity_snapshot(stage)),
+                        source_paths=executor._overlay_files(), execution=focus,
+                        stalled_turns=controller.stalled_turns)
+                if controller.enabled and controller.projection.get("phase") != "verification":
+                    changed = controller.stalled_turns == 0
                 progress_state.settle(turn, changed)
                 if durable and progress_state.stalled_turns == 2:
                     hint = "The last turns added no new information. Use the saved observations to complete the task or explain the blocker."
                     observations.append({"tool": "agent_progress_hint", "status": "completed", "output": hint})
                     emit({"event_type": "agent.no_progress_warning", "turn": turn, "message": hint})
+                if controller.enabled and controller.stalled_turns == 3:
+                    observations.append({"tool": "agent_reorientation", "status": "completed",
+                        "output": "Complete the active milestone using current evidence. Stop rereading unchanged files; implement the missing behavior or report its blocker."})
+                    emit({"event_type": "agent.reorientation_started", "turn": turn,
+                          "message": "Focusing recovery on the unfinished milestone."})
                 emit(
                     {
                         "event_type": "step.settled",
@@ -997,6 +1099,8 @@ class ForgeXToolRuntime:
                             total_calls, time.monotonic() - started, turn),
                             "provider_budget": planner.budget_snapshot() if callable(getattr(planner, "budget_snapshot", None)) else {},
                             "progress_state": progress_state.snapshot(),
+                            "evidence_rejections": dict(evidence_rejections.entries),
+                            **({"task_state": task_projection} if task_projection else {}),
                             "continuation_summary": continuation_summary(task, executor.current_plan, observations, turn)}
                             if event_callback is not None else None,
                     }
@@ -1015,7 +1119,15 @@ class ForgeXToolRuntime:
                 )
                 if stage_before_turn != _active_integrity_snapshot(stage) or deleted_before_turn != executor.deleted_paths:
                     meaningful_turns.append(turn)
-                if durable and progress_state.stalled_turns >= 3:
+                if requirement_report.get("evidence_recovery", {}).get("stop"):
+                    emit({"event_type": "requirement.recovery.blocked", "status": "failed",
+                          "message": "Repeated unchanged evidence was rejected. Read the matching documentation or implementation and retry.",
+                          "report": requirement_feedback(task_contract, requirement_report)})
+                    return self._abort_stage(stage, RuntimeClassification.REQUIREMENTS_UNVERIFIED, provider_id,
+                        total_calls, provider_classification="REQUIREMENTS_UNVERIFIED",
+                        provider_diagnostics=_safe_provider_diagnostics(planner), execution_attempted=True,
+                        requirement_report=requirement_report)
+                if durable and progress_state.stalled_turns >= (5 if controller.enabled else 3):
                     return self._abort_stage(stage, RuntimeClassification.NO_PROGRESS, provider_id, total_calls)
 
             if not final_received:
@@ -1069,6 +1181,7 @@ class ForgeXToolRuntime:
                         tool_execution_count=total_calls,
                         plan=tuple(executor.current_plan),
                         assistant_message=final_summary,
+                        requirement_report=dict(requirement_report),
                         events=tuple(self._events),
                     )
                 return self._abort_stage(
@@ -1150,6 +1263,7 @@ class ForgeXToolRuntime:
         provider_classification: str | None = None,
         provider_diagnostics: Mapping[str, object] | None = None,
         execution_attempted: bool = False,
+        requirement_report: Mapping[str, object] | None = None,
     ) -> ToolRuntimeResult:
         draft = None
         if remove and classification not in {
@@ -1172,6 +1286,7 @@ class ForgeXToolRuntime:
                                   else _safe_provider_diagnostics(self._recovery_planner)),
             execution_attempted=execution_attempted,
             tool_execution_count=tool_execution_count,
+            requirement_report=requirement_report,
         )
 
     def _save_recovery_draft(self, stage: Path, provider_id: str) -> ChangeSet | None:
@@ -1222,6 +1337,7 @@ class ForgeXToolRuntime:
         execution_attempted: bool = False,
         tool_execution_count: int = 0,
         change_set_id: str | None = None,
+        requirement_report: Mapping[str, object] | None = None,
     ) -> ToolRuntimeResult:
         self._event(
             RuntimeEventType.RUNTIME_FAILED, classification=classification.value
@@ -1230,6 +1346,7 @@ class ForgeXToolRuntime:
             classification=classification,
             provider_id=provider_id,
             change_set_id=change_set_id,
+            requirement_report=dict(requirement_report or {}),
             created_file_count=created,
             modified_file_count=modified,
             deleted_file_count=deleted,
@@ -1331,6 +1448,15 @@ def _tool_result_summary(result: object) -> dict[str, object]:
     if isinstance(result, tuple):
         return {"items": len(result)}
     if isinstance(result, Mapping):
+        if result.get("verification_level") == "source_reference":
+            checks = result.get("checks", ())
+            referenced = result.get("referenced_count", sum(item.get("status") == "referenced" for item in checks))
+            rejected = result.get("rejected_count", sum(item.get("status") != "referenced" for item in checks))
+            missing = result.get("missing_count", len(result.get("missing", ())))
+            return {"verification_level": "source_reference", "references_valid": result.get("references_valid", False),
+                    "valid": result.get("valid", False), "referenced_count": referenced, "rejected_count": rejected,
+                    "missing_count": missing, "checks": list(checks),
+                    "message": f"Source references: {referenced} accepted, {rejected} rejected, {missing} missing. Independent review pending."}
         out: dict[str, object] = {}
         for key in (
             "path",
@@ -1348,6 +1474,10 @@ def _tool_result_summary(result: object) -> dict[str, object]:
             "diff",
             "count",
             "files",
+            "match_count",
+            "content_sha256",
+            "correction",
+            "citation_ranges",
         ):
             value = result.get(key)
             if isinstance(value, (str, int, bool, type(None))):

@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "suite_version": "forgex.targets.v1",
+  "repetitions": 3,
+  "cases": [
+    {
+      "id": "esp32dev:arduino",
+      "target": "esp32dev",
+      "framework": "arduino",
+      "board_type": "ESP32",
+      "environment": "qualification",
+      "platformio_board": "esp32dev",
+      "request": "Create and build a minimal ESP32 project using PlatformIO platform espressif32, board esp32dev, framework arduino, and environment qualification. Toggle an LED on GPIO2 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "esp32dev:espidf",
+      "target": "esp32dev",
+      "framework": "espidf",
+      "board_type": "ESP32",
+      "environment": "qualification",
+      "platformio_board": "esp32dev",
+      "request": "Create and build a minimal ESP32 project using PlatformIO platform espressif32, board esp32dev, framework espidf, and environment qualification. Toggle an LED on GPIO2 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "esp32-c3-devkitm-1:arduino",
+      "target": "esp32-c3-devkitm-1",
+      "framework": "arduino",
+      "board_type": "ESP32-C3",
+      "environment": "qualification",
+      "platformio_board": "esp32-c3-devkitm-1",
+      "request": "Create and build a minimal ESP32-C3 project using PlatformIO platform espressif32, board esp32-c3-devkitm-1, framework arduino, and environment qualification. Toggle an LED on GPIO4 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "esp32-c3-devkitm-1:espidf",
+      "target": "esp32-c3-devkitm-1",
+      "framework": "espidf",
+      "board_type": "ESP32-C3",
+      "environment": "qualification",
+      "platformio_board": "esp32-c3-devkitm-1",
+      "request": "Create and build a minimal ESP32-C3 project using PlatformIO platform espressif32, board esp32-c3-devkitm-1, framework espidf, and environment qualification. Toggle an LED on GPIO4 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "esp32-s3-devkitc-1:arduino",
+      "target": "esp32-s3-devkitc-1",
+      "framework": "arduino",
+      "board_type": "ESP32-S3",
+      "environment": "qualification",
+      "platformio_board": "esp32-s3-devkitc-1",
+      "request": "Create and build a minimal ESP32-S3 project using PlatformIO platform espressif32, board esp32-s3-devkitc-1, framework arduino, and environment qualification. Toggle an LED on GPIO4 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "esp32-s3-devkitc-1:espidf",
+      "target": "esp32-s3-devkitc-1",
+      "framework": "espidf",
+      "board_type": "ESP32-S3",
+      "environment": "qualification",
+      "platformio_board": "esp32-s3-devkitc-1",
+      "request": "Create and build a minimal ESP32-S3 project using PlatformIO platform espressif32, board esp32-s3-devkitc-1, framework espidf, and environment qualification. Toggle an LED on GPIO4 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "uno:arduino",
+      "target": "uno",
+      "framework": "arduino",
+      "board_type": "Arduino Uno",
+      "environment": "qualification",
+      "platformio_board": "uno",
+      "request": "Create and build a minimal Arduino Uno project using PlatformIO platform atmelavr, board uno, framework arduino, and environment qualification. Toggle an LED on digital pin 13 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "bluepill_f103c8:arduino",
+      "target": "bluepill_f103c8",
+      "framework": "arduino",
+      "board_type": "STM32",
+      "environment": "qualification",
+      "platformio_board": "bluepill_f103c8",
+      "request": "Create and build a minimal STM32 project using PlatformIO platform ststm32, board bluepill_f103c8, framework arduino, and environment qualification. Toggle an LED on PC13 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    },
+    {
+      "id": "bluepill_f103c8:stm32cube",
+      "target": "bluepill_f103c8",
+      "framework": "stm32cube",
+      "board_type": "STM32",
+      "environment": "qualification",
+      "platformio_board": "bluepill_f103c8",
+      "request": "Create and build a minimal STM32 project using PlatformIO platform ststm32, board bluepill_f103c8, framework stm32cube, and environment qualification. Toggle an LED on PC13 every 1000 ms while keeping the scheduler responsive. Use framework-appropriate APIs and document the wiring assumption. Include platformio.ini and actual source implementations. Do not flash or open a serial port.",
+      "follow_up": "Preserve the board, framework, pins and unrelated files. Change the interval to 750 ms and rebuild. Do not flash.",
+      "historical": false,
+      "safety_critical": true,
+      "expected_status": "completed",
+      "seed_files": {},
+      "required_evidence": [
+        "current_source",
+        "current_firmware_build",
+        "requirement_review"
+      ]
+    }
+  ]
+}

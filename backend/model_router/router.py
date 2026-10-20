@@ -100,6 +100,8 @@ class ModelRouterService(LLMService):
         else:
             self._providers = providers
         self.catalog = ModelCatalog(self.registry)
+        from .catalog_requests import CatalogRequests
+        self.catalog_requests = CatalogRequests(self)
         self.selections = ModelSelectionStore(self.registry.storage.path.with_suffix(".selections.sqlite3"))
         self.resolver = ModelResolver(self.registry, self.catalog, self.selections)
         self.runtime = ModelRuntime(self.resolver, self._providers, attempt_slot=self._physical_slot)
@@ -135,6 +137,9 @@ class ModelRouterService(LLMService):
         from .providers.opencode import OpenCodeProvider
         self.registry.definition(provider_id)
         self._providers[provider_id] = OpenCodeProvider(self.registry, provider_id)
+
+    async def aclose(self) -> None:
+        await self.catalog_requests.aclose()
 
     def remove_custom_provider(self, provider_id: str) -> None:
         if self.selections.references(provider_id):

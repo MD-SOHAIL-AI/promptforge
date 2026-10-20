@@ -229,6 +229,18 @@ def test_provider_outage_preserves_time_for_recovery_instead_of_auto_retrying(tm
     assert extended["limits"]["elapsed_seconds"] == 1800
 
 
+def test_generation_reserve_is_distinct_from_exhausting_the_whole_job(tmp_path):
+    _, owner, job = jobs(tmp_path)
+    owner.record_elapsed(job["job_id"], 600)
+    run = SimpleNamespace(run_id="r", agent_plan=[], status="failed",
+        classification="AGENT_VERIFICATION_RESERVE_REACHED")
+    saved = owner.update_run(job["job_id"], run)
+    assert saved["blocking_reason"] == "AGENT_VERIFICATION_RESERVE_REACHED"
+    assert saved["limits"]["elapsed_seconds"] - saved["consumed"]["elapsed_seconds"] == 300
+    owner.record_elapsed(job["job_id"], 900)
+    assert owner.update_run(job["job_id"], run)["blocking_reason"] == "AGENT_JOB_BUDGET_EXHAUSTED"
+
+
 def test_unavailable_model_uses_durable_cooldown_before_auto_recovery(tmp_path):
     from datetime import datetime, timezone
     _, owner, job = jobs(tmp_path)
@@ -300,29 +312,30 @@ def test_accepted_choice_memory_has_user_provenance_and_invalidates_revised_choi
 
 
 def test_complex_review_requires_read_evidence_and_all_requirement_ids(tmp_path,monkeypatch):
-    import json
     from backend.agent_runtime import autonomous_loop
-    from backend.agent_runtime.subagents import SubagentResult
+    from backend.agent_runtime.api_planner_provider import ApiPlannerError
+    from backend.agent_runtime.task_contract import verify_requirement_evidence
     from tests.unit.test_agent_verification_freshness import progress
-    from tests.unit.test_tool_runtime import SequencePlanner
-    contract=create_task_contract("\n".join("Requirement "+str(i) for i in range(8)),project_id="p",session_id="s",workspace=tmp_path,intent="generate")
-    report={"verdict":"pass","requirement_ids":[item["id"] for item in contract["requirements"]],"issues":[]}
-    class Reviewer:
-        def __init__(self,**kwargs):
-            assert kwargs["max_turns"]==3
-            assert kwargs["max_tool_calls"]<=10
-        async def run(self,**kwargs):
-            assert kwargs["role"]=="review"
-            return SubagentResult("review",True,json.dumps(report),2,({"tool":"read_file","status":"completed"},))
-    monkeypatch.setattr(autonomous_loop,"ForgeSubagentRunner",Reviewer)
+    from tests.unit.test_requirement_review_response import planner_for
+    workspace=tmp_path/"workspace"
+    workspace.mkdir()
+    contract=create_task_contract("\n".join("Requirement "+str(i) for i in range(8)),project_id="p",session_id="s",workspace=workspace,intent="generate")
+    (workspace/"main.cpp").write_text("int led = 2;\n")
+    report={"checks":[{"id":item["id"],"verdict":"satisfied","reason":"Current source meets the requirement."} for item in contract["requirements"]]}
+    incomplete={"checks":report["checks"][:-1]}
+    planner, adapter = planner_for(tmp_path,monkeypatch,[report,incomplete,incomplete])
     async def scenario():
-        loop=autonomous_loop.AutonomousForgeAgentLoop(workspace_root=tmp_path,planner=SequencePlanner([]),platformio=object(),progress=progress,task_contract=contract)
-        revision=autonomous_loop._snapshot_for_context(tmp_path).revision
+        loop=autonomous_loop.AutonomousForgeAgentLoop(workspace_root=workspace,planner=planner,platformio=object(),progress=progress,task_contract=contract)
+        revision=autonomous_loop._snapshot_for_context(workspace).revision
+        loop.requirement_report=verify_requirement_evidence(contract,[{"id":item["id"],"status":"implemented",
+            "evidence":[{"path":"main.cpp","quote":"int led = 2;"}]} for item in contract["requirements"]],workspace,revision)
         assert (await loop._review_completion(revision))["passed"]
-        assert loop.tool_count==2
-        assert loop.loop_guard.remaining_tool_calls==98
-        report["requirement_ids"].pop()
-        assert not (await loop._review_completion(revision))["passed"]
+        assert "int led = 2;" in adapter.requests[0].prompt
+        assert loop.tool_count==0  # Host reads complete files without model tool exploration.
+        assert loop.loop_guard.remaining_tool_calls==100
+        with pytest.raises(ApiPlannerError) as exc:
+            await loop._review_completion(revision)
+        assert exc.value.safe_code == "SEMANTIC_REVIEW_INCOMPLETE"
     asyncio.run(scenario())
 
 

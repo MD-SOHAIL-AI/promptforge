@@ -1,6 +1,7 @@
 """Explicit model catalog and persisted session/role choices."""
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
@@ -34,10 +35,13 @@ class RoleSelectionBody(SelectionBody):
 @router.get("/catalog")
 async def catalog(request: Request):
     registry = services(request).model_router_service.registry
-    return {"providers": [
-        {**provider.to_dict(), "models": [model.to_dict() for model in registry.list_models(provider.provider_id)]}
-        for provider in registry.list_providers()
-    ]}
+    def read_catalog():
+        with registry.storage.read_snapshot():
+            return {"providers": [
+                {**provider.to_dict(), "models": [model.to_dict() for model in registry.list_models(provider.provider_id)]}
+                for provider in registry.list_providers()
+            ]}
+    return await asyncio.to_thread(read_catalog)
 
 
 def _session(request: Request, session_id: str | None):

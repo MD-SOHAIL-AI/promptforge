@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import json
 import fnmatch
 import os
 import re
@@ -19,6 +20,18 @@ from .tool_policy import ToolPermissionPolicy, ToolPolicyError, is_sensitive_pat
 from backend.security import has_high_confidence_secret
 
 ToolHandler = Callable[[Mapping[str, object]], object]
+
+
+class EditMatchError(ValueError):
+    def __init__(self, path, count, current, old_text="", *, read_required=False):
+        super().__init__("edit_match_must_be_exactly_one")
+        self.details = {"path": path, "match_count": count,
+                        "content_sha256": hashlib.sha256(current.encode("utf-8")).hexdigest(),
+                        "reason": "fresh_read_required" if read_required else "no_match" if count == 0 else "multiple_matches",
+                        "correction": "Read the current source, then copy a small unique block from content into old_text. "
+                            "Preserve whitespace and line endings; numbered_content prefixes are citation labels, not source. "
+                            "Change only that block in new_text. Do not retype the whole file or repeat the failed match. No edit was applied.",
+                        "current_excerpt": _edit_match_excerpt(current, old_text)}
 
 
 class ForgeXToolExecutor:
@@ -48,9 +61,11 @@ class ForgeXToolExecutor:
         self.capability_grant = capability_grant
         self.service_handlers = dict(service_handlers or {})
         self.skill_registry = skill_registry or SkillRegistry(self.read_root)
-        self.current_plan: tuple[dict[str, str], ...] = ()
+        self.current_plan: tuple[dict[str, object], ...] = ()
+        self.requirement_ids: set[str] | None = None
         self.environment = environment
         self.deleted_paths: set[str] = set()
+        self._edit_read_required: set[str] = set()
 
     def validate(self, call: ToolCall, *, consume: bool = False) -> None:
         root = self._validation_root(call)
@@ -125,18 +140,43 @@ class ForgeXToolExecutor:
         if call.tool is ToolName.READ_FILE:
             relative = str(args["path"])
             text = self._read_overlay_text(relative)
-            if "offset" not in args and "limit" not in args:
-                return text
+            self._edit_read_required.discard(relative)
             lines = text.splitlines(keepends=True)
             offset = int(args.get("offset", 1))
             limit = int(args.get("limit", 200))
-            selected = lines[offset - 1 : offset - 1 + limit]
+            selected, numbered, used = [], [], 0
+            truncated_lines = []
+            for number, line in enumerate(lines[offset - 1:offset - 1 + limit], offset):
+                annotated = f"{number}: {line.rstrip(chr(10) + chr(13))}\n"
+                size = len(json.dumps(line)) + len(json.dumps(annotated))
+                if used + size > 12000:
+                    if selected:
+                        break
+                    # Oversized individual lines are explicitly marked, never
+                    # presented as a complete citation span.
+                    line = line[:2000]
+                    annotated = f"{number}: {line}\n[remainder of line omitted]\n"
+                    while len(json.dumps(line)) + len(json.dumps(annotated)) > 12000:
+                        line = line[:len(line) // 2]
+                        annotated = f"{number}: {line}\n[remainder of line omitted]\n"
+                    truncated_lines.append(number)
+                selected.append(line)
+                numbered.append(annotated)
+                used += size
+                if truncated_lines:
+                    break
             return {
                 "path": relative,
                 "offset": offset,
+                "end_line": offset + len(selected) - 1 if selected else None,
                 "total_lines": len(lines),
                 "next_offset": offset + len(selected) if offset + len(selected) <= len(lines) else None,
                 "content": "".join(selected),
+                "numbered_content": "".join(numbered),
+                "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "truncated_lines": truncated_lines,
+                "citation_ranges": [{"start_line": start, "end_line": min(start + 79, offset + len(selected) - 1)}
+                    for start in range(offset, offset + len(selected), 80) if not truncated_lines],
             }
 
         if call.tool is ToolName.DELETE_FILE:
@@ -191,8 +231,11 @@ class ForgeXToolExecutor:
             relative = str(args["path"])
             old_text, new_text = str(args["old_text"]), str(args["new_text"])
             current = self._read_overlay_text(relative)
-            if not old_text or current.count(old_text) != 1:
-                raise ValueError("edit_match_must_be_exactly_one")
+            count = current.count(old_text) if old_text else 0
+            if count != 1 or relative in self._edit_read_required:
+                self._edit_read_required.add(relative)
+                raise EditMatchError(relative, count, current, old_text,
+                    read_required=count == 1 and relative in self._edit_read_required)
             updated = current.replace(old_text, new_text, 1)
             changed = updated != current
             if changed:
@@ -221,7 +264,8 @@ class ForgeXToolExecutor:
             }
 
         if call.tool is ToolName.UPDATE_PLAN:
-            steps = tuple({"text": str(item["text"]), "status": str(item["status"]), **({"verification": str(item["verification"])} if "verification" in item else {})} for item in args["steps"])  # type: ignore[index]
+            from .generation_controller import validate_plan_steps
+            steps = validate_plan_steps(args["steps"], self.requirement_ids)
             self.current_plan = steps
             return {"steps": list(steps)}
 
@@ -411,6 +455,27 @@ class ForgeXToolExecutor:
         # Capability grants bind to the immutable active project. Tool execution
         # still redirects every mutation into the stage overlay.
         return self.read_root
+
+
+def _edit_match_excerpt(current, old_text):
+    """Supply exact bounded source as advice; never apply an approximate match."""
+    lines = current.splitlines(keepends=True)
+    start = 0
+    if len(current) > 3500 and lines:
+        requested = [line for line in old_text.splitlines() if line.strip()]
+        if requested:
+            anchor = requested[0][:200]
+            start = max(0, max(range(min(len(lines), 10000)), key=lambda index:
+                difflib.SequenceMatcher(None, anchor, lines[index].rstrip("\r\n")[:200], autojunk=False).ratio()) - 2)
+    selected = []
+    used = 0
+    for line in lines[start:start + 80]:
+        if used + len(line) > 3500:
+            break
+        selected.append(line)
+        used += len(line)
+    return {"start_line": start + 1, "end_line": start + len(selected),
+            "content": "".join(selected), "truncated": start > 0 or len(selected) < len(lines)}
 
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$")

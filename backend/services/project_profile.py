@@ -41,6 +41,33 @@ class ProjectProfile(BaseModel):
     configuration_files: list[str] = Field(default_factory=list)
     documentation: list[dict[str, str]] = Field(default_factory=list)
     qualification: str = "unqualified"
+    source_directory: str | None = "src"
+    include_directory: str | None = "include"
+
+
+def project_source_layout(project, parser=None):
+    """Contained source roots; unresolved/external options are never edit targets."""
+    root = Path(project).resolve(strict=True)
+    if parser is None:
+        parser = configparser.RawConfigParser()
+        ini = root / "platformio.ini"
+        if ini.is_file() and not ini.is_symlink() and ini.stat().st_size <= 128_000:
+            parser.read(ini, encoding="utf-8")
+    result = {}
+    for option, default in (("src_dir", "src"), ("include_dir", "include")):
+        value = parser.get("platformio", option, fallback=default, raw=True).strip()
+        try:
+            if not value or "${" in value or "\x00" in value:
+                raise ValueError("unresolved source layout")
+            path = Path(value)
+            path = path if path.is_absolute() else root / path
+            relative = path.resolve().relative_to(root).as_posix()
+            if any(part.startswith(".") for part in Path(relative).parts):
+                raise ValueError("hidden source layout")
+            result[option] = relative
+        except (OSError, ValueError):
+            result[option] = None
+    return result
 
 
 def inspect_project_profile(project, *, environment=None):
@@ -138,7 +165,9 @@ def inspect_project_profile(project, *, environment=None):
         docs.append({"title": "Arduino ESP32", "url": "https://docs.espressif.com/projects/arduino-esp32/en/latest/", "version": "unknown; inspect installed framework package before using version-specific APIs"})
     if adapter == "esp-idf":
         docs.append({"title": "ESP-IDF", "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32/", "version": "unknown; run idf.py --version"})
+    layout = project_source_layout(root)
     return ProjectProfile(adapter=adapter, selected_environment=selected,
+        source_directory=layout["src_dir"], include_directory=layout["include_dir"],
         selection_required=len(profiles) > 1 and selected is None, environments=profiles,
         compilation_units=units, compiler_context_available=bool(units), warnings=warnings,
         configuration_files=files, documentation=docs,

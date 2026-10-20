@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent_runtime.tool_policy import product_agent_policy
+from backend.contracts.runtime_policy import MAX_AGENT_MESSAGE_CHARACTERS
 from backend.security import has_high_confidence_secret
 from ..dependencies import resolve_project_from_request, services
 from ..errors import APIError
@@ -27,7 +28,7 @@ class ChatSettings(BaseModel):
 
 class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    content: str = Field(min_length=1, max_length=16_384)
+    content: str = Field(min_length=1, max_length=MAX_AGENT_MESSAGE_CHARACTERS)
     provider_id: str | None = Field(default=None, min_length=1, max_length=128)
     model_id: str | None = Field(default=None, min_length=1, max_length=128)
     context_project_id: str | None = Field(default=None, min_length=1, max_length=128)

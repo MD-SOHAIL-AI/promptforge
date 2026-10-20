@@ -12,13 +12,15 @@
   "review_unit_seconds": 60.0,
   "generation_turn_seconds": 300.0,
   "model_repair_seconds": 120.0,
+  "min_model_repair_seconds": 30.0,
   "generation_reserve": {
     "requests": 2,
     "output_tokens": 2048
   },
   "renderer": {
     "read_seconds": 15,
-    "mutation_seconds": 30
+    "mutation_seconds": 30,
+    "max_message_characters": 65536
   },
   "profiles": {
     "standard": {

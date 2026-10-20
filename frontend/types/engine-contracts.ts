@@ -37,16 +37,43 @@ export type AcceptanceReport = {
   checks: Array<AcceptanceCheck>;
 };
 
+export type CompletionReview = {
+  passed?: boolean;
+  source_revision: string;
+  task_revision?: string | null;
+  issues?: Array<string>;
+  failure_code?: string | null;
+  review?: Record<string, unknown>;
+  verification_level?: string;
+  hardware_verified?: boolean;
+};
+
+export type DocumentationSection = {
+  path: string;
+  heading: string;
+  start_line: number;
+  end_line: number;
+};
+
 export type RequirementCheck = {
   id: string;
   status: string;
   evidence?: Array<RequirementReference>;
   review_reason?: string | null;
+  issues?: Array<string>;
+  requirement?: string | null;
+  expected_evidence?: Array<string>;
+  execution_evidence?: Array<Record<string, unknown>>;
+  suggested_sections?: Array<DocumentationSection>;
+  rejection_attempts?: number;
 };
 
 export type RequirementReference = {
   path: string;
-  quote: string;
+  quote?: string;
+  start_line?: number | null;
+  end_line?: number | null;
+  content_sha256?: string | null;
 };
 
 export type EngineTool = {
@@ -79,6 +106,8 @@ export type AttemptDiagnostics = {
   tool_event_count?: number;
   worker_exit_code?: number | null;
   worker_cleanup_incomplete?: boolean;
+  worker_phase?: "spawn" | "input" | "response" | null;
+  worker_failure_kind?: "memory_limit" | "invalid_runtime_options" | "abnormal_exit" | null;
   physical_attempt_id?: string | null;
   http_status?: number | null;
   provider_request_id?: string | null;
@@ -87,6 +116,7 @@ export type AttemptDiagnostics = {
   first_event_ms?: number | null;
   last_event_ms?: number | null;
   timeout_stage?: string | null;
+  failure_shape?: "invalid_stream_event" | null;
   duration_ms?: number | null;
 };
 
@@ -96,6 +126,22 @@ export type BudgetFailure = {
   limit: number | number;
   attempted_charge: number | number;
   origin?: string;
+  phase?: string | null;
+  remaining_job_seconds?: number | null;
+};
+
+export type ToolArgumentIssue = {
+  field: string;
+  constraint: "type" | "count" | "fields" | "string" | "enum" | "line_order" | "line_span";
+  expected: string;
+};
+
+export type ModelQualificationScope = {
+  target: string;
+  framework: string;
+  execution_profile: "standard" | "advanced";
+  checked_at: string;
+  source_fingerprint: string;
 };
 
 export type ProjectProfile = {
@@ -110,6 +156,8 @@ export type ProjectProfile = {
   configuration_files?: Array<string>;
   documentation?: Array<Record<string, string>>;
   qualification?: string;
+  source_directory?: string | null;
+  include_directory?: string | null;
 };
 
 export type FirmwareUploadManifest = {
@@ -134,7 +182,11 @@ export type VerificationReport = {
   checks?: Array<RequirementCheck>;
   missing?: Array<string>;
   semantic_review?: Record<string, unknown> | null;
+  completion_review?: CompletionReview | null;
+  completion_review_required?: boolean | null;
+  risk_review?: Record<string, unknown> | null;
   acceptance?: AcceptanceReport | null;
+  evidence_recovery?: Record<string, unknown>;
 };
 
 export type EngineToolCatalog = {
@@ -187,6 +239,8 @@ export type ProviderDiagnostics = {
   tool_event_count?: number;
   worker_exit_code?: number | null;
   worker_cleanup_incomplete?: boolean;
+  worker_phase?: "spawn" | "input" | "response" | null;
+  worker_failure_kind?: "memory_limit" | "invalid_runtime_options" | "abnormal_exit" | null;
   physical_attempt_id?: string | null;
   http_status?: number | null;
   provider_request_id?: string | null;
@@ -195,6 +249,7 @@ export type ProviderDiagnostics = {
   first_event_ms?: number | null;
   last_event_ms?: number | null;
   timeout_stage?: string | null;
+  failure_shape?: "invalid_stream_event" | null;
   duration_ms?: number | null;
   outbound_request_count?: number;
   physical_request_count?: number;
@@ -210,7 +265,9 @@ export type ProviderDiagnostics = {
   last_failure_code?: string | null;
   last_repair_outcome?: string | null;
   last_parse_reason?: string | null;
+  last_argument_issue?: ToolArgumentIssue | null;
   last_failure_origin?: string | null;
+  budget_persistence_cause?: string | null;
   last_response_shape?: string | null;
   last_response_tool_count?: number | null;
   stream_fallback_used?: boolean;
@@ -221,4 +278,32 @@ export type ProviderDiagnostics = {
   repair_skip_reason?: "physical_attempt_budget" | "request_budget" | "output_budget" | "time_budget" | null;
   initial_attempt_diagnostics?: AttemptDiagnostics | null;
   repair_attempt_diagnostics?: AttemptDiagnostics | null;
+};
+
+export type TaskExecution = {
+  version?: 1;
+  phase: "configuration" | "generation" | "repair" | "verification";
+  active_milestone?: Record<string, unknown> | null;
+  missing_artifacts?: Array<string>;
+  blocking_symbols?: Array<string>;
+  remaining_requirement_ids?: Array<string>;
+  stalled_turns?: number;
+  next_action: string;
+  instruction?: string;
+};
+
+export type LinkerDiagnostic = {
+  stage?: "link";
+  severity?: "error";
+  kind: string;
+  symbol: string;
+  path?: string | null;
+  line?: number | null;
+  message: string;
+};
+
+export type ModelQualification = {
+  status?: "untested" | "tested";
+  scopes?: Array<ModelQualificationScope>;
+  message?: string;
 };

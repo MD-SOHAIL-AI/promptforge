@@ -281,12 +281,16 @@ export interface ModelInfoResponse {
   free?: boolean | null;
   local: boolean;
   capabilities?: { text_generation?: boolean; native_tools?: boolean; json_schema?: boolean } | null;
+  availability?: "unknown" | "available" | "retired";
+  availability_reason?: string | null;
+  qualification?: import("./engine-contracts").ModelQualification;
 }
 
 export interface ProviderModelsResponse {
   models: ModelInfoResponse[];
   count?: number;
   source?: string;
+  checked_at?: string | null;
   error?: string | null;
 }
 
@@ -596,19 +600,21 @@ export interface ProductAgentRun {
     schema_version: 1;
     revisions: string[];
     requirements: Array<{id?: string; text?: string}>;
+    acceptance_checks?: Array<{id: string; kind: string; criterion: string}>;
     superseded_requirements?: Array<{id?: string; text?: string; superseded_by_request?: string}>;
     exclusions: string[];
     decisions: string[];
     milestone: Record<string, unknown> | null;
     expected_artifacts?: string[];
-    deliverable_manifest?: Array<{id: string; kind: string; path?: string; status: "missing" | "present" | "unverified" | "verified"; source_revision: string}>;
+    deliverable_manifest?: Array<{id: string; kind: string; path?: string; status: "missing" | "present" | "unverified" | "verified" | "reviewed" | "built"; source_revision: string}>;
+    execution?: import("./engine-contracts").TaskExecution;
     evidence: Array<{kind: string; ref: string; status: string}>;
     blockers: string[];
     next_action: string;
     recovery_state: {stalled_turns: number; reorientation_started_at: number | null};
   } | null;
   requirement_report?: import("./engine-contracts").VerificationReport | null;
-  failure?: { category: string; original_code: string; primary_code?: string; recovery_code?: string | null; terminal_stop_code?: string; timeout_stage?: string | null; physical_attempt_id?: string | null; origin: string; retryable: boolean; recovery_actions: string[] } | null;
+  failure?: { category: string; original_code: string; primary_code?: string; recovery_code?: string | null; terminal_stop_code?: string; timeout_stage?: string | null; physical_attempt_id?: string | null; cause_origin?: string | null; origin: string; retryable: boolean; recovery_actions: string[] } | null;
   schema_version?: string | number;
   run_id: string;
   project_id: string;

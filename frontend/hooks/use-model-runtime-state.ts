@@ -34,7 +34,7 @@ export function useModelRuntimeState() {
       setCatalog((current) => ({ ...current, [providerId]: result.models ?? [] }));
       setCatalogState((current) => ({
         ...current,
-        [providerId]: result.error ? "cached" : result.source === "live" ? "live" : "cached",
+        [providerId]: result.error ? "cached" : result.source === "provider" || result.source === "live" ? "live" : "cached",
       }));
     } catch {
       setCatalog((current) => ({ ...current, [providerId]: current[providerId] ?? [] }));

@@ -5,7 +5,7 @@ import hashlib
 import json
 import random
 import uuid
-from backend.model_router.run_budget import AgentBudgetExceeded
+from backend.model_router.run_budget import AgentBudgetExceeded, validate_attempt_charges
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
@@ -157,7 +157,7 @@ class AgentJobStore:
             value.pop("recovery_claim", None)
             if run_id not in value["run_ids"]:
                 value["run_ids"].append(run_id)
-            value.update(current_run_id=run_id,status="running",retry_due_at=None,blocking_reason=None)
+            value.update(current_run_id=run_id,status="running",paused_by=None,retry_due_at=None,blocking_reason=None)
             value.pop("request_recovery", None)
         return self.mutate(identity,change)
 
@@ -212,7 +212,11 @@ class AgentJobStore:
             if run.status not in {"completed","completed_with_warning"} and (run.classification in {
                 "AGENT_PROVIDER_BUDGET_EXCEEDED","AGENT_JOB_BUDGET_EXHAUSTED","AGENT_RUNTIME_TOOL_BUDGET_EXCEEDED","AGENT_RUNTIME_LIMIT_EXCEEDED", "AGENT_VERIFICATION_RESERVE_REACHED"}
                 or any(value["consumed"][key]>=limit for key,limit in value["limits"].items())):
-                value.update(status="paused",paused_by="budget",blocking_reason="AGENT_JOB_BUDGET_EXHAUSTED")
+                reason = ("AGENT_VERIFICATION_RESERVE_REACHED"
+                    if run.classification == "AGENT_VERIFICATION_RESERVE_REACHED"
+                    and not any(value["consumed"][key] >= limit for key, limit in value["limits"].items())
+                    else "AGENT_JOB_BUDGET_EXHAUSTED")
+                value.update(status="paused",paused_by="budget",blocking_reason=reason)
         return self.mutate(identity,change)
 
     def public(self, value):
@@ -362,6 +366,7 @@ class AgentJobStore:
 
     def reserve_provider_attempt(self, identity, run_id, charges):
         """Atomically charge every physical request, including independent reviews."""
+        numeric, attempt_id = validate_attempt_charges(charges)
         with self.store._transaction() as connection:
             row = connection.execute("SELECT payload_json FROM agent_jobs WHERE job_id=?", (identity,)).fetchone()
             if not row:
@@ -369,7 +374,7 @@ class AgentJobStore:
             value = _decode(row[0])
             if value["current_run_id"] != run_id or value["status"] not in {"running", "queued"} or value.get("paused_by"):
                 raise ValueError("AGENT_JOB_NOT_RUNNING")
-            attempt_id = charges.get("_attempt_id") or uuid.uuid4().hex
+            attempt_id = attempt_id or uuid.uuid4().hex
             previous = connection.execute("SELECT job_id,run_id,reserved_output FROM agent_provider_attempts WHERE attempt_id=?", (attempt_id,)).fetchone()
             if previous:
                 if tuple(previous) != (identity, run_id, charges["output_tokens"]):
@@ -377,7 +382,7 @@ class AgentJobStore:
                 return {key: value["consumed"][key] for key in ("requests", "output_tokens", "input_bytes")}
             reserved = {}
             for key in ("requests", "output_tokens", "input_bytes"):
-                charge = charges[key]
+                charge = numeric[key]
                 if not isinstance(charge, int) or isinstance(charge, bool) or charge < 0:
                     raise ValueError("AGENT_BUDGET_CHARGE_INVALID")
                 used = value["consumed"][key]

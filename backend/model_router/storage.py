@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from collections.abc import Iterator
 from pathlib import Path
@@ -22,6 +22,8 @@ _EMPTY_STATE: dict[str, dict[str, Any]] = {
     "routes": {},
     "health": {},
     "models": {},
+    "model_catalogs": {},
+    "model_availability": {},
 }
 
 
@@ -71,21 +73,27 @@ class ProviderSettingsStorage:
             self._snapshot.reset(token)
 
     def read(self) -> dict[str, Any]:
-        with self._lock:
+        with self._read_lock():
             return self._read_unlocked()
+
+    def _read_lock(self):
+        # A caller-local snapshot already owns its read data. Opening a SQLite
+        # write transaction for every cached getter defeats that snapshot and
+        # makes concurrent provider lists contend on thousands of transactions.
+        return nullcontext() if self._snapshot.get() is not None else self._lock
 
     def write(self, data: dict[str, Any]) -> None:
         with self._lock:
             self._write_unlocked(data)
 
     def provider_settings(self, provider_id: str) -> dict[str, Any]:
-        with self._lock:
+        with self._read_lock():
             providers = self._read_unlocked()["providers"]
             value = providers.get(provider_id, {})
             return dict(value) if isinstance(value, dict) else {}
 
     def custom_provider_definitions(self) -> dict[str, dict[str, Any]]:
-        with self._lock:
+        with self._read_lock():
             records = self._read_unlocked()["custom_providers"]
             return {
                 str(key): dict(value)
@@ -116,7 +124,7 @@ class ProviderSettingsStorage:
 
         with self._lock:
             data = self._read_unlocked(fresh=True)
-            for section in ("providers", "custom_providers", "health", "models"):
+            for section in ("providers", "custom_providers", "health", "models", "model_catalogs", "model_availability"):
                 records = dict(data[section])
                 records.pop(provider_id, None)
                 data[section] = records
@@ -159,7 +167,7 @@ class ProviderSettingsStorage:
             return dict(next_settings)
 
     def api_key(self, provider_id: str) -> str | None:
-        with self._lock:
+        with self._read_lock():
             settings = self.provider_settings(provider_id)
             legacy = settings.get("api_key")
             if isinstance(legacy, str) and legacy.strip():
@@ -181,7 +189,7 @@ class ProviderSettingsStorage:
             self._write_unlocked(data)
 
     def provider_health(self, provider_id: str) -> dict[str, Any]:
-        with self._lock:
+        with self._read_lock():
             records = self._read_unlocked()["health"]
             value = records.get(provider_id, {})
             return dict(value) if isinstance(value, dict) else {}
@@ -199,15 +207,40 @@ class ProviderSettingsStorage:
             self._write_unlocked(data)
 
     def provider_models(self, provider_id: str) -> list[dict[str, Any]]:
-        with self._lock:
+        with self._read_lock():
             records = self._read_unlocked()["models"]
             value = records.get(provider_id, [])
             if not isinstance(value, list):
                 return []
             return [dict(item) for item in value if isinstance(item, dict)]
 
-    def routes(self) -> dict[str, dict[str, Any]]:
+    def model_catalog_metadata(self, provider_id: str) -> dict[str, Any]:
+        with self._read_lock():
+            value = self._read_unlocked()["model_catalogs"].get(provider_id, {})
+            return dict(value) if isinstance(value, dict) else {}
+
+    def save_model_catalog_metadata(self, provider_id: str, metadata: dict[str, Any]) -> None:
         with self._lock:
+            data = self._read_unlocked(fresh=True)
+            data["model_catalogs"][provider_id] = dict(metadata)
+            self._write_unlocked(data)
+
+    def model_availability(self, provider_id: str, model_id: str) -> dict[str, Any]:
+        with self._read_lock():
+            records = self._read_unlocked()["model_availability"].get(provider_id, {})
+            value = records.get(model_id) if isinstance(records, dict) else None
+            return dict(value) if isinstance(value, dict) else {}
+
+    def save_model_availability(self, provider_id: str, model_id: str, status: dict[str, Any]) -> None:
+        with self._lock:
+            data = self._read_unlocked(fresh=True)
+            records = dict(data["model_availability"].get(provider_id, {}))
+            records[model_id] = dict(status)
+            data["model_availability"][provider_id] = records
+            self._write_unlocked(data)
+
+    def routes(self) -> dict[str, dict[str, Any]]:
+        with self._read_lock():
             routes = self._read_unlocked()["routes"]
             return {
                 str(key): dict(value)
@@ -241,23 +274,11 @@ class ProviderSettingsStorage:
             raise ModelRouterStorageError("model_router_settings_read_failed") from exc
         if not isinstance(data, dict):
             raise ModelRouterStorageError("model_router_settings_invalid_root")
-        return {
-            "providers": data.get("providers") if isinstance(data.get("providers"), dict) else {},
-            "custom_providers": data.get("custom_providers") if isinstance(data.get("custom_providers"), dict) else {},
-            "routes": data.get("routes") if isinstance(data.get("routes"), dict) else {},
-            "health": data.get("health") if isinstance(data.get("health"), dict) else {},
-            "models": data.get("models") if isinstance(data.get("models"), dict) else {},
-        }
+        return {key: data.get(key) if isinstance(data.get(key), dict) else {} for key in _EMPTY_STATE}
 
     def _write_unlocked(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "providers": data.get("providers", {}),
-            "custom_providers": data.get("custom_providers", {}),
-            "routes": data.get("routes", {}),
-            "health": data.get("health", {}),
-            "models": data.get("models", {}),
-        }
+        payload = {key: data.get(key, {}) for key in _EMPTY_STATE}
         serialized = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
         fd: int | None = None
         temporary_path: Path | None = None

@@ -1010,7 +1010,10 @@ class SubprocessManager:
         - Conflicting IDF_PATH / ARDUINO_DIR from the developer's shell
         - PYTHONPATH entries that change import resolution inside subprocesses
         """
-        env: dict[str, str] = {}
+        # Python-based toolchains write to captured pipes on Windows, where
+        # the default cp1252 encoding cannot represent registry descriptions.
+        # ProcessResult decodes UTF-8, so use the same encoding in the child.
+        env: dict[str, str] = {"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
 
         for key in config.env_allowlist:
             val = os.environ.get(key)

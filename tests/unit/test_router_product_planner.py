@@ -232,12 +232,12 @@ def test_agent_turn_keeps_time_for_later_recovery(tmp_path: Path) -> None:
     planner.request_turn(task="Inspect firmware", tool_results=(), allowed_tools=("read_file",),
         run_id="run-reserve", turn=1)
     turn_deadline = adapter.requests[0].execution_context.deadline
-    assert 78 < turn_deadline - time.monotonic() < 81
+    assert 115 < turn_deadline - time.monotonic() < 120
     planner.bind_deadline(time.monotonic() + 40)
     with pytest.raises(ApiPlannerError) as caught:
         planner.request_turn(task="Inspect firmware", tool_results=(), allowed_tools=("read_file",),
             run_id="run-reserve", turn=2)
-    assert caught.value.safe_code == "AGENT_RUNTIME_LIMIT_EXCEEDED"
+    assert caught.value.safe_code == "AGENT_VERIFICATION_RESERVE_REACHED"
     assert planner.to_safe_metadata()["last_failure_origin"] == "job_time_reserve"
     assert len(adapter.requests) == 1
 

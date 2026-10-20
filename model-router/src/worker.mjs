@@ -22,7 +22,7 @@ try {
   input = JSON.parse(body);
   const timer = setTimeout(() => {
     const error = new Error("Provider attempt total deadline exceeded");
-    error.stage = "attempt_total";
+    error.stage = input.policy?.total_stage ?? "attempt_total";
     controller.abort(error);
   }, input.policy?.total_ms ?? 300_000);
   try { await execute(input, emit, controller.signal); }

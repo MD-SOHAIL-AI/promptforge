@@ -46,6 +46,36 @@ class FakeProvider:
         return ModelResponse("OK", "openrouter", request.model_id or "model", latency_ms=1)
 
 
+def test_nim_catalog_refresh_uses_provider_discovery_and_marks_saved_retirement(tmp_path, monkeypatch):
+    from backend.model_router.providers.opencode import OpenCodeProvider
+    api = client(tmp_path)
+    with api:
+        service = api.app.state.services.model_router_service
+        reg = service.registry
+        retired = "qwen/qwen3-coder-480b-a35b-instruct"
+        model = "nvidia/nemotron-3-super-120b-a12b"
+        reg.configure_provider("nvidia_nim", {"api_key": "fixture", "default_model": retired})
+        service._providers["nvidia_nim"] = OpenCodeProvider(reg, "nvidia_nim")
+        observed = []
+        def respond(request):
+            observed.append(request)
+            assert request.method == "GET" and request.url.path == "/v1/models"
+            assert request.headers["Authorization"] == "Bearer fixture"
+            return httpx.Response(200, json={"data": [{"id": model}]})
+        actual_client = httpx.AsyncClient
+        with monkeypatch.context() as patch:
+            patch.setattr(httpx, "AsyncClient", lambda **kwargs: actual_client(transport=httpx.MockTransport(respond), **kwargs))
+            response = api.get("/models/providers/nvidia_nim/models")
+        assert response.status_code == 200, response.text
+        value = response.json()
+        assert value["source"] == "provider" and value["checked_at"] and value["error"] is None
+        models = {item["model_id"]: item for item in value["models"]}
+        assert set(models) == {model, retired}
+        assert models[model]["availability"] == "available" and models[model]["capabilities"]["native_tools"]
+        assert models[retired]["availability"] == "retired"
+        assert len(observed) == 1
+
+
 class FakeLLM(LLMService):
     provider = LLMProvider.OPENROUTER
     model = "test-model"
@@ -302,6 +332,31 @@ def test_model_list_failure_returns_fallback_models(tmp_path: Path) -> None:
         assert payload["models"]
 
 
+def test_complete_model_catalog_does_not_block_health_requests(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    entered = threading.Event()
+    release = threading.Event()
+    with client(tmp_path) as api:
+        registry = api.app.state.services.model_router_service.registry
+        original = registry.list_models
+        def gated(provider_id):
+            if not entered.is_set():
+                entered.set()
+                assert release.wait(5)
+            return original(provider_id)
+        monkeypatch.setattr(registry, "list_models", gated)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(api.get, "/v2/models/catalog")
+            try:
+                assert entered.wait(5)
+                assert api.get("/health").status_code == 200
+                assert not pending.done()
+            finally:
+                release.set()
+            assert pending.result(timeout=5).status_code == 200
+
+
 def test_cerebras_model_endpoint_imports_account_models_and_reports_auth_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -331,7 +386,7 @@ def test_cerebras_model_endpoint_imports_account_models_and_reports_auth_failure
         ]
 
         active_status = 401
-        failed = api.get("/models/providers/cerebras/models").json()
+        failed = api.get("/models/providers/cerebras/models?refresh=true").json()
         assert failed["source"] == "fallback"
         assert "HTTP 401" in failed["error"]
         assert [item["model_id"] for item in failed["models"]][:3] == [

@@ -45,6 +45,16 @@ def run(args, **kwargs):
     subprocess.run([str(arg) for arg in args], cwd=ROOT, check=True, timeout=1200, **kwargs)
 
 
+def configure_embedded_python(python):
+    # PlatformIO launches child interpreters without inheriting Python's -B.
+    # site processes this trusted startup file before importing packages, so
+    # nested tools cannot create unmanifested caches inside installed resources.
+    packages = Path(python) / "Lib/site-packages"
+    packages.mkdir(parents=True, exist_ok=True)
+    (packages / "00-forgex-runtime.pth").write_text(
+        "import sys; sys.dont_write_bytecode = True\n", encoding="utf-8")
+
+
 def prepare_upload_tool_wheel(pip_python, lock, stage):
     """Validate the pinned esptool source, then bind its pure Python wheel hash.
 
@@ -129,6 +139,7 @@ def prepare(pip_python):
          "--target", packages, "--platform", "win_amd64", "--python-version", "3.13",
          "--implementation", "cp", "--abi", "cp313", "--only-binary=:all:",
          "--find-links", upload_wheels, "--require-hashes", "-r", resolved_lock])
+    configure_embedded_python(python)
     (application / "forgex-pio.py").write_text("from platformio.__main__ import main\nmain()\n", encoding="utf-8")
     runtime_python = python / "python.exe"
     environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "FORGEX_ROOT": str(application),

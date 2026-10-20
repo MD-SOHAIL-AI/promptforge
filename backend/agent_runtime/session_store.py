@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 from .public_progress import public_text
+from backend.contracts.runtime_policy import MAX_AGENT_MESSAGE_CHARACTERS
 
 AGENT_SESSION_TERMINAL_STATUSES = frozenset(
     {"completed", "completed_with_warning", "failed", "cancelled", "blocked", "timed_out"}
@@ -91,6 +92,19 @@ class AgentMessage:
         )
 
 
+def _plan_step(item, text, status):
+    return {"text": text, "status": status, **{key: item[key] for key in
+        ("key", "paths", "requirement_ids", "depends_on", "verification") if key in item}}
+
+
+def _validate_plan_metadata(steps):
+    # Keep legacy records readable; structured graphs use the canonical rules
+    # and are included in the approval hash so paths cannot change unnoticed.
+    if any(set(step) - {"text", "status"} for step in steps):
+        from .generation_controller import validate_plan_steps
+        validate_plan_steps(steps)
+
+
 @dataclass(frozen=True, slots=True)
 class AgentPlanRecord:
     plan_id: str
@@ -98,7 +112,7 @@ class AgentPlanRecord:
     plan_hash: str
     source_run_id: str
     status: str
-    steps: tuple[Mapping[str, str], ...]
+    steps: tuple[Mapping[str, object], ...]
     created_at: str = field(default_factory=utc_now)
 
     def to_dict(self) -> dict[str, object]:
@@ -129,15 +143,19 @@ class AgentPlanRecord:
             or not isinstance(raw_steps, list)
         ):
             return None
-        steps: list[Mapping[str, str]] = []
+        steps: list[Mapping[str, object]] = []
         for item in raw_steps[:32]:
             if not isinstance(item, Mapping):
                 continue
             text = str(item.get("text") or "").strip()
             step_status = str(item.get("status") or "pending")
             if text:
-                steps.append({"text": text[:300], "status": step_status[:32]})
+                steps.append(_plan_step(item, text[:300], step_status[:32]))
         if not steps:
+            return None
+        try:
+            _validate_plan_metadata(steps)
+        except ValueError:
             return None
         return cls(
             plan_id,
@@ -386,7 +404,7 @@ class AgentSessionStore:
         run_id: str,
         steps: list[Mapping[str, object]] | tuple[Mapping[str, object], ...],
     ) -> AgentSession:
-        clean: list[Mapping[str, str]] = []
+        clean: list[Mapping[str, object]] = []
         for item in steps[:32]:
             text = (
                 str(item.get("text") or "").strip() if isinstance(item, Mapping) else ""
@@ -397,9 +415,10 @@ class AgentSessionStore:
                 else "pending"
             )
             if text:
-                clean.append({"text": text[:300], "status": status[:32]})
+                clean.append(_plan_step(item, text[:300], status[:32]))
         if not clean:
             raise ValueError("AGENT_PLAN_EMPTY")
+        _validate_plan_metadata(clean)
         canonical = json.dumps(
             clean, ensure_ascii=True, sort_keys=True, separators=(",", ":")
         )
@@ -698,7 +717,7 @@ def _content(value: str) -> str:
     text = value.strip()
     if not text:
         raise ValueError("AGENT_MESSAGE_EMPTY")
-    if len(text) > 16_384:
+    if len(text) > MAX_AGENT_MESSAGE_CHARACTERS:
         raise ValueError("AGENT_MESSAGE_TOO_LARGE")
     return text
 

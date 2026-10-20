@@ -43,6 +43,7 @@ class ProviderErrorCode(str, Enum):
     PROVIDER_CONTENT_MISSING = "PROVIDER_CONTENT_MISSING"
     PROVIDER_STREAM_INVALID = "PROVIDER_STREAM_INVALID"
     MODEL_CAPABILITY_UNSUPPORTED = "MODEL_CAPABILITY_UNSUPPORTED"
+    MODEL_RETIRED = "MODEL_RETIRED"
     MODEL_OUTPUT_EMPTY = "MODEL_OUTPUT_EMPTY"
     MODEL_OUTPUT_TRUNCATED = "MODEL_OUTPUT_TRUNCATED"
     MODEL_OUTPUT_NOT_JSON = "MODEL_OUTPUT_NOT_JSON"
@@ -210,6 +211,7 @@ def normalize_provider_error(value: str | None) -> ProviderErrorCode:
 def model_recovery_message(initial: str | None, terminal: str | None, recovery: str | None = None, skip: str | None = None) -> str | None:
     causes = {
         "MODEL_OUTPUT_TRUNCATED": "The model response was truncated before it produced a complete answer or action.",
+        "MODEL_RETIRED": "The provider retired this model. Choose another configured model to continue the saved work.",
         "MODEL_OUTPUT_EMPTY": "The model returned no usable answer or action.",
         "PROVIDER_STREAM_INVALID": "The provider stream ended before a complete response arrived.",
         "TOOL_ARGUMENTS_INVALID": "The model returned incomplete or invalid tool arguments.",
@@ -227,6 +229,16 @@ def model_recovery_message(initial: str | None, terminal: str | None, recovery: 
 
 
 def runtime_failure_message(classification: str | None) -> str:
+    if classification == "AGENT_REVIEW_REQUIRED":
+        return "The requirement review could not be validated. Generated files are saved; retry the review before completing the task."
+    if classification == "AGENT_PROVIDER_BUDGET_EXCEEDED":
+        return "This task reached ForgeX's local model request or context budget. Extend the job budget and resume the saved draft."
+    if classification == "AGENT_TURN_LIMIT_EXCEEDED":
+        return "An agent turn reached its local deadline. Continue the saved draft to finish verification."
+    if classification == "AGENT_VERIFICATION_RESERVE_REACHED":
+        return "Generation reached its verification reserve. Continue the saved draft or extend the task budget."
+    if classification == "AGENT_PROJECT_TRUST_REQUIRED":
+        return "The draft is saved. Allow local builds for this project, then verify the saved draft. No compiler or native test was run."
     if classification == "FORGEX_REQUEST_INVALID":
         return "ForgeX could not serialize the request locally. No provider request was sent for this attempt. Your saved work is preserved."
     if classification == "AGENT_RUNTIME_NO_PROGRESS":
@@ -257,6 +269,7 @@ def actionable_message(code: ProviderErrorCode, provider_name: str) -> str:
         ProviderErrorCode.PROVIDER_CONTENT_MISSING: "The model request succeeded, but it returned no final answer or tool call.",
         ProviderErrorCode.PROVIDER_STREAM_INVALID: f"{provider_name} returned an invalid streaming packet.",
         ProviderErrorCode.MODEL_CAPABILITY_UNSUPPORTED: "The selected model endpoint does not support the tool calling required by Agent mode. Choose a tool-capable model or refresh the model catalog and retry.",
+        ProviderErrorCode.MODEL_RETIRED: "The provider retired this model. Choose another configured model to continue the saved work.",
         ProviderErrorCode.MODEL_OUTPUT_EMPTY: "The model completed without producing an answer or tool plan.",
         ProviderErrorCode.MODEL_OUTPUT_TRUNCATED: "The model stopped before its answer or tool plan was complete.",
         ProviderErrorCode.MODEL_OUTPUT_NOT_JSON: "The model responded successfully, but ForgeX could not convert the output into JSON for a tool plan.",

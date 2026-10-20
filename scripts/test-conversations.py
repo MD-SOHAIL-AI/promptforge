@@ -57,7 +57,8 @@ async def main():
             url = f"http://127.0.0.1:{port}"
             server_config = ProcessConfig(args=[node, str(frontend / "node_modules/next/dist/bin/next"),
                 "dev", "--hostname", "127.0.0.1", "--port", str(port)], cwd=str(frontend),
-                env={"FORGEX_NEXT_DIST_DIR": ".next-e2e", "NEXT_TELEMETRY_DISABLED": "1"}, timeout_s=720)
+                env={"FORGEX_NEXT_DIST_DIR": ".next-e2e", "NEXT_TELEMETRY_DISABLED": "1",
+                     "NODE_OPTIONS": os.environ.get("NODE_OPTIONS", "--max-old-space-size=1024 --max-semi-space-size=1")}, timeout_s=720)
             server = asyncio.create_task(owned_operation(server_owner, manager.run(server_config)))
             expires = asyncio.get_running_loop().time() + 120
             while not await asyncio.to_thread(ready, url):

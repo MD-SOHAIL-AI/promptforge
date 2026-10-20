@@ -1240,7 +1240,15 @@ def _apply_openai_structured_output(
     native_tools = _native_tool_metadata(metadata)
     if native_tools:
         payload["tools"] = _thaw_json_value(native_tools)
-        payload["tool_choice"] = "auto"
+        choice = _thaw_json_value(metadata.get("forgex_tool_choice", "auto"))
+        if isinstance(choice, str) and choice in {"auto", "required", "none"}:
+            payload["tool_choice"] = choice
+        elif (isinstance(choice, dict) and set(choice) == {"type", "function"} and choice.get("type") == "function"
+                and isinstance(choice.get("function"), dict) and set(choice["function"]) == {"name"}
+                and choice["function"]["name"] in {tool["function"]["name"] for tool in native_tools}):
+            payload["tool_choice"] = choice
+        else:
+            raise ValueError("native_tool_choice_invalid")
         return
     spec = _structured_output_metadata(metadata)
     if spec is None:

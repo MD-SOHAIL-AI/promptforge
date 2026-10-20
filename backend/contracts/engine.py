@@ -45,7 +45,17 @@ class FirmwareUploadManifest(BaseModel):
 
 class RequirementReference(BaseModel):
     path: str
-    quote: str
+    quote: str = ""
+    start_line: int | None = None
+    end_line: int | None = None
+    content_sha256: str | None = None
+
+
+class DocumentationSection(BaseModel):
+    path: str
+    heading: str
+    start_line: int
+    end_line: int
 
 
 class RequirementCheck(BaseModel):
@@ -53,6 +63,12 @@ class RequirementCheck(BaseModel):
     status: str
     evidence: list[RequirementReference] = Field(default_factory=list)
     review_reason: str | None = None
+    issues: list[str] = Field(default_factory=list)
+    requirement: str | None = None
+    expected_evidence: list[str] = Field(default_factory=list)
+    execution_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    suggested_sections: list[DocumentationSection] = Field(default_factory=list)
+    rejection_attempts: int = 0
 
 
 class AcceptanceCheck(BaseModel):
@@ -68,6 +84,17 @@ class AcceptanceReport(BaseModel):
     checks: list[AcceptanceCheck]
 
 
+class CompletionReview(BaseModel):
+    passed: bool = False
+    source_revision: str
+    task_revision: str | None = None
+    issues: list[str] = Field(default_factory=list)
+    failure_code: str | None = None
+    review: dict[str, Any] = Field(default_factory=dict)
+    verification_level: str = "model_review"
+    hardware_verified: bool = False
+
+
 class VerificationReport(BaseModel):
     schema_version: int = 2
     task_revision: str | None = None
@@ -79,4 +106,8 @@ class VerificationReport(BaseModel):
     checks: list[RequirementCheck] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
     semantic_review: dict[str, Any] | None = None
+    completion_review: CompletionReview | None = None
+    completion_review_required: bool | None = None
+    risk_review: dict[str, Any] | None = None
     acceptance: AcceptanceReport | None = None
+    evidence_recovery: dict[str, Any] = Field(default_factory=dict)

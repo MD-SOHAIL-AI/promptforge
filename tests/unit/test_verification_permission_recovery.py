@@ -78,6 +78,12 @@ def test_api_permission_block_preserves_draft_then_verifies_without_a_model(tmp_
         assert first["stage_statuses"]["build"] == "blocked"
         assert first["job"]["blocking_reason"] == "AGENT_PROJECT_TRUST_REQUIRED"
         assert first["failure"]["category"] == "policy_rejection"
+        assert first["failure"]["origin"] == "forgex"
+        assert not first["failure"]["retryable"]
+        assert first["failure"]["recovery_actions"] == ["inspect", "trust_project", "verify_locally"]
+        assert first["summary"]["errors"][0]["code"] == "AGENT_PROJECT_TRUST_REQUIRED"
+        assert "No compiler or native test was run" in first["summary"]["errors"][0]["message"]
+        assert first["summary"]["next_suggested_action"] == "Allow local builds for this project, then verify the saved draft."
         assert first["change_set_id"] and first["recovery"]["actions"]["inspect"]["allowed"]
         assert not first["recovery"]["actions"]["verify_locally"]["allowed"]
         assert len(builder.calls) == 0

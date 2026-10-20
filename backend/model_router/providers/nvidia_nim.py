@@ -41,9 +41,11 @@ class NvidiaNimService(OpenAIService):
             # reasoning trace. force_nonempty_content is NVIDIA's documented
             # coding-agent compatibility setting.
             payload["chat_template_kwargs"] = {
-                "enable_thinking": False,
+                "enable_thinking": request.metadata.get("forgex_nvidia_low_effort_reasoning") is True,
                 "force_nonempty_content": True,
             }
+            if request.metadata.get("forgex_nvidia_low_effort_reasoning") is True:
+                payload["chat_template_kwargs"]["low_effort"] = True
         return payload
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import os
 from collections.abc import AsyncIterator, Mapping
@@ -13,6 +14,7 @@ from typing import Literal
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from backend.contracts.runtime_policy import MAX_AGENT_MESSAGE_CHARACTERS
 
 from ...agent_runtime.activity import AgentActivity, AgentActivityBroker
 from ...agent_runtime.product_agent_service import (
@@ -23,6 +25,7 @@ from ...agent_runtime.product_agent_service import (
     AUTONOMY_READ_ONLY,
     AUTONOMY_STAGED_CHANGES,
     ProductAgentService,
+    TERMINAL_AGENT_STATUSES,
 )
 from ...agent_runtime.session_store import AgentSession, AgentSessionStore
 from ...agent_runtime.task_contract import create_task_contract, revise_task_contract, clarification_choices, resolve_clarification, merge_clarification_answer
@@ -59,7 +62,7 @@ SSE_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "
 
 class AgentRuntimeStartRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=128)
-    instruction: str = Field(min_length=1, max_length=16_384)
+    instruction: str = Field(min_length=1, max_length=MAX_AGENT_MESSAGE_CHARACTERS)
     provider_id: str | None = Field(default=None, min_length=1, max_length=128)
     model_id: str | None = Field(default=None, min_length=1, max_length=256)
     autonomy: str = Field(default="staged_changes", min_length=1, max_length=64)
@@ -96,7 +99,7 @@ class AgentSessionMessageRequest(BaseModel):
     context_project_id: str | None = Field(default=None, max_length=128)
     context_paths: list[str] = Field(default_factory=list, max_length=12)
     retry: bool = False
-    content: str = Field(min_length=1, max_length=16_384)
+    content: str = Field(min_length=1, max_length=MAX_AGENT_MESSAGE_CHARACTERS)
     provider_id: str | None = Field(default=None, min_length=1, max_length=128)
     autonomy: str = Field(default="auto", min_length=1, max_length=64)
     board_port: str | None = Field(default=None, min_length=1, max_length=256)
@@ -285,6 +288,9 @@ async def delete_session(session_id: str, request: Request):
             await services(request).chat_service.cancel(session_id)
         elif session.active_run_id:
             run = _active_session_run(_service(request), session.active_run_id)
+            if getattr(run, "status", None) == "paused_model_unavailable":
+                # Retire automatic recovery before removing its conversation.
+                run = await _service(request).cancel(session.active_run_id)
             if _active_operation(run):
                 raise APIError(
                     409,
@@ -598,7 +604,10 @@ async def append_agent_session_message(
                 planner=service.provider_registry.resolve(chosen,model_id=body.model_id or session.model_id,session_id=session_id)
                 binder = getattr(planner, "bind_job_budget", None)
                 if callable(binder):
-                    binder(intake, lambda _: None, reserve=lambda charges: owner.intakes.reserve(intake_id, charges))
+                    options = {"reserve": lambda charges: owner.intakes.reserve(intake_id, charges)}
+                    if "settle" in inspect.signature(binder).parameters:
+                        options["settle"] = lambda attempt_id, actual: owner.intakes.settle(intake_id, attempt_id, actual)
+                    binder(intake, lambda _: None, **options)
                 decision,understanding=await interpret_task(planner,effective_content,decision)
                 model_choices=understanding["choices"]
                 owner.intakes.finish(intake_id, "ready", time.monotonic() - intake_started)
@@ -1386,12 +1395,12 @@ async def confirm_agent_runtime_flash(
 @router.get("/runs/{run_id}")
 def get_agent_runtime_run(run_id: str, request: Request) -> dict[str, object]:
     try:
-        run = _service(request).get_run(run_id)
+        run = _service(request).run_snapshot(run_id)
     except KeyError as exc:
         raise APIError(
             404, "AGENT_RUNTIME_RUN_NOT_FOUND", "Agent runtime run was not found."
         ) from exc
-    return {"run": run.to_safe_dict()}
+    return {"run": run}
 
 
 @router.get("/runs/{run_id}/build-evidence")
@@ -1891,7 +1900,7 @@ def _active_operation(run: object | None) -> bool:
     status = getattr(run, "status", None)
     return bool(
         status
-        and status not in {"completed", "failed", "cancelled", "blocked", "timed_out"}
+        and status not in TERMINAL_AGENT_STATUSES
     )
 
 

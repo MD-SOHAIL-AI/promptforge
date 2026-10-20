@@ -11,8 +11,9 @@ import hashlib
 import json
 import sqlite3
 import threading
+import time
 import uuid
-from contextlib import closing
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -76,6 +77,18 @@ class AgentOrchestrationStore:
             row = connection.execute("SELECT payload_json FROM agent_runs WHERE run_id=?", (run_id,)).fetchone()
         return _decode(row[0]) if row else None
 
+    def run_snapshot(self, run_id: str):
+        """Read the run and its job from the same committed SQLite snapshot."""
+        with closing(self._connect()) as connection:
+            if not getattr(self._transaction_state, "active", False):
+                connection.execute("BEGIN")
+            row = connection.execute("SELECT payload_json FROM agent_runs WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            run = _decode(row[0])
+            job_row = connection.execute("SELECT payload_json FROM agent_jobs WHERE job_id=?", (run.get("job_id"),)).fetchone()
+            return run, _decode(job_row[0]) if job_row else None
+
     def list_runs(self, *, session_id: str | None = None) -> tuple[dict[str, object], ...]:
         query = "SELECT payload_json FROM agent_runs"
         params: tuple[object, ...] = ()
@@ -107,9 +120,9 @@ class AgentOrchestrationStore:
     def acquire_lease(self, session_id: str, owner_id: str, *, ttl_seconds: int = 20) -> LeaseGrant:
         self.require_healthy_journal(session_id)
         ttl = max(5, min(int(ttl_seconds), 300))
-        now = datetime.now(timezone.utc)
-        expires = now + timedelta(seconds=ttl)
         with self._transaction() as connection:
+            now = datetime.now(timezone.utc)
+            expires = now + timedelta(seconds=ttl)
             row = connection.execute(
                 "SELECT owner_id,lease_epoch,expires_at FROM agent_session_leases WHERE session_id=?",
                 (session_id,),
@@ -131,9 +144,11 @@ class AgentOrchestrationStore:
     def renew_lease(self, grant: LeaseGrant, *, ttl_seconds: int = 20) -> LeaseGrant:
         self.require_healthy_journal(grant.session_id)
         ttl = max(5, min(int(ttl_seconds), 300))
-        now = datetime.now(timezone.utc)
-        expires = now + timedelta(seconds=ttl)
         with self._transaction() as connection:
+            # Lock acquisition can take time. Neither revive an expired owner
+            # nor return a renewal whose lifetime was spent waiting to write.
+            now = datetime.now(timezone.utc)
+            expires = now + timedelta(seconds=ttl)
             row = connection.execute(
                 "SELECT owner_id,lease_epoch,expires_at FROM agent_session_leases WHERE session_id=?",
                 (grant.session_id,),
@@ -292,6 +307,9 @@ class AgentOrchestrationStore:
         return event
 
     def notify_observers(self, session_id):
+        if getattr(self._transaction_state, "active", False):
+            self._transaction_state.notifications.add(session_id)
+            return
         with self._lock:
             observers = tuple(self._observers)
         for observer in observers:
@@ -335,7 +353,8 @@ class AgentOrchestrationStore:
 
     def verify_journal(self, session_id: str) -> dict[str, object]:
         with closing(self._connect()) as connection:
-            connection.execute("BEGIN")
+            if not connection.in_transaction:
+                connection.execute("BEGIN")
             return self._verify_snapshot(connection, session_id)
 
     def _verify_snapshot(self, connection, session_id: str) -> dict[str, object]:
@@ -414,7 +433,8 @@ class AgentOrchestrationStore:
     def snapshot_events(self, session_id: str, *, run_id: str | None = None, after_sequence: int = 0, observation: bool = False):
         """Page a consistent read snapshot through its captured head."""
         with closing(self._connect()) as connection:
-            connection.execute("BEGIN")
+            if not connection.in_transaction:
+                connection.execute("BEGIN")
             result = self._observation_integrity(connection, session_id) if observation else self._verify_snapshot(connection, session_id)
             if not result["healthy"] or session_id in self._quarantined:
                 self._quarantined[session_id] = str(result.get("reason") or "quarantined")
@@ -977,6 +997,9 @@ class AgentOrchestrationStore:
         return str(row[0]) if row else None
 
     def _connect(self) -> sqlite3.Connection:
+        current = getattr(self._transaction_state, "connection", None)
+        if current is not None:
+            return _BorrowedConnection(current)
         connection = sqlite3.connect(str(self.path), timeout=10.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA synchronous=FULL")
@@ -985,22 +1008,56 @@ class AgentOrchestrationStore:
     def _transaction(self):
         return _Transaction(self)
 
+    @contextmanager
+    def atomic(self):
+        """Join related writes explicitly; publish notifications after commit."""
+        previous = getattr(self._transaction_state, "allow_join", False)
+        self._transaction_state.allow_join = True
+        try:
+            with self._transaction() as connection:
+                yield connection
+        finally:
+            self._transaction_state.allow_join = previous
+
+
+class _BorrowedConnection:
+    """A read helper cannot close the transaction that owns its connection."""
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    def close(self):
+        pass
+
 
 class _Transaction:
     def __init__(self, store: AgentOrchestrationStore) -> None:
         self.store = store; self.connection: sqlite3.Connection | None = None
     def __enter__(self) -> sqlite3.Connection:
+        self.started = time.monotonic()
         self.store._lock.acquire()
+        self.locked_at = time.monotonic()
         try:
             if getattr(self.store._transaction_state, "active", False):
-                raise RuntimeError("Nested orchestration store transactions are not supported")
+                if not getattr(self.store._transaction_state, "allow_join", False):
+                    raise RuntimeError("Nested orchestration store transactions are not supported")
+                self.connection = self.store._transaction_state.connection
+                self.savepoint = "joined_" + uuid.uuid4().hex
+                self.notifications_before = set(self.store._transaction_state.notifications)
+                self.connection.execute("SAVEPOINT " + self.savepoint)
+                return self.connection
             self.connection = self.store._connect()
             self.connection.execute("BEGIN IMMEDIATE")
+            self.transaction_at = time.monotonic()
             self.store._transaction_state.active = True
+            self.store._transaction_state.connection = self.connection
+            self.store._transaction_state.notifications = set()
             return self.connection
         except BaseException:
             try:
-                if self.connection is not None:
+                if self.connection is not None and not hasattr(self, "savepoint"):
                     self.connection.close()
                     self.connection = None
             finally:
@@ -1008,13 +1065,43 @@ class _Transaction:
             raise
     def __exit__(self, exc_type, exc, traceback) -> None:
         assert self.connection is not None
+        if hasattr(self, "savepoint"):
+            try:
+                if exc_type:
+                    self.connection.execute("ROLLBACK TO " + self.savepoint)
+                    self.store._transaction_state.notifications = self.notifications_before
+                self.connection.execute("RELEASE " + self.savepoint)
+            finally:
+                self.store._lock.release()
+            return
+        committed = False
+        notifications = self.store._transaction_state.notifications
         try: self.connection.rollback() if exc_type else self.connection.commit()
+        # Notification callbacks may open another connection. They must run
+        # after releasing the writer, and never observe a rolled-back event.
+        # A failed commit skips publication as well.
+        except BaseException:
+            raise
+        else:
+            committed = exc_type is None
         finally:
             try:
                 self.connection.close()
             finally:
                 self.store._transaction_state.active = False
+                self.store._transaction_state.connection = None
                 self.store._lock.release()
+                finished = time.monotonic()
+                if finished - self.started >= .1:
+                    from backend.observability.diagnostics import emit_diagnostic_event
+                    emit_diagnostic_event(component="storage", event="storage.transaction.slow", level="WARNING",
+                        duration_ms=round((finished - self.started) * 1000),
+                        thread_lock_wait_ms=round((self.locked_at - self.started) * 1000),
+                        database_lock_wait_ms=round((self.transaction_at - self.locked_at) * 1000),
+                        transaction_ms=round((finished - self.transaction_at) * 1000))
+        if committed:
+            for session_id in notifications:
+                self.store.notify_observers(session_id)
 
 
 def _encode(value: Mapping[str, object]) -> str:

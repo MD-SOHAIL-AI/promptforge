@@ -12,6 +12,7 @@ import { useAgentChangeSet } from "@/hooks/use-agent-change-set";
 import { useWorkspacePreferences } from "@/hooks/workspace-preferences";
 import type { DetectedBoard, ProductAgentRun } from "@/types";
 import {promptForgeApi} from "@/lib/api";
+import { canApplyAgentChanges } from "@/lib/agent-recovery";
 
 type Workspace = ReturnType<typeof import("@/hooks/use-promptforge-workspace").usePromptForgeWorkspace>;
 
@@ -47,10 +48,14 @@ export function CodeCanvas({
 }) {
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const { changeSet, loading } = useAgentChangeSet(run);
+  const canApply = !loading && canApplyAgentChanges(run, changeSet);
   const preferences = useWorkspacePreferences();
   const editorSettings = { fontSize: Number(preferences["editor.font_size"] ?? 14), tabSize: Number(preferences["editor.tab_size"] ?? 2), wordWrap: preferences["editor.word_wrap"] !== false, minimapEnabled: preferences["editor.minimap_enabled"] === true, showLineNumbers: preferences["editor.show_line_numbers"] !== false, showBreadcrumbs: preferences["editor.show_breadcrumbs"] !== false, formatOnSave: preferences["editor.format_on_save"] === true, autoSave: preferences["editor.auto_save"] === true };
-  const pendingCount = pendingWorkspaceChangeCount(run);
+  const pendingCount = run?.classification === "CHANGESET_APPLIED" || changeSet?.status === "applied"
+    || changeSet?.status === "discarded" ? 0 : pendingWorkspaceChangeCount(run);
   const applyPendingChanges = async () => {
+    if (!canApply || applyingChanges) return;
     setApplyError(null);
     try {
       const applied = await onApply();
@@ -77,7 +82,7 @@ export function CodeCanvas({
             </div>
             <div className="flex shrink-0 gap-2">
               <button onClick={onOpenReview} className="fx-nexus-action"><FileDiff className="h-3.5 w-3.5" /> Review files</button>
-              <button onClick={() => void applyPendingChanges()} disabled={applyingChanges} className="fx-primary-action disabled:opacity-50">{applyingChanges ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Apply changes</button>
+              {canApply ? <button onClick={() => void applyPendingChanges()} disabled={applyingChanges} className="fx-primary-action disabled:opacity-50">{applyingChanges ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Apply changes</button> : null}
             </div>
           </div>
         </div> : null}
@@ -151,6 +156,7 @@ export function BuildCanvas({ workspace, run, onBack, onOpenTerminal, onFlash }:
 
 export function ReviewCanvas({ run, initialPath = null, applyingChanges = false, onBack, onApply, onApplied, onDiscard }: { run: ProductAgentRun | null; initialPath?: string | null; applyingChanges?: boolean; onBack: () => void; onApply: () => Promise<ProductAgentRun | null> | ProductAgentRun | null; onApplied: () => Promise<unknown> | unknown; onDiscard?: () => Promise<unknown> }) {
   const { changeSet, loading } = useAgentChangeSet(run);
+  const canApply = !loading && canApplyAgentChanges(run, changeSet);
   const [selected, setSelected] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
@@ -161,6 +167,7 @@ export function ReviewCanvas({ run, initialPath = null, applyingChanges = false,
   }, [changeSet?.change_set_id, firstChangedPath, initialPath]);
   const current = changeSet?.changed_files.find((file) => file.path === selected) ?? changeSet?.changed_files[0] ?? null;
   const applyPendingChanges = async () => {
+    if (!canApply || applyingChanges) return;
     setApplyError(null);
     try {
       const applied = await onApply();
@@ -196,7 +203,7 @@ export function ReviewCanvas({ run, initialPath = null, applyingChanges = false,
       }}>{discarding ? "Discarding…" : "Discard draft"}</button> : null}
       {applyError ? <span role="alert">{applyError}</span> : null}
     </div> : null}
-    {changeSet?.status === "pending" && run?.status === "completed" ? <div className="flex h-16 shrink-0 items-center justify-between gap-4 border-t border-[var(--fx-border-soft)] bg-[color-mix(in_srgb,var(--fx-panel)_84%,transparent)] px-3.5"><div className="min-w-0 text-[10px] text-[var(--fx-text-muted)]"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[var(--fx-success)]" /> Changes are still isolated from the active workspace.</div>{applyError ? <div className="mt-1 truncate text-[var(--fx-error)]">{applyError}</div> : null}</div><button onClick={() => void applyPendingChanges()} disabled={applyingChanges || loading} className="fx-primary-action shrink-0 disabled:opacity-50">{applyingChanges ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Apply changes</button></div> : null}
+    {canApply ? <div className="flex h-16 shrink-0 items-center justify-between gap-4 border-t border-[var(--fx-border-soft)] bg-[color-mix(in_srgb,var(--fx-panel)_84%,transparent)] px-3.5"><div className="min-w-0 text-[10px] text-[var(--fx-text-muted)]"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-[var(--fx-success)]" /> Changes are still isolated from the active workspace.</div>{applyError ? <div className="mt-1 truncate text-[var(--fx-error)]">{applyError}</div> : null}</div><button onClick={() => void applyPendingChanges()} disabled={applyingChanges || loading} className="fx-primary-action shrink-0 disabled:opacity-50">{applyingChanges ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Apply changes</button></div> : null}
   </div>;
 }
 

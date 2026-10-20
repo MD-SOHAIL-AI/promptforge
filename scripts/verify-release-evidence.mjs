@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import {validateAgentQuality, validateMaintenanceQuality} from "./verify-agent-quality.mjs";
+import {validateReliabilityMatrix} from "./verify-runtime-reliability.mjs";
 
 export function validateReleaseEvidence({ sha256, build, hardware, machines, prompts, fixtureSha256 }) {
   const errors = [];
@@ -38,8 +39,8 @@ export function validateReleaseEvidence({ sha256, build, hardware, machines, pro
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [installer, hardwarePath, machinesPath, promptsPath, qualityPath, maintenancePath] = process.argv.slice(2);
-  if (!installer || !hardwarePath || !machinesPath || !promptsPath || !qualityPath || !maintenancePath) throw new Error("Usage: npm run verify:release -- installer.exe hardware.json clean-machines.json agent-prompts.json agent-quality.json agent-maintenance.json");
+  const [installer, hardwarePath, machinesPath, promptsPath, qualityPath, maintenancePath, reliabilityPath] = process.argv.slice(2);
+  if (!installer || !hardwarePath || !machinesPath || !promptsPath || !qualityPath || !maintenancePath || !reliabilityPath) throw new Error("Usage: npm run verify:release -- installer.exe hardware.json clean-machines.json agent-prompts.json agent-quality.json agent-maintenance.json runtime-reliability.json");
   const sha256 = createHash("sha256").update(await readFile(installer)).digest("hex");
   const build = JSON.parse(await readFile(installer + ".evidence.json", "utf8"));
   const hardware = JSON.parse(await readFile(hardwarePath, "utf8"));
@@ -55,6 +56,17 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const maintenance = validateMaintenanceQuality({report:JSON.parse(await readFile(maintenancePath,"utf8")),suite:JSON.parse(maintenanceBytes),fixtureSha256:createHash("sha256").update(maintenanceBytes).digest("hex"),installerSha256:sha256,manifestSha256:build.resourceManifestSha256});
   result.errors.push(...maintenance.errors);
   result.passed = result.passed && maintenance.passed;
+  const incidentBytes = await readFile("tests/fixtures/runtime-incident-smart-monitor.json");
+  const targetBytes = await readFile("tests/fixtures/agent-target-suite.json");
+  const runtimePolicy = JSON.parse(await readFile("docs/runtime-policy.generated.json", "utf8"));
+  const reliability = validateReliabilityMatrix({bundle:JSON.parse(await readFile(reliabilityPath,"utf8")),
+    installerSha256:sha256,manifestSha256:build.resourceManifestSha256,
+    incidentFixture:JSON.parse(incidentBytes),incidentFixtureSha256:createHash("sha256").update(incidentBytes).digest("hex"),
+    generationSuite:JSON.parse(qualityBytes),generationFixtureSha256:createHash("sha256").update(qualityBytes).digest("hex"),
+    maintenanceSuite:JSON.parse(maintenanceBytes),maintenanceFixtureSha256:createHash("sha256").update(maintenanceBytes).digest("hex"),
+    targetSuite:JSON.parse(targetBytes),targetFixtureSha256:createHash("sha256").update(targetBytes).digest("hex"),profiles:runtimePolicy.profiles});
+  result.errors.push(...reliability.errors);
+  result.passed = result.passed && reliability.passed;
   if (result.passed) {
     await new Promise((resolve, reject) => {
       const child = spawn("powershell.exe", ["-NoProfile", "-File", "scripts/verify-installer-signature.ps1", "-Installer", path.resolve(installer)], { stdio: "inherit", windowsHide: true });

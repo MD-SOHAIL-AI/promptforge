@@ -163,7 +163,7 @@ class ProductProviderRegistry:
             session_id=session_id,
             fallback_provider_id=None,
             fallback_model_id=None,
-            max_tokens=4096,
+            max_tokens=8192,
             # The turn owner must outlive the adapter's per-request deadline so
             # same-model retry and error normalization can finish cleanly.
             turn_timeout_s=300.0,

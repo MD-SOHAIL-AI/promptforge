@@ -80,7 +80,7 @@ export function resolveBackendPython(options: PythonResolverOptions): PythonReso
       "",
       "Create and install the repository virtual environment:",
       platform === "win32"
-        ? "py -3.11 -m venv .venv"
+        ? "py -3.13 -m venv .venv"
         : "python3 -m venv .venv",
       platform === "win32"
         ? ".venv\\Scripts\\python.exe -m pip install -r requirements.txt"

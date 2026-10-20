@@ -37,3 +37,16 @@ export function apiErrorCode(value: unknown): string | undefined {
   }
   return undefined;
 }
+export function apiValidationMessage(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const details = (value as Record<string, unknown>).details;
+  if (!details || typeof details !== "object") return null;
+  const errors = (details as Record<string, unknown>).errors;
+  if (!Array.isArray(errors)) return null;
+  return errors.slice(0, 3).map((error: unknown) => {
+    if (!error || typeof error !== "object") return "";
+    const item = error as Record<string, unknown>;
+    const location = Array.isArray(item.location) ? item.location.filter(part => part !== "body").join(".") : "request";
+    return typeof item.message === "string" ? `${location || "request"}: ${item.message}` : "";
+  }).filter(Boolean).join("; ") || null;
+}

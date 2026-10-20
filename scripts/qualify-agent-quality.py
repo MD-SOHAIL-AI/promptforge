@@ -34,15 +34,26 @@ def assess_turn(case,run,root,provider,model):
         valid=valid and all((root/name).read_text()==content for name,content in case.get("seed_files",{}).items())
     if "current_source" in case["required_evidence"]:
         valid=valid and requirements.get("valid") is True and requirements.get("verification_level") == "model_review" and requirements.get("workspace_revision")==build.get("workspace_revision")
+        valid=valid and requirements.get("task_revision") == run.get("task_revision")
     if "current_firmware_build" in case["required_evidence"]:
         manifest = build.get("artifact_manifest") or {}
         application = next((item for item in manifest.get("images", []) if item.get("role") == "application"), None)
         binary=Path(manifest["artifact_root"]) / application["filename"] if application else Path(build.get("firmware_path") or "missing")
         valid=valid and build.get("success") is True and binary.is_file() and hashlib.sha256(binary.read_bytes()).hexdigest()==build.get("firmware_hash")
+        if case.get("platformio_board"):
+            valid=valid and build.get("board") == case["platformio_board"] and build.get("environment") == case["environment"]
     if "native_tests" in case["required_evidence"]:
         valid=valid and acceptance.get("passed") is True and any(item.get("kind")=="unit_tests" and item.get("passed") is True for item in acceptance.get("checks",[]))
+    job=run.get("job") or {}
+    budget=job.get("budget") or {}
     return {"run_id":run.get("run_id"),"passed":bool(valid),"status":run.get("status"),"classification":run.get("classification"),
         "provider":run.get("provider_id"),"model":run.get("model_id"),"task_revision":run.get("task_revision"),
+        "actual_provider":run.get("actual_provider_id", provider), "actual_model":run.get("model_id"),
+        "requirement_revision":requirements.get("workspace_revision"), "build_revision":build.get("workspace_revision"),
+        "review_task_revision":requirements.get("task_revision"), "execution_profile":job.get("execution_profile"),
+        "board":build.get("board"), "environment":build.get("environment"),
+        "consumed":budget.get("consumed", job.get("consumed", {})), "limits":budget.get("limits", job.get("limits", {})),
+        "completion_review":requirements.get("completion_review"),
         "source_revision":requirements.get("workspace_revision"),"firmware_sha256":build.get("firmware_hash"),
         "source_verified":requirements.get("valid") is True,"verification_level":requirements.get("verification_level"),"acceptance":acceptance,"job":run.get("job")}
 
@@ -54,9 +65,11 @@ def qualify(args):
         raise ValueError("QUALIFICATION_REQUIRES_LOCAL_BACKEND")
     if len(token)<32 or args.provider in {"fake_planner","verified_template"}:
         raise ValueError("QUALIFICATION_REQUIRES_AUTH_AND_REAL_PROVIDER")
-    suite_path = ROOT / "tests/fixtures/agent-maintenance-suite.json" if getattr(args, "suite", "generation") == "maintenance" else SUITE
+    suite_kind = getattr(args, "suite", "generation")
+    suite_path = (ROOT / "tests/fixtures/agent-maintenance-suite.json" if suite_kind == "maintenance" else
+                  ROOT / "tests/fixtures/agent-target-suite.json" if suite_kind == "targets" else SUITE)
     suite=json.loads(suite_path.read_text())
-    minimum, total = (57, 60) if getattr(args, "suite", "generation") == "maintenance" else (86, 90)
+    minimum, total = (57, 60) if suite_kind == "maintenance" else (len(suite["cases"])*3, len(suite["cases"])*3) if suite_kind == "targets" else (86, 90)
     installer_hash=hashlib.sha256(args.installer.read_bytes()).hexdigest()
     build=json.loads(Path(str(args.installer)+".evidence.json").read_text())
     def request(route,body=None):
@@ -69,7 +82,12 @@ def qualify(args):
         raise ValueError("QUALIFICATION_RUNTIME_DOES_NOT_MATCH_INSTALLER")
     args.workspace.mkdir(parents=True,exist_ok=True)
     args.output.parent.mkdir(parents=True,exist_ok=True)
+    def endpoint_hash():
+        provider=next(item for item in request("/models/providers")["providers"] if item["provider_id"] == args.provider)
+        return hashlib.sha256((provider.get("base_url") or "").rstrip("/").encode()).hexdigest()
     report={"schema_version":2,"suite_version":suite["suite_version"],"fixture_sha256":hashlib.sha256(suite_path.read_bytes()).hexdigest(),
+        "endpoint_sha256":endpoint_hash(),
+        "execution_profile": args.execution_profile,
         "installer_sha256":installer_hash,"resource_manifest_sha256":provenance["resource_manifest_sha256"],
         "backend_source_fingerprint":provenance["source_fingerprint"],"provider":args.provider,"model":args.model,
         "nonce":secrets.token_hex(12),"repetitions":3,"cases":[],"automated_passed":False,"passed":False}
@@ -90,7 +108,7 @@ def qualify(args):
             turns=[]
             for prompt in (case["request"],case["follow_up"]):
                 route="/agent-runtime/sessions/"+session["session_id"]+"/messages"
-                settings={"provider_id":args.provider,"model_id":args.model,"autonomy":"auto","board_type":"esp32","environment":"esp32dev",
+                settings={"provider_id":args.provider,"model_id":args.model,"autonomy":"auto","board_type":case.get("board_type", "esp32"),"environment":case.get("environment", "esp32dev"),
                     "execution_profile": args.execution_profile}
                 response=request(route,{**settings,"content":prompt})
                 if response["session"].get("pending_clarification") and case.get("clarification_answer"):
@@ -102,7 +120,14 @@ def qualify(args):
                 started = time.monotonic()
                 run, attempts = wait_for_job(request, run,
                     started + (2760 if args.execution_profile == "advanced" else 960))
+                current_provenance = request("/diagnostics/runtime")
                 evidence=assess_turn(case,run,root,args.provider,args.model)
+                evidence["backend_source_fingerprint"] = current_provenance["source_fingerprint"]
+                evidence["resource_manifest_sha256"] = current_provenance.get("resource_manifest_sha256")
+                if (evidence["backend_source_fingerprint"] != report["backend_source_fingerprint"]
+                        or evidence["resource_manifest_sha256"] != report["resource_manifest_sha256"]
+                        or endpoint_hash() != report["endpoint_sha256"]):
+                    evidence["passed"] = False
                 evidence["recovery_metrics"] = recovery_metrics(attempts, time.monotonic() - started)
                 evidence["diagnostic_export"]=request("/diagnostics/runs/"+run["run_id"]+"/export")
                 turns.append(evidence)
@@ -124,7 +149,7 @@ def qualify(args):
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("--url",default="http://127.0.0.1:8000")
-    parser.add_argument("--suite",choices=("generation", "maintenance"),default="generation")
+    parser.add_argument("--suite",choices=("generation", "maintenance", "targets"),default="generation")
     parser.add_argument("--installer",type=Path,required=True)
     parser.add_argument("--workspace",type=Path,required=True)
     parser.add_argument("--provider",required=True)

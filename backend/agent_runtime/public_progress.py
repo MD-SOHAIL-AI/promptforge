@@ -69,6 +69,7 @@ class LivePlan:
 
     def update(self, steps: object) -> dict[str, object]:
         previous = {str(s["text"]): s for s in self.steps}
+        previous_keys = {s["key"]: s for s in self.steps if s.get("key")}
         next_steps = []
         for raw in steps if isinstance(steps, (tuple, list)) else []:
             if not isinstance(raw, Mapping):
@@ -78,7 +79,7 @@ class LivePlan:
                 continue
             if any(step["text"] == text for step in next_steps):
                 continue
-            old = previous.get(text)
+            old = previous_keys.get(raw.get("key")) or previous.get(text)
             identity = str(old["id"]) if old else f"step-{uuid.uuid4().hex}"
             status = str(raw.get("status", "pending"))
             if status not in (
@@ -94,7 +95,7 @@ class LivePlan:
             verification = str(
                 raw.get("verification")
                 or (old or {}).get("verification")
-                or "inspection"
+                or ("edit" if raw.get("paths") else "inspection")
             )
             required = {
                 "build": {"build_firmware"},
@@ -129,6 +130,7 @@ class LivePlan:
                     "evidence": evidence,
                     "evidence_labels": self.evidence_labels.get(identity, [])[-32:],
                     "verification": verification,
+                    **{key: raw[key] for key in ("key", "paths", "requirement_ids", "depends_on") if key in raw},
                 }
             )
         for old in self.steps:
@@ -144,3 +146,32 @@ class LivePlan:
         self.steps = next_steps[:64]
         self.revision += 1
         return {"plan_id": self.plan_id, "revision": self.revision, "steps": self.steps}
+
+    def invalidate(self, paths=None) -> None:
+        """Changed source reopens affected work; old tool IDs cannot reclose it."""
+        paths = None if paths is None else set(paths)
+        affected = set()
+        for step in self.steps:
+            if paths is None or step.get("verification") in {"build", "simulation"} or set(step.get("paths", ())) & paths:
+                affected.add(step.get("key", step["id"]))
+        for _ in self.steps:
+            affected.update(step.get("key", step["id"]) for step in self.steps
+                if set(step.get("depends_on", ())) & affected)
+        for step in self.steps:
+            if step.get("key", step["id"]) in affected:
+                if step["status"] == "completed":
+                    step["status"] = "pending"
+                for collection in (self.evidence, self.evidence_tools, self.evidence_labels):
+                    collection.pop(step["id"], None)
+                step["evidence"] = []
+                step["evidence_labels"] = []
+
+    def restore(self, steps) -> None:
+        """Only the host-sealed checkpoint may supply previously observed evidence."""
+        self.steps = [dict(item) for item in steps if isinstance(item, Mapping) and item.get("id")][:64]
+        for step in self.steps:
+            identity = str(step["id"])
+            self.evidence[identity] = list(step.get("evidence", ()))[:32]
+            self.evidence_labels[identity] = list(step.get("evidence_labels", ()))[:32]
+            # Completed steps stay visible. New completion needs new tool evidence.
+            self.evidence_tools[identity] = set()

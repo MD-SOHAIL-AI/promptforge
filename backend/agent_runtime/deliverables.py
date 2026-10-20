@@ -33,7 +33,8 @@ def infer_deliverables(contract: Mapping[str, object]) -> list[dict[str, object]
     for kind, requested in (
         ("firmware_source", is_project),
         ("project_configuration", is_project and bool(re.search(r"\bplatformio\b", text, re.I))),
-        ("documentation", bool(re.search(r"\b(?:readme|documentation|wiring|calibration|test checklist)\b", text, re.I))),
+        ("documentation", any("documentation" in item.get("evidence_kinds", ()) for item in requirements if isinstance(item, Mapping))
+         or bool(re.search(r"\b(?:readme|documentation|wiring|calibration|test checklist)\b", text, re.I))),
     ):
         if requested and kind not in kinds:
             result.append({"id": kind, "kind": kind})
@@ -49,7 +50,7 @@ def infer_deliverables(contract: Mapping[str, object]) -> list[dict[str, object]
             ("test_checklist", r"\b(?:test(?:ing)? checklist|testing procedure)\b"),
             ("setup", r"\b(?:setup|installation)\b"), ("usage", r"\b(?:usage|instructions)\b")) if re.search(pattern, text, re.I)]
         documentation["requirement_ids"] = [str(item["id"]) for item in requirements if isinstance(item, Mapping)
-            and re.search(r"\b(?:readme|documentation|wiring|calibration|test checklist|instructions)\b", str(item.get("text", "")), re.I)]
+            and ("documentation" in item.get("evidence_kinds", ()) or re.search(r"\b(?:readme|documentation|wiring|calibration|test checklist|instructions)\b", str(item.get("text", "")), re.I))]
     return result[:96]
 
 

@@ -1,4 +1,5 @@
 import { desktopLog } from "./desktop-logging";
+import { emitDiagnosticEvent } from "./diagnostics";
 import { BackendRecoveryPolicy } from "./backend-recovery";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -66,6 +67,7 @@ export class BackendManager {
   private readonly localToken: string | undefined;
   private ownsProcess = false;
   private intentionalStop = false;
+  private readonly terminatingProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private healthCheckRunning = false;
@@ -75,7 +77,10 @@ export class BackendManager {
   constructor(options: BackendManagerOptions = {}) {
     this.port = options.port ?? resolveBackendPort();
     this.cwd = options.cwd ?? resolveBackendCwd();
-    this.readinessTimeoutMs = options.readinessTimeoutMs ?? 60_000;
+    const configuredStartupTimeout = Number(process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS ?? 60_000);
+    this.readinessTimeoutMs = options.readinessTimeoutMs ?? (
+      Number.isFinite(configuredStartupTimeout) && configuredStartupTimeout >= 1_000 && configuredStartupTimeout <= 300_000
+        ? configuredStartupTimeout : 60_000);
     this.readinessIntervalMs = options.readinessIntervalMs ?? 500;
     this.healthProbe = options.healthProbe ?? fetchForgeXHealth;
     this.spawnBackend = options.spawnBackend ?? spawn;
@@ -207,6 +212,8 @@ export class BackendManager {
     this.ownsProcess = true;
     const child = this.process;
     const backendInstance = randomUUID();
+    emitDiagnosticEvent({component: "backend-supervisor", event: "backend.spawned", level: "INFO",
+      backend_pid: child?.pid, backend_instance: backendInstance, port: this.port});
     desktopLog.log(`[forgex-backend] Spawned backend pid=${this.process.pid ?? "unknown"} port=${this.port}`);
     this.process.stdout.on("data", (chunk: Buffer) => {
       desktopLog.log(`[forgex-backend] ${safeLogChunk(chunk)}`);
@@ -215,6 +222,10 @@ export class BackendManager {
       desktopLog.error(`[forgex-backend] ${safeLogChunk(chunk)}`);
     });
     this.process.on("exit", (code, signal) => {
+      const expected = this.terminatingProcesses.has(child);
+      emitDiagnosticEvent({component: "backend-supervisor", event: "backend.exited",
+        level: expected ? "INFO" : "ERROR", backend_pid: child.pid,
+        backend_instance: backendInstance, exit_code: code, signal, expected});
       if (this.process !== child) return;
       desktopLog.error(`[forgex-backend] ${JSON.stringify({ event: "backend.exited", instance: backendInstance, pid: this.process?.pid, code, signal, expected: this.state === "stopped", timestamp: new Date().toISOString() })}`);
       if (this.state !== "stopped") {
@@ -228,6 +239,8 @@ export class BackendManager {
     });
     this.process.on("error", (error) => {
       if (this.process !== child) return;
+      emitDiagnosticEvent({component: "backend-supervisor", event: "backend.process.failed", level: "ERROR",
+        backend_pid: child.pid, backend_instance: backendInstance, message: error.message});
       this.state = "crashed";
       this.lastError = error.message;
       desktopLog.error(`[forgex-backend] ${this.lastError}`);
@@ -269,6 +282,7 @@ export class BackendManager {
     }
 
     const child = this.process;
+    this.terminatingProcesses.add(child);
     this.process = null;
     this.ownsProcess = false;
 
@@ -311,9 +325,13 @@ export class BackendManager {
     const delayMs = this.recovery.nextDelay();
     if (delayMs === null) {
       this.lastError = "Backend recovery stopped after three attempts. Saved work is preserved. Restart ForgeX to retry.";
+      emitDiagnosticEvent({component: "backend-supervisor", event: "backend.recovery.exhausted",
+        level: "ERROR", message: this.lastError, attempts: this.recovery.used});
       return;
     }
     desktopLog.error(`[forgex-backend] Scheduled owned backend restart in ${delayMs}ms`);
+    emitDiagnosticEvent({component: "backend-supervisor", event: "backend.restart.scheduled",
+      level: "WARNING", delay_ms: delayMs, attempts: this.recovery.used, port: this.port});
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
       if (this.intentionalStop) return;
@@ -336,6 +354,9 @@ export class BackendManager {
         error:error instanceof Error ? error.message : String(error)})).then(async result => {
         if (this.process !== child || this.intentionalStop) return;
         if (result.healthy && !this.compatibilityError(result.body)) { failures = 0; return; }
+        emitDiagnosticEvent({component: "backend-supervisor", event: "backend.health.failed", level: "WARNING",
+          backend_pid: child?.pid, port: this.port, status_code: result.statusCode,
+          reachable: result.reachable, forgeX: result.forgeX, failure_count: failures + 1});
         if (++failures < 2) return;
         this.state = "crashed";
         this.lastError = "The owned backend stopped responding. Reconnecting to saved work.";

@@ -165,8 +165,8 @@ function attachRendererDiagnostics(window: BrowserWindow): void {
     );
     emitDiagnosticEvent({
       component: "renderer",
-      event: level >= 2 ? "renderer.error" : "renderer.console",
-      level: level >= 2 ? "ERROR" : "DEBUG",
+      event: level >= 3 ? "renderer.error" : "renderer.console",
+      level: level >= 3 ? "ERROR" : level === 2 ? "WARNING" : "DEBUG",
       message,
       source: sourceId,
       line,

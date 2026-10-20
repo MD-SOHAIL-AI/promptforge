@@ -79,6 +79,8 @@ class ModelInfo:
     free: bool | None = None
     local: bool = False
     capabilities: "ModelCapabilities | None" = None
+    availability: Literal["unknown", "available", "retired"] = "unknown"
+    availability_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,6 +91,8 @@ class ModelInfo:
             "free": self.free,
             "local": self.local,
             "capabilities": self.capabilities.to_dict() if self.capabilities else None,
+            "availability": self.availability,
+            "availability_reason": self.availability_reason,
         }
 
 

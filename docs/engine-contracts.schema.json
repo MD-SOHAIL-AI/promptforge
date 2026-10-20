@@ -189,6 +189,98 @@
       "title": "AcceptanceReport",
       "type": "object"
     },
+    "CompletionReview": {
+      "properties": {
+        "passed": {
+          "default": false,
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "source_revision": {
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "task_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Revision"
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Code"
+        },
+        "review": {
+          "additionalProperties": true,
+          "title": "Review",
+          "type": "object"
+        },
+        "verification_level": {
+          "default": "model_review",
+          "title": "Verification Level",
+          "type": "string"
+        },
+        "hardware_verified": {
+          "default": false,
+          "title": "Hardware Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_revision"
+      ],
+      "title": "CompletionReview",
+      "type": "object"
+    },
+    "DocumentationSection": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "heading": {
+          "title": "Heading",
+          "type": "string"
+        },
+        "start_line": {
+          "title": "Start Line",
+          "type": "integer"
+        },
+        "end_line": {
+          "title": "End Line",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "heading",
+        "start_line",
+        "end_line"
+      ],
+      "title": "DocumentationSection",
+      "type": "object"
+    },
     "RequirementCheck": {
       "properties": {
         "id": {
@@ -217,6 +309,52 @@
           ],
           "default": null,
           "title": "Review Reason"
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "requirement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement"
+        },
+        "expected_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Evidence",
+          "type": "array"
+        },
+        "execution_evidence": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Execution Evidence",
+          "type": "array"
+        },
+        "suggested_sections": {
+          "items": {
+            "$ref": "#/$defs/DocumentationSection"
+          },
+          "title": "Suggested Sections",
+          "type": "array"
+        },
+        "rejection_attempts": {
+          "default": 0,
+          "title": "Rejection Attempts",
+          "type": "integer"
         }
       },
       "required": [
@@ -233,13 +371,49 @@
           "type": "string"
         },
         "quote": {
+          "default": "",
           "title": "Quote",
           "type": "string"
+        },
+        "start_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Line"
+        },
+        "end_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Line"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Sha256"
         }
       },
       "required": [
-        "path",
-        "quote"
+        "path"
       ],
       "title": "RequirementReference",
       "type": "object"
@@ -482,6 +656,40 @@
           "title": "Worker Cleanup Incomplete",
           "type": "boolean"
         },
+        "worker_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "spawn",
+                "input",
+                "response"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker Phase"
+        },
+        "worker_failure_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "memory_limit",
+                "invalid_runtime_options",
+                "abnormal_exit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker Failure Kind"
+        },
         "physical_attempt_id": {
           "anyOf": [
             {
@@ -572,6 +780,19 @@
           "default": null,
           "title": "Timeout Stage"
         },
+        "failure_shape": {
+          "anyOf": [
+            {
+              "const": "invalid_stream_event",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Shape"
+        },
         "duration_ms": {
           "anyOf": [
             {
@@ -643,6 +864,32 @@
           "maxLength": 128,
           "title": "Origin",
           "type": "string"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        },
+        "remaining_job_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remaining Job Seconds"
         }
       },
       "required": [
@@ -652,6 +899,79 @@
         "attempted_charge"
       ],
       "title": "BudgetFailure",
+      "type": "object"
+    },
+    "ToolArgumentIssue": {
+      "properties": {
+        "field": {
+          "maxLength": 256,
+          "pattern": "^checks(?:\\[\\d+\\](?:\\.(?:id|status|evidence)(?:\\[\\d+\\](?:\\.(?:path|quote|start_line|end_line))?)?)?)?$",
+          "title": "Field",
+          "type": "string"
+        },
+        "constraint": {
+          "enum": [
+            "type",
+            "count",
+            "fields",
+            "string",
+            "enum",
+            "line_order",
+            "line_span"
+          ],
+          "title": "Constraint",
+          "type": "string"
+        },
+        "expected": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Expected",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "constraint",
+        "expected"
+      ],
+      "title": "ToolArgumentIssue",
+      "type": "object"
+    },
+    "ModelQualificationScope": {
+      "properties": {
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "framework": {
+          "title": "Framework",
+          "type": "string"
+        },
+        "execution_profile": {
+          "enum": [
+            "standard",
+            "advanced"
+          ],
+          "title": "Execution Profile",
+          "type": "string"
+        },
+        "checked_at": {
+          "title": "Checked At",
+          "type": "string"
+        },
+        "source_fingerprint": {
+          "title": "Source Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "framework",
+        "execution_profile",
+        "checked_at",
+        "source_fingerprint"
+      ],
+      "title": "ModelQualificationScope",
       "type": "object"
     },
     "ProjectProfile": {
@@ -729,6 +1049,30 @@
           "default": "unqualified",
           "title": "Qualification",
           "type": "string"
+        },
+        "source_directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "src",
+          "title": "Source Directory"
+        },
+        "include_directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "include",
+          "title": "Include Directory"
         }
       },
       "required": [
@@ -883,6 +1227,42 @@
           "default": null,
           "title": "Semantic Review"
         },
+        "completion_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompletionReview"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "completion_review_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completion Review Required"
+        },
+        "risk_review": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Review"
+        },
         "acceptance": {
           "anyOf": [
             {
@@ -893,6 +1273,11 @@
             }
           ],
           "default": null
+        },
+        "evidence_recovery": {
+          "additionalProperties": true,
+          "title": "Evidence Recovery",
+          "type": "object"
         }
       },
       "title": "VerificationReport",
@@ -1256,6 +1641,40 @@
           "title": "Worker Cleanup Incomplete",
           "type": "boolean"
         },
+        "worker_phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "spawn",
+                "input",
+                "response"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker Phase"
+        },
+        "worker_failure_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "memory_limit",
+                "invalid_runtime_options",
+                "abnormal_exit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worker Failure Kind"
+        },
         "physical_attempt_id": {
           "anyOf": [
             {
@@ -1345,6 +1764,19 @@
           ],
           "default": null,
           "title": "Timeout Stage"
+        },
+        "failure_shape": {
+          "anyOf": [
+            {
+              "const": "invalid_stream_event",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Shape"
         },
         "duration_ms": {
           "anyOf": [
@@ -1508,6 +1940,17 @@
           "default": null,
           "title": "Last Parse Reason"
         },
+        "last_argument_issue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolArgumentIssue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "last_failure_origin": {
           "anyOf": [
             {
@@ -1520,6 +1963,19 @@
           ],
           "default": null,
           "title": "Last Failure Origin"
+        },
+        "budget_persistence_cause": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Persistence Cause"
         },
         "last_response_shape": {
           "anyOf": [
@@ -1636,6 +2092,174 @@
         }
       },
       "title": "ProviderDiagnostics",
+      "type": "object"
+    },
+    "TaskExecution": {
+      "properties": {
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "phase": {
+          "enum": [
+            "configuration",
+            "generation",
+            "repair",
+            "verification"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "active_milestone": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Milestone"
+        },
+        "missing_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Missing Artifacts",
+          "type": "array"
+        },
+        "blocking_symbols": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Blocking Symbols",
+          "type": "array"
+        },
+        "remaining_requirement_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Remaining Requirement Ids",
+          "type": "array"
+        },
+        "stalled_turns": {
+          "default": 0,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Stalled Turns",
+          "type": "integer"
+        },
+        "next_action": {
+          "maxLength": 1800,
+          "title": "Next Action",
+          "type": "string"
+        },
+        "instruction": {
+          "default": "",
+          "title": "Instruction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "phase",
+        "next_action"
+      ],
+      "title": "TaskExecution",
+      "type": "object"
+    },
+    "LinkerDiagnostic": {
+      "properties": {
+        "stage": {
+          "const": "link",
+          "default": "link",
+          "title": "Stage",
+          "type": "string"
+        },
+        "severity": {
+          "const": "error",
+          "default": "error",
+          "title": "Severity",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 400,
+          "title": "Symbol",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "symbol",
+        "message"
+      ],
+      "title": "LinkerDiagnostic",
+      "type": "object"
+    },
+    "ModelQualification": {
+      "properties": {
+        "status": {
+          "default": "untested",
+          "enum": [
+            "untested",
+            "tested"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "$ref": "#/$defs/ModelQualificationScope"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "message": {
+          "default": "Task completion has not been qualified for this runtime.",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "title": "ModelQualification",
       "type": "object"
     }
   }

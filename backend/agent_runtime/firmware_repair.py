@@ -126,10 +126,11 @@ def repair_verified_cpp_build_errors(
     declaration_repair = _repair_missing_member_declaration(workspace_root, build_result)
     signature_repair = _repair_member_definition_signatures(workspace_root, build_result)
     constructor_repair = _repair_defaulted_constructor_definition(workspace_root, build_result)
+    pin_repair = _repair_duplicate_private_pin_constant(workspace_root, build_result)
     repairs = tuple(item for item in (
         include_repair, collision_repair, alarm_repair, type_include_repair,
         prototype_repair, dependency_repair, declaration_repair,
-        signature_repair, constructor_repair,
+        signature_repair, constructor_repair, pin_repair,
     ) if item is not None)
     if not repairs:
         return None
@@ -138,6 +139,67 @@ def repair_verified_cpp_build_errors(
         changed_paths=tuple(dict.fromkeys(path for item in repairs for path in item.changed_paths)),
         reason=" ".join(item.reason for item in repairs),
     )
+
+
+def _repair_duplicate_private_pin_constant(workspace_root, build_result):
+    """Remove a redundant private pin member only with matching compiler proof.
+
+    An object-like pin macro substitutes the same literal at all uses. Keeping
+    that macro and removing its equal private declaration preserves the pin
+    assignment and avoids inventing or renaming a public interface.
+    """
+    diagnostics = build_result.get("diagnostics")
+    if not isinstance(diagnostics, str) or build_result.get("success"):
+        return None
+    root = Path(workspace_root).resolve(strict=True)
+    errors = list(re.finditer(r"(?m)^(.+?\.(?:h|hpp)):(\d+)(?::\d+)?:\s*error:\s*"
+        r"expected unqualified-id before numeric constant[^\n]*", diagnostics))
+    for index, error in enumerate(errors):
+        end = errors[index + 1].start() if index + 1 < len(errors) else len(diagnostics)
+        note = re.search(r"(?m)^(.+?\.(?:h|hpp)):(\d+)(?::\d+)?:\s*note:\s*"
+            r"in expansion of macro '([A-Z][A-Z0-9_]*_PIN)'", diagnostics[error.end():end])
+        if note is None:
+            continue
+        files = []
+        for raw in (error[1], note[1]):
+            path = Path(raw.strip())
+            safe = _safe_source_path(root, path if path.is_absolute() else root / path, _HEADER_SUFFIXES)
+            if safe is None or safe.stat().st_size > _MAX_SOURCE_BYTES:
+                break
+            if any(part.startswith(".") for part in safe.relative_to(root).parts):
+                break
+            files.append(safe)
+        if len(files) != 2 or files[0] == files[1]:
+            continue
+        try:
+            definition = files[0].read_text(encoding="utf-8-sig").splitlines()[int(error[2]) - 1]
+            text = files[1].read_bytes().decode("utf-8-sig")
+            lines = text.splitlines(keepends=True)
+            line_index = int(note[2]) - 1
+            declaration = lines[line_index]
+        except (OSError, UnicodeError, IndexError):
+            continue
+        name = re.escape(note[3])
+        literal = r"(0[xX][0-9A-Fa-f]+|[0-9]+)"
+        macro = re.fullmatch(r"\s*#\s*define\s+" + name + r"\s+" + literal + r"\s*(?://[^\n]*)?", definition)
+        member = re.fullmatch(r"\s*static\s+constexpr\s+uint8_t\s+" + name + r"\s*=\s*" + literal + r"\s*;\s*(?://[^\r\n]*)?\s*", declaration)
+        if macro is None or member is None:
+            continue
+        # Decimal and hexadecimal spellings are allowed; octal and expressions
+        # are deliberately excluded rather than reinterpreted.
+        values = (macro[1], member[1])
+        if any(value.startswith("0") and len(value) > 1 and not value.lower().startswith("0x") for value in values):
+            continue
+        if int(values[0], 0) != int(values[1], 0) or not 0 <= int(values[0], 0) <= 255:
+            continue
+        from .build_readiness import _code
+        access = re.findall(r"\b(public|private|protected)\s*:", _code("".join(lines[:line_index])))
+        if not access or access[-1] != "private":
+            continue
+        _atomic_write(files[1], "".join(lines[:line_index] + lines[line_index + 1:]).encode("utf-8"))
+        return DeterministicRepair("cpp-duplicate-private-pin-v1", (files[1].relative_to(root).as_posix(),),
+            "Compiler identified an equal private pin constant duplicated by an existing numeric pin macro.")
+    return None
 
 
 def _repair_misnamed_platformio_dependency(

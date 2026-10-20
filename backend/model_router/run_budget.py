@@ -16,8 +16,24 @@ class AgentBudgetExceeded(ValueError):
 
 
 class AgentBudgetPersistenceError(RuntimeError):
-    def __init__(self):
+    def __init__(self, cause=None):
         super().__init__("AGENT_BUDGET_PERSISTENCE_FAILED")
+        allowed = {"AGENT_BUDGET_CHARGE_INVALID", "AGENT_ATTEMPT_CONFLICT", "AGENT_JOB_NOT_RUNNING",
+                   "AGENT_INTAKE_NOT_RUNNING", "AGENT_INTAKE_NOT_FOUND", "AGENT_ATTEMPT_USAGE_INVALID"}
+        self.details = {"origin": "job_budget_persistence",
+                        "cause_code": str(cause) if str(cause) in allowed else "AGENT_BUDGET_STORAGE_FAILED"}
+
+
+def validate_attempt_charges(charges):
+    """Separate physical-attempt identity from strictly numeric budget dimensions."""
+    if (not isinstance(charges, dict) or set(charges) - {*LIMITS, "_attempt_id"}
+            or not set(LIMITS).issubset(charges)
+            or any(type(charges[key]) is not int or charges[key] < 0 for key in LIMITS)):
+        raise ValueError("AGENT_BUDGET_CHARGE_INVALID")
+    attempt_id = charges.get("_attempt_id")
+    if attempt_id is not None and (not isinstance(attempt_id, str) or not 1 <= len(attempt_id) <= 128):
+        raise ValueError("AGENT_BUDGET_CHARGE_INVALID")
+    return {key: charges[key] for key in LIMITS}, attempt_id
 
 
 def new_budget(saved=None):
@@ -69,7 +85,7 @@ def charge_attempt(request, *, attempt_id=None):
             except AgentBudgetExceeded:
                 raise
             except Exception as exc:
-                raise AgentBudgetPersistenceError() from exc
+                raise AgentBudgetPersistenceError(exc) from exc
             for key in LIMITS:
                 budget[key] = reserved[key]
             return
@@ -79,7 +95,7 @@ def charge_attempt(request, *, attempt_id=None):
             except AgentBudgetExceeded:
                 raise
             except Exception as exc:
-                raise AgentBudgetPersistenceError() from exc
+                raise AgentBudgetPersistenceError(exc) from exc
         for key in LIMITS:
             charge = charges[key]
             budget[key] = int(budget.get(key, 0)) + charge
@@ -97,7 +113,7 @@ def settle_attempt(request, actual_output, *, complete):
             try:
                 consumed = settle(diagnostics["physical_attempt_id"], actual_output)
             except Exception as exc:
-                raise AgentBudgetPersistenceError() from exc
+                raise AgentBudgetPersistenceError(exc) from exc
             for key in LIMITS:
                 budget[key] = consumed[key]
 

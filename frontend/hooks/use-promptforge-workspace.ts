@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { promptForgeApi } from "@/lib/api";
+import { localSession } from "@/lib/local-session";
 import { apiErrorCode, toErrorMessage } from "@/lib/errors";
 import { SingleFlight } from "@/lib/single-flight";
 import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
@@ -798,6 +799,8 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
   }, [activeProject, dialogs, refreshProjects]);
 
   const selectProject = useCallback((project: ProjectResponse) => {
+    if (activeProjectIdRef.current === project.project_id && project.metadata?.missing !== true
+        && !missingProjectsRef.current.has(project.project_id)) return;
     buildObserverRef.current?.abort();
     buildObserverRef.current = null;
     setToolAction((value) => value === "build" ? null : value);
@@ -1059,7 +1062,7 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
     let current = true;
     let pending = false;
     const check = () => {
-      if (pending || document.visibilityState !== "visible") return;
+      if (pending || localSession.getSnapshot() || document.visibilityState !== "visible") return;
       pending = true;
       void promptForgeApi.health().then(value => {if (current) setHealth(value);}).catch(() => {if (current) setHealth(null);}).finally(() => {pending = false;});
     };
@@ -1074,7 +1077,7 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
     if (preferencesLoading || !autoDetectDevices) return;
     let pending = false;
     const timer = window.setInterval(() => {
-      if (pending || document.visibilityState !== "visible") return;
+      if (pending || localSession.getSnapshot() || document.visibilityState !== "visible") return;
       pending = true;
       void refreshDetectedBoards().catch(() => undefined).finally(() => { pending = false; });
     }, deviceRefreshSeconds * 1000);

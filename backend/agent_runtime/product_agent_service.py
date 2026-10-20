@@ -111,6 +111,9 @@ class ProductAgentService:
     def get_run(self, run_id: str) -> ProductAgentRun:
         return self._owner().get_run(run_id)
 
+    def run_snapshot(self, run_id: str) -> dict[str, object]:
+        return self._owner().run_snapshot(run_id)
+
     def steer(self, run_id: str, message: str) -> ProductAgentRun:
         return self._owner().steer(run_id, message)
 

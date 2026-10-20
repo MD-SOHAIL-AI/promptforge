@@ -15,13 +15,14 @@ export function useAgentChangeSet(run: ProductAgentRun | null) {
       return;
     }
     let alive = true;
+    setChangeSet(null);
     setLoading(true);
     void promptForgeApi.agentRuntimeChanges(run.run_id)
       .then((result) => { if (alive) setChangeSet(result.change_set); })
       .catch(() => { if (alive) setChangeSet(null); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [run?.change_set_id, run?.run_id, run?.status]);
+  }, [run?.change_set_id, run?.run_id, run?.status, run?.classification]);
 
   const changedFileCount = useMemo(() => {
     if (changeSet) return changeSet.changed_files.length;

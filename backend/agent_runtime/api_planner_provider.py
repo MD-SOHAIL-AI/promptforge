@@ -33,6 +33,7 @@ from .tool_contracts import (
     WRITE_TOOLS,
     parse_tool_name,
     provider_function_schema,
+    provider_tool_name,
 )
 
 API_PRODUCT_SMOKE_PATH = "API_PROVIDER_SMOKE.txt"
@@ -1013,7 +1014,7 @@ def _planner_instruction(
 ) -> str:
     if smoke:
         if native:
-            return ("You are Forge Agent V3. Call write_file with path "
+            return (f"You are Forge Agent V3. Call {provider_tool_name(ToolName.WRITE_FILE)} with path "
                     f"{API_PRODUCT_SMOKE_PATH} and exact content {API_PRODUCT_SMOKE_CONTENT}. "
                     "Use the supplied function directly. Do not return a JSON ToolPlan.")
         return (
@@ -1031,15 +1032,17 @@ def _planner_instruction(
         '{"version":"forgex.toolplan.v2","summary":"what you are doing","tool_calls":'
         '[{"id":"call_1","type":"read_file","arguments":{"path":"src/main.cpp"}}],"final":false}. '
     )
-    return (
+    instruction = (
         "You are Forge Agent V3, a continuous tool-using embedded software engineer. "
         + protocol +
         f"Available tools for this turn: {tools}. "
         'Canonical tool arguments: list_files {"path":"."}; glob_files {"pattern":"**/*","path":"."}; grep_search {"query":"text","path":"."}; read_file {"path":"src/main.cpp"}; write_file {"path":"src/main.cpp","content":"..."}. '
         "Prefer list/glob/grep/read before editing when context is missing. For create/build/generate tasks, inspect briefly and then make file changes; do not repeat read-only planning when the workspace state is already known. Prefer apply_patch for precise existing-file changes, use edit_file_simple for a single exact replacement, and use write_file only for new files or deliberate full replacement. "
         "For multi-file projects, write each actual file using a project-relative path such as include/SystemManager.h or src/SystemManager.cpp. write_file creates missing parent directories automatically. Never call write_file for a directory alone (such as include or src), and never use an absolute path or a path outside the active project. Prefer one or two bounded source edits per turn. Split large files into modules or complete patch hunks; every tool call must have complete valid arguments. Continue the remaining deliverables in later turns using saved evidence. Configuration alone does not complete a firmware project. "
-        "Use update_plan for multi-step work. Mark exactly one current step in_progress before acting, then complete it only after successful tool evidence. Each step may include verification: inspection, edit, build, or simulation; use build or simulation for those checks. Keep prior step text stable across updates. The summary is public progress, not private reasoning: one or two concise sentences describing what you are checking or have observed. Never output hidden thinking, scratchpads, or reasoning traces. Use build_firmware after meaningful firmware edits when build is available. "
+        "Use update_plan for multi-step work. Mark exactly one current step in_progress before acting, then complete it only after successful tool evidence. Each step may include verification: inspection, edit, build, or simulation; use build or simulation for those checks. For modular generation give steps stable key, paths, requirement_ids and depends_on keys; finish coherent implementations matching shared interfaces before integrating callers. Keep prior step text stable across updates. The summary is public progress, not private reasoning: one or two concise sentences describing what you are checking or have observed. Never output hidden thinking, scratchpads, or reasoning traces. Use build_firmware after meaningful firmware edits when build is available. "
         "Read build errors and repair them in later turns instead of stopping after the first failure. If a package is missing, use a registry package ID from dependency_candidates; do not guess publisher names. A tool edit with modified=false or an empty diff made no change. "
+        "For edit_file_simple, copy a small unique old_text block verbatim from read_file.content, preserving spaces and line endings. numbered_content line prefixes are only citation labels. After a match error, read the file and use current_excerpt to locate a smaller exact block; do not repeatedly retype a full file. "
+        "Before declaring external PlatformIO libraries, use resolve_dependency when available to verify unambiguous owner/name IDs. Omit framework-provided libraries such as Preferences in Arduino-ESP32 and do not add unused or invented packages. Use concrete dependency-validation diagnostics to correct configuration; repeating an unchanged build cannot fix a local command or encoding error. "
         "Use spawn_subagent only for a bounded Explore, Review, or Verify task that benefits from independent context; child agents cannot edit. "
         "Use load_skill and memory_search only when they are relevant. In plan-only contexts, inspect/search and call update_plan, never request mutation tools. Never invent tool results. "
         "Use workspace-relative paths only and never request hidden/credential paths. "
@@ -1048,6 +1051,13 @@ def _planner_instruction(
         "On a final turn, put the concise user-facing answer or completion summary in summary; do not use a generic word like completed. "
         "For read-only questions, inspect only what is needed and use the final summary to directly answer the user with concrete findings."
     )
+    if native:
+        # Examples and prose must use the same names as the advertised functions.
+        # Canonical ToolPlan names remain the compatibility wire format.
+        aliases = {tool.value: provider_tool_name(tool) for tool in ToolName}
+        instruction = re.sub(r"\b(?:" + "|".join(re.escape(name) for name in aliases) + r")\b",
+            lambda match: aliases[match.group()], instruction)
+    return instruction
 
 
 def _parse_toolplan_content(content: object) -> tuple[ProductToolPlan, bool]:
@@ -1181,6 +1191,10 @@ def _toolplan_parse_error(exc: ValueError) -> ApiPlannerError:
     error = str(exc)
     reason = error if error.startswith(("product_", "provider_")) and len(error) <= 64 and error.replace("_", "").islower() and error.replace("_", "").isalpha() else "parse_error_unknown"
     details = {"parse_reason": reason}
+    from .requirement_arguments import RequirementArgumentError
+    if isinstance(exc, RequirementArgumentError):
+        details.update(tool="verify_requirements", argument_issue=exc.argument_issue,
+            expected_schema=provider_function_schema(ToolName.VERIFY_REQUIREMENTS)["function"]["parameters"])
     if error == "product_toolplan_json_invalid":
         return ApiPlannerError(
             ApiPlannerClassification.OUTPUT_NOT_JSON, "MODEL_OUTPUT_NOT_JSON", details

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from typing import Any
 
 from .models import ModelCapabilities, ModelInfo, ModelProvider, ModelRoute, TaskType
@@ -14,6 +15,9 @@ from .opencode_catalog import catalog as opencode_catalog, provider_data, model_
 
 DEFAULT_OPENROUTER_MODEL = "cohere/north-mini-code:free"
 RETIRED_OPENROUTER_MODELS = frozenset({"minimax/minimax-m3:free"})
+# Confirmed by NVIDIA's HTTP 410 response captured on 2026-10-06. This
+# provider-specific fact prevents a pinned catalog from advertising it again.
+RETIRED_NVIDIA_MODELS = frozenset({"qwen/qwen3-coder-480b-a35b-instruct"})
 NVIDIA_NIM_MODELS = (
     "01-ai/yi-large",
     "adept/fuyu-8b",
@@ -415,6 +419,10 @@ class ProviderRegistry:
         self.storage.delete_provider_state(provider_id)
 
     def list_models(self, provider_id: str) -> list[ModelInfo]:
+        with self.storage.read_snapshot():
+            return self._list_models(provider_id)
+
+    def _list_models(self, provider_id: str) -> list[ModelInfo]:
         definition = self.definition(provider_id)
         cached = self.storage.provider_models(provider_id)
         if cached:
@@ -439,6 +447,8 @@ class ProviderRegistry:
                     )
                 )
             if models:
+                if self._catalog_is_live(provider_id):
+                    return self._catalog_availability(provider_id, models)
                 if provider_id == "nvidia_nim":
                     cached_ids = {model.model_id for model in models}
                     models.extend(
@@ -455,7 +465,7 @@ class ProviderRegistry:
                     )
                 known = {model.model_id for model in models}
                 models.extend(self._catalog_models(provider_id, known))
-                return models
+                return self._catalog_availability(provider_id, models)
         defaults = [
             ModelInfo(
                 provider_id=provider_id,
@@ -467,7 +477,46 @@ class ProviderRegistry:
             )
             for model in definition.models
         ]
-        return defaults + self._catalog_models(provider_id, {model.model_id for model in defaults})
+        return self._catalog_availability(provider_id,
+                defaults + self._catalog_models(provider_id, {model.model_id for model in defaults}))
+
+    def _catalog_availability(self, provider_id: str, models: list[ModelInfo]) -> list[ModelInfo]:
+        # Keep saved selections visible, with their unavailable state, even when
+        # the provider removes them from its live catalog.
+        saved_ids = {route.model_id for route in self.list_routes() if route.provider_id == provider_id}
+        saved_ids.add(self.default_model(provider_id))
+        known_ids = {model.model_id for model in models}
+        for model_id in sorted(value for value in saved_ids if value):
+            if model_id not in known_ids and self.model_availability(provider_id, model_id).get("availability") == "retired":
+                models.append(ModelInfo(provider_id, model_id, model_id))
+        return [self._with_availability(model) for model in models]
+
+    def _catalog_is_live(self, provider_id: str) -> bool:
+        metadata = self.storage.model_catalog_metadata(provider_id)
+        return metadata.get("source") == "provider" and metadata.get("endpoint") == (self.base_url(provider_id) or "").rstrip("/")
+
+    def model_availability(self, provider_id: str, model_id: str) -> dict:
+        from urllib.parse import urlparse
+        endpoint = (self.base_url(provider_id) or "").rstrip("/")
+        if (provider_id in {"nvidia_nim", "nvidia"} and model_id in RETIRED_NVIDIA_MODELS
+                and urlparse(endpoint).hostname == "integrate.api.nvidia.com"):
+            return {"availability": "retired", "code": "MODEL_RETIRED",
+                    "reason": "NVIDIA retired this model on 11 June 2026. Choose another model to continue the saved draft."}
+        status = self.storage.model_availability(provider_id, model_id)
+        return status if status.get("endpoint") == endpoint else {}
+
+    def mark_model_retired(self, provider_id: str, model_id: str, *, endpoint: str | None = None) -> None:
+        self.storage.save_model_availability(provider_id, model_id,
+            {"availability": "retired", "code": "MODEL_RETIRED",
+             "reason": "The provider retired this model. Choose another model to continue the saved draft.",
+             "endpoint": (endpoint if endpoint is not None else self.base_url(provider_id) or "").rstrip("/"),
+             "checked_at": datetime.now(timezone.utc).isoformat()})
+
+    def _with_availability(self, model: ModelInfo) -> ModelInfo:
+        status = self.model_availability(model.provider_id, model.model_id)
+        availability = status.get("availability") or (
+            "available" if self._catalog_is_live(model.provider_id) else "unknown")
+        return replace(model, availability=availability, availability_reason=status.get("reason"))
 
     def _catalog_models(self, provider_id: str, excluded: set[str]) -> list[ModelInfo]:
         return [ModelInfo(provider_id, model_id, str(data.get("name") or model_id),
@@ -475,6 +524,23 @@ class ProviderRegistry:
             free=data.get("cost", {}).get("input") == 0 and data.get("cost", {}).get("output") == 0,
             capabilities=ModelCapabilities(**catalog_capabilities(data)))
             for model_id, data in provider_data(provider_id).get("models", {}).items() if model_id not in excluded]
+
+    def model_is_free(self, provider_id: str, model_id: str) -> bool:
+        """Resolve a catalog free hint for timeouts, not account billing.
+
+        Live model metadata wins over pinned prices. This avoids building the
+        entire UI catalog on every physical request and covers custom models.
+        """
+        identity = self.resolve_model_id(provider_id, model_id)
+        for item in self.storage.provider_models(provider_id):
+            if str(item.get("model_id", "")).casefold() == identity.casefold() and isinstance(item.get("free"), bool):
+                return item["free"]
+        if self.definition(provider_id).local or provider_id == "nvidia_nim":
+            return True
+        if identity.endswith(":free") or provider_id == "openrouter" and identity == "openrouter/free":
+            return True
+        pricing = model_data(provider_id, identity).get("cost", {})
+        return pricing.get("input") == 0 and pricing.get("output") == 0
 
     def model_capabilities(
         self, provider_id: str, model_id: str
@@ -667,6 +733,8 @@ class ProviderRegistry:
 
     def save_route(self, route: ModelRoute) -> None:
         self.definition(route.provider_id)
+        if self.model_availability(route.provider_id, self.resolve_model_id(route.provider_id, route.model_id)).get("availability") == "retired":
+            raise ValueError("MODEL_RETIRED: Choose another model to continue the saved work.")
         primary = self.definition(route.provider_id)
         if route.local_only and not primary.local:
             raise ValueError("local_only routes require a local provider")

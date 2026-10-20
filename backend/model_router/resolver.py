@@ -44,6 +44,11 @@ class ModelResolver:
             request.model_id or (selected.model_id if selected else route.model_id if provider_id == route.provider_id else self.registry.default_model(provider_id)),
         )
         provider = self.registry.provider(provider_id)
+        availability = self.registry.model_availability(provider_id, model_id)
+        if availability.get("availability") == "retired":
+            raise LLMConfigurationError(availability["reason"], provider=LLMProvider.OPENROUTER,
+                code="MODEL_RETIRED", details={"provider_id": provider_id, "model_id": model_id,
+                                              "origin": "provider_model", "http_status": 410})
         if (request.local_only or route.local_only) and not provider.local:
             raise LLMConfigurationError(
                 "The selected provider is not local.",

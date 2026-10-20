@@ -20,6 +20,14 @@ const openrouter = {
   default_model: "openai/gpt-oss-20b:free",
 };
 
+test("saved retired models remain visible as unavailable options", () => {
+  const models = [{provider_id: "openrouter", model_id: openrouter.default_model,
+    display_name: "Retired model", local: false, availability: "retired" as const}];
+  const options = composerModelOptions([openrouter], [], {openrouter: models});
+  assert.equal(options[0].modelId, openrouter.default_model);
+  assert.equal(options[0].agentCompatibility, "unavailable");
+});
+
 const openai = {
   provider_id: "openai",
   display_name: "OpenAI API",

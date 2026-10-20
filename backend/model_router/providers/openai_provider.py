@@ -13,7 +13,6 @@ from ...services.llm_service import LLMError, LLMRequest, OpenAIService
 from ..models import ModelCapabilities, ModelInfo, ModelRequest, ModelResponse, ProviderHealth
 from .base import BaseModelProvider, elapsed_ms
 from ..run_budget import charge_attempt, settle_attempt
-from ...contracts.transport import TransportPolicy
 
 
 class OpenAIProvider(BaseModelProvider):
@@ -193,7 +192,11 @@ class OpenAIProvider(BaseModelProvider):
         if callable(bind) and context is not None:
             policy = context.transport_policy
             if policy is None and context.managed:
-                policy = TransportPolicy(first_event_seconds=min(self._service_timeout_seconds(), 120.0))
+                from ..transport_policy import request_transport_policy
+                policy = request_transport_policy(request, provider_id=self.provider_id,
+                    model_id=request.model_id or self.registry.default_model(self.provider_id),
+                    reasoning=self.registry.model_capabilities(self.provider_id, request.model_id or self.registry.default_model(self.provider_id)).reasoning,
+                    free=self.registry.model_is_free(self.provider_id, request.model_id or self.registry.default_model(self.provider_id)))
                 context.transport_policy = policy
             bind(context, provider_id=self.provider_id, policy=policy,
                  identity={key: request.metadata[key] for key in ("run_id", "turn_id", "session_id", "project_id") if key in request.metadata})
@@ -216,7 +219,7 @@ class OpenAIProvider(BaseModelProvider):
         # enter the JSON-only LLMRequest or a provider's wire payload.
         metadata.pop("forgex_run_budget", None)
         metadata.pop("forgex_attempt_diagnostics", None)
-        for key in ("forgex_managed_recovery", "forgex_request_attempts", "forgex_recovery_hook", "forgex_turn_deadline"):
+        for key in ("forgex_managed_recovery", "forgex_request_attempts", "forgex_recovery_hook", "forgex_turn_deadline", "forgex_transport_policy"):
             metadata.pop(key, None)
         spec = request.structured_output
         if spec is None:
@@ -316,7 +319,7 @@ def _fail_physical_attempt(
         captured_status = exc.details.get("http_status")
         if not isinstance(status, int) and isinstance(captured_status, int) and not isinstance(captured_status, bool):
             diagnostics["http_status"] = captured_status
-        for key in ("response_headers_received", "first_event_ms", "last_event_ms", "stream_event_count", "completion_received", "timeout_stage", "duration_ms", "physical_attempt_id"):
+        for key in ("response_headers_received", "first_event_ms", "last_event_ms", "stream_event_count", "completion_received", "timeout_stage", "duration_ms", "physical_attempt_id", "failure_shape"):
             if key in exc.details:
                 diagnostics[key] = exc.details[key]
         retry_after = exc.details.get("retry_after_ms")

@@ -14,7 +14,7 @@ const silentOutput = () => ({ write() {} });
 test("the beta gate contains every required software check in release order", () => {
   assert.deepEqual(
     BETA_CHECKS.map((check) => check.id),
-    ["python", "harness", "ui-state", "electron", "typecheck", "lint", "conversations"],
+    ["python", "harness", "ui-state", "read-recovery", "electron", "typecheck", "lint", "conversations"],
   );
 });
 
@@ -41,8 +41,8 @@ test("the verifier runs all checks without cleanup or shell indirection", async 
     output: silentOutput(),
   });
 
-  assert.deepEqual(result, { passed: 7, total: 7 });
-  assert.equal(invocations.length, 7);
+  assert.deepEqual(result, { passed: 8, total: 8 });
+  assert.equal(invocations.length, 8);
   assert.deepEqual(invocations[0], { command: "python", args: ["-m", "pytest", "-q"] });
   assert.equal(invocations.some(({ args }) => args.includes("cleanup")), false);
 });

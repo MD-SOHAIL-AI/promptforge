@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from ..observability.diagnostics import emit_diagnostic_event
+from ..observability.diagnostics import emit_diagnostic_event, redact
 
 request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_id",
@@ -148,7 +148,16 @@ def _emit_http_diagnostic(*, request: Request, request_id: str, response: Any, d
         session_id=request.path_params.get("session_id"),
         run_id=request.path_params.get("run_id"),
         project_id=request.query_params.get("project_id"),
+        **(_rejected_client(request) if status_code in {401, 403} else {}),
     )
+
+
+def _rejected_client(request: Request) -> dict[str, Any]:
+    """Identify rejected local callers without recording credentials or bodies."""
+    client = request.client
+    return {"client_host": client.host if client else None,
+            "client_port": client.port if client else None,
+            "client_user_agent": redact(request.headers.get("user-agent", "")[:256])}
 
 
 def _is_polling_request(method: str, path: str) -> bool:

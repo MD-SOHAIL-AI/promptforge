@@ -6,7 +6,7 @@ export interface ComposerModelOption {
   modelId: string;
   label: string;
   group: "Free" | "Paid" | "Other";
-  agentCompatibility: "unverified" | "unsupported";
+  agentCompatibility: "unverified" | "unsupported" | "unavailable";
 }
 
 export const COMPOSER_MODEL_GROUPS = ["Free", "Paid", "Other"] as const;
@@ -100,6 +100,7 @@ function addOption(options: Map<string, ComposerModelOption>, providerId: string
 }
 
 function modelCompatibility(models: ModelInfoResponse[], modelId: string): ComposerModelOption["agentCompatibility"] {
+  if (models.find((model) => model.model_id === modelId)?.availability === "retired") return "unavailable";
   return models.find((model) => model.model_id === modelId)?.capabilities?.text_generation === false
     ? "unsupported" : "unverified";
 }

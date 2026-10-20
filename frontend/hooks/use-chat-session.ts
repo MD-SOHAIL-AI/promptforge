@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { promptForgeApi } from "@/lib/api";
+import { localSession } from "@/lib/local-session";
+import { messageValidationError } from "@/lib/message-validation";
 import { mergeChatMessage, mergeChatSession } from "@/lib/chat-stream";
 import type { ForgeChatSession } from "@/types";
 
@@ -19,12 +21,21 @@ export function useChatSession() {
   const selectionGeneration = useRef(0);
   const invalidateSelection = useCallback(() => { selectionGeneration.current++; }, []);
   const reconcileState = useRef<{timer: number | null; inFlight: boolean; queued: boolean}>({timer: null, inFlight: false, queued: false});
+  useEffect(() => localSession.subscribe(() => {
+    if (!localSession.getSnapshot()) return;
+    stream.current?.close();
+    stream.current = null;
+    if (reconcileState.current.timer !== null) window.clearTimeout(reconcileState.current.timer);
+    reconcileState.current.timer = null;
+    setConnection("authentication_required");
+  }), []);
   const refresh = useCallback(async () => {
     const result = await promptForgeApi.chatSessions();
     setSessions(result.sessions);
     return result.sessions;
   }, []);
   const scheduleReconcile = useCallback((id: string, generation: number) => {
+    if (localSession.getSnapshot()) return;
     const state = reconcileState.current;
     if (state.timer !== null || generation !== selectionGeneration.current || active.current !== id) return;
     state.timer = window.setTimeout(() => {
@@ -66,6 +77,7 @@ export function useChatSession() {
       if (active.current !== id || selectionGeneration.current !== generation) return;
       setSession(result.session);
       localStorage.setItem("forgex-chat-session", id);
+      if (localSession.getSnapshot()) return;
       const source = new EventSource(
         promptForgeApi.chatSessionEventsUrl(id),
       );
@@ -144,12 +156,19 @@ export function useChatSession() {
       } = {},
     ) => {
       if (busy) return false;
+      const prompt = content.trim();
+      if (!prompt) return false;
+      const validationError = messageValidationError(prompt);
+      if (validationError) {
+        setError(validationError);
+        return false;
+      }
       setBusy(true);
       setError(null);
       try {
         const id = active.current ?? (await create());
         const result = await promptForgeApi.sendChatMessage(id, {
-          content,
+          content: prompt,
           ...options,
         });
         if (active.current === id)

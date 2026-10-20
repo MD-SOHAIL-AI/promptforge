@@ -51,6 +51,48 @@ def request(planner, *, observations=(), turn=1):
         run_id="output-recovery", turn=turn)
 
 
+@pytest.mark.parametrize("needs_repair", [False, True])
+def test_real_worker_recovers_encoded_requirement_checks_with_live_remaining_budget(tmp_path, needs_repair):
+    checks = [{"id": "led", "status": "implemented", "evidence": [
+        {"path": "src/main.cpp", "quote": "digitalWrite(LED_PIN, HIGH);"}]}]
+    bodies = []
+    def respond(handler, body):
+        bodies.append(body)
+        value = "invalid JSON" if needs_repair and len(bodies) == 1 else json.dumps(checks)
+        reply(handler, {"tool_calls": [{"index": 0, "id": f"verify-{len(bodies)}", "type": "function",
+            "function": {"name": "verify_requirements", "arguments": json.dumps({"checks": value})}}]}, finish="tool_calls")
+    with upstream(respond) as url:
+        planner = planner_for(tmp_path, url)
+        planner.bind_deadline(time.monotonic() + 470.766)
+        planner.bind_verification_reserve(180)
+        plan = planner.request_turn(task="Verify the LED requirement with exact source evidence.",
+            tool_results=(), allowed_tools=("verify_requirements",), run_id="verify-checks", turn=1)
+    assert plan.tool_calls[0].arguments["checks"] == checks
+    assert len(bodies) == (2 if needs_repair else 1)
+    diagnostics = planner.to_safe_metadata()
+    assert diagnostics["toolplan_repair_attempted"] == needs_repair
+    assert diagnostics["physical_request_count"] == len(bodies)
+    assert diagnostics["repair_skip_reason"] is None
+    if needs_repair:
+        assert diagnostics["last_repair_outcome"] == "succeeded"
+
+
+def test_useful_repair_fits_a_turn_shorter_than_the_maximum_repair_window(tmp_path):
+    bodies = []
+    def respond(handler, body):
+        bodies.append(body)
+        if len(bodies) == 1:
+            reply(handler, {"reasoning_content": "thinking"}, finish="length")
+        else:
+            reply(handler, {"tool_calls": [{"index": 0, "id": "read", "type": "function",
+                "function": {"name": "read", "arguments": json.dumps({"path": "src/main.cpp"})}}]}, finish="tool_calls")
+    with upstream(respond) as url:
+        planner = planner_for(tmp_path, url, turn_timeout_s=90)
+        assert request(planner).tool_calls[0].path == "src/main.cpp"
+    assert len(bodies) == 2
+    assert planner.to_safe_metadata()["last_repair_outcome"] == "succeeded"
+
+
 def test_real_reasoning_only_truncation_repairs_then_preserves_tool_history(tmp_path, monkeypatch):
     log = tmp_path / "diagnostics.jsonl"
     monkeypatch.setenv("FORGEX_LIVE_LOG_PATH", str(log))
@@ -89,6 +131,12 @@ def test_real_reasoning_only_truncation_repairs_then_preserves_tool_history(tmp_
     assert len(bodies) == 3
     assert bodies[0]["max_tokens"] == 8192
     assert bodies[1]["max_tokens"] == 16384
+    assert bodies[2]["max_tokens"] == 16384  # Successful repair must not reset the next turn.
+    saved_recovery = planner.output_recovery_state()
+    resumed = RouterProductPlanner(planner.router, provider_id="openrouter", model_id=MODEL)
+    resumed.restore_output_recovery(saved_recovery)
+    assert resumed._response_allowance() == 16384
+    assert saved_recovery["prefer_small_actions"] is True
     assert "reasoning" not in bodies[0]
     assert bodies[1]["reasoning"] == {"effort": "low"}
     assert "one complete next action" in bodies[1]["messages"][0]["content"]
@@ -137,7 +185,7 @@ def test_repair_is_not_dispatched_without_remaining_allowance(tmp_path, budget):
         bodies.append(body)
         reply(handler, {"reasoning_content": "thinking"}, finish="length", tokens=body["max_tokens"])
     with upstream(respond) as url:
-        planner = planner_for(tmp_path, url, turn_timeout_s=90 if budget == "time" else 300)
+        planner = planner_for(tmp_path, url, turn_timeout_s=20 if budget == "time" else 300)
         if budget != "time":
             planner.bind_job_budget({"consumed": {}, "limits": {"requests": 3 if budget == "requests" else 20,
                 "output_tokens": 4000 if budget == "output" else 100000, "input_bytes": 1000000}}, lambda _: None)
@@ -228,6 +276,7 @@ def test_failure_contract_and_message_preserve_initial_and_terminal_causes():
 def test_repair_deadline_preserves_original_failure_and_reaps_worker(tmp_path, monkeypatch):
     from backend.agent_runtime import router_planner
     monkeypatch.setattr(router_planner, "MODEL_REPAIR_SECONDS", 0.5)
+    monkeypatch.setattr(router_planner, "MIN_MODEL_REPAIR_SECONDS", 0.1)
     bodies = []
     def respond(handler, body):
         bodies.append(body)
