@@ -1,0 +1,128 @@
+--- original/platformio.ini
++++ repaired/platformio.ini
+@@ -1,15 +1,13 @@
+ [env:esp32dev]
+-platform = espressif32
++platform = espressif32@7.1.3
+ board = esp32dev
+ framework = arduino
+ monitor_speed = 115200
+ 
+-lib_deps = 
+-    Adafruit Unified Sensor
+-    DHT sensor library
+-    Adafruit SSD1306
+-    ESP Async WebServer
+-    AsyncTCP
+-    Preferences
+-    ArduinoJson
+-    ESP32 PWM LED Controller+lib_deps =
++    adafruit/Adafruit Unified Sensor@1.1.15
++    adafruit/DHT sensor library@1.4.7
++    adafruit/Adafruit SSD1306@2.5.17
++    esp32async/ESPAsyncWebServer@3.12.1
++    esp32async/AsyncTCP@3.5.0
++    bblanchon/ArduinoJson@7.4.3
+--- original/src/main.cpp
++++ repaired/src/main.cpp
+@@ -25,12 +25,12 @@
+ #define DHT_READ_INTERVAL 2000
+ 
+ // Alert thresholds (with hysteresis)
+-#define TEMP_HIGH_THRESHOLD 28.0f
+-#define TEMP_LOW_THRESHOLD 18.0f
+-#define HUMIDITY_HIGH_THRESHOLD 70.0f
+-#define HUMIDITY_LOW_THRESHOLD 30.0f
+-#define LIGHT_HIGH_THRESHOLD 3000
+-#define LIGHT_LOW_THRESHOLD 500
++float TEMP_HIGH_THRESHOLD = 28.0f;
++float TEMP_LOW_THRESHOLD = 18.0f;
++float HUMIDITY_HIGH_THRESHOLD = 70.0f;
++float HUMIDITY_LOW_THRESHOLD = 30.0f;
++int LIGHT_HIGH_THRESHOLD = 3000;
++int LIGHT_LOW_THRESHOLD = 500;
+ 
+ // Hysteresis values
+ #define TEMP_HYSTERESIS 1.0f
+@@ -69,7 +69,20 @@
+ bool humidityHighAlert = false;
+ bool humidityLowAlert = false;
+ bool lightHighAlert = false;
+-bool lightLowAlert = void setup() {
++bool lightLowAlert = false;
++
++// This is a C++ source file, so helpers need declarations before use.
++void loadThresholds();
++void saveThresholds();
++void setupWiFiAP();
++void setupWebServer();
++void handleButton();
++void acknowledgeAlert();
++void readDHTSensor();
++void checkAlerts();
++void updateDisplay();
++
++void setup() {
+   Serial.begin(115200);
+   
+   // Initialize pins
+@@ -541,9 +554,11 @@
+   
+   // JSON status endpoint
+   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
+-    DynamicJsonDocument doc(256);
+-    doc["temperature"] = isnan(temperature) ? nullptr : temperature;
+-    doc["humidity"] = isnan(humidity) ? nullptr : humidity;
++    JsonDocument doc;
++    if (isnan(temperature)) doc["temperature"] = nullptr;
++    else doc["temperature"] = temperature;
++    if (isnan(humidity)) doc["humidity"] = nullptr;
++    else doc["humidity"] = humidity;
+     doc["lightLevel"] = lightLevel;
+     doc["alertActive"] = alertActive;
+     doc["demoMode"] = demoMode;
+@@ -564,7 +579,7 @@
+   server.on("/thresholds", HTTP_POST, [](AsyncWebServerRequest *request){
+     if (request->hasParam("plain", true)) {
+       String body = request->getParam("plain", true)->value();
+-      DynamicJsonDocument doc(256);
++      JsonDocument doc;
+       DeserializationError error = deserializeJson(doc, body);
+       
+       if (!error) {
+@@ -629,4 +644,4 @@
+   preferences.putUInt("lightLow", LIGHT_LOW_THRESHOLD);
+   
+   Serial.println("Saved thresholds to preferences");
+-}+}
+--- original/README.md
++++ repaired/README.md
+@@ -51,14 +51,15 @@
+ 
+ ## Libraries Required
+ 
+-- Adafruit Unified Sensor
+-- DHT sensor library
+-- Adafruit SSD1306
+-- ESP Async WebServer
+-- AsyncTCP
+-- Preferences
+-- ArduinoJson
+-- ESP32 PWM LED Controller
++- `adafruit/Adafruit Unified Sensor@1.1.15`
++- `adafruit/DHT sensor library@1.4.7`
++- `adafruit/Adafruit SSD1306@2.5.17`
++- `esp32async/ESPAsyncWebServer@3.12.1`
++- `esp32async/AsyncTCP@3.5.0`
++- `bblanchon/ArduinoJson@7.4.3`
++
++PlatformIO installs these automatically from `platformio.ini`. `Preferences`,
++`WiFi`, and `Wire` are supplied by the Arduino-ESP32 framework.
+ 
+ ## Setup Instructions
+ 
+@@ -155,4 +156,4 @@
+ - Adjust `DHT_READ_INTERVAL` for different sampling rates
+ - Modify hysteresis values in #define statements for different sensitivity
+ - Change OLED I2C pins if needed by modifying OLED_SDA/OLED_SCL
+-- Adjust web server port by changing the AsyncWebServer constructor parameter+- Adjust web server port by changing the AsyncWebServer constructor parameter

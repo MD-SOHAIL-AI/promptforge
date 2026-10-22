@@ -1,0 +1,19 @@
+{
+  "model-router/src/engine.mjs": "423270048cbdea197857f51a6d85e45246bde10a6037277ed7dda041ae7ad0df",
+  "backend/model_router/providers/opencode.py": "a12a8af5b82c2302f89e708ed7a05f39978ed6fbcceb53a051ffe5991920174d",
+  "backend/model_router/request_recovery.py": "6bfe50eef2725186c639bc0eaa9f87c90602263e766cad79cf3c6eb482617a1f",
+  "backend/agent_runtime/router_planner.py": "33ea54f54b6de28d87b22f8b874c14bf10a82d755fe184bdf0d551bf6cc302bc",
+  "backend/agent_runtime/lifecycle.py": "67e70a99644dd560e31ac5597395856ac16fc6fe37901409834ba140314751a4",
+  "backend/agent_runtime/run_models.py": "10e8fb862dab83625aacdc47d5bdf1115c518511467a39e3dd5bf828ff7ccf4b",
+  "backend/agent_runtime/run_reporting.py": "1c444658cc34dedf68c22413a47a07133d15c1504b924bf80b8ed7d983d2a17e",
+  "backend/agent_runtime/autonomous_loop.py": "2e9cf75badf643725016ae918de5c399795945cfaf036ac9500499d8ea8dac56",
+  "backend/agent_runtime/orchestrator.py": "8b3fb9b0f22e7f69eaccdc0a9103f56ad56ac4f735f117f200f06a95f0d412b3",
+  "backend/contracts/diagnostics.py": "343011c1c8404c072609663ff42a62c079512d0b28020013189d9f3c93cc34f9",
+  "backend/contracts/runtime_policy.py": "e147f6fc99ad3972356f2a06c0ba6d7518be5fee85a97352931d447a6cb3cf90",
+  "backend/observability/diagnostics.py": "4421127617e449f8db0b9cc197093055993dd379b400c395b97a7a96923cc6e1",
+  "scripts/generate-engine-contracts.py": "aa88afd04c5b38809bf1ac7798d8a945074bce4b4ccca60199c2ce856b1120d1",
+  "tests/unit/test_model_output_recovery.py": "e7949b7196d93f9678d36193c13e5340e5d0a52b4a333130d4ee644a9d1dd824",
+  "model-router/tests/engine.test.mjs": "96b7ce237b04808f1083cbd84165dc5a367b69eb6a55b63b304ebef3d3d4fa69",
+  "dist/model-router/worker.cjs": "65ec6f9192c595a8c223e1df0bef14bc37fdc25de0d6ffbecbe02b8642375398",
+  "dist/model-router/engine.cjs": "11cacff010f75ce7ff238dd12e7e69ba6a91c74a777240498e77006563ffda6a"
+}

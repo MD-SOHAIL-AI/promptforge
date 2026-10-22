@@ -1,0 +1,27 @@
+{
+  "backend_status": "healthy",
+  "engine_ready": true,
+  "local_auth_required": true,
+  "source_fingerprint": "170a52b5da15d64abdfb245ed17103158dc198640cc617883d8436bfc1af0f5d",
+  "updated_source_loaded": true,
+  "platformio": {
+    "available": true,
+    "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+    "version": "6.2.0",
+    "reason": "available",
+    "message": "PlatformIO is available at D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe (6.2.0)"
+  },
+  "frontend_status": 200,
+  "desktop_provider_list_status": 200,
+  "desktop_provider_list_duration_ms": 3431,
+  "active_project": "C:\\Users\\diwan\\Downloads\\New folder (2)",
+  "firmware_path": "C:\\Users\\diwan\\Downloads\\New folder (2)\\.pio\\build\\esp32dev\\firmware.bin",
+  "firmware_build_success": true,
+  "firmware_build_duration_ms": 214094,
+  "warnings_count": 0,
+  "sealed_upload_images": 4,
+  "manifest_sha256": "808ee59daecd55c08d379405a80795fa3c749a5ac028413c48cdf82c2739f55b",
+  "original_draft_preserved": true,
+  "original_run_status": "blocked",
+  "hardware_flashed": false
+}

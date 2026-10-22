@@ -1,0 +1,40 @@
+{
+  "applied_at": null,
+  "authorization_id": null,
+  "authorization_source": "explicit_review",
+  "base_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+  "base_workspace_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "change_set_id": "changeset-cccd1cfa72624343a996e048af573ae6",
+  "changed_files": [
+    {
+      "change_type": "created",
+      "diff_preview": "--- a/platformio.ini\n+++ b/platformio.ini\n@@ -0,0 +1,4 @@\n+[env:esp32dev]\n+platform = espressif32@7.0.1\n+board = esp32dev\n+framework = arduino",
+      "new_hash": "b90541544310c41a16be51a5c32b5f04a460df88175d97b3903753404f0a30ff",
+      "path": "platformio.ini",
+      "preview_supported": true,
+      "previous_hash": null,
+      "safe": true,
+      "warning": null
+    },
+    {
+      "change_type": "created",
+      "diff_preview": "--- a/src/main.cpp\n+++ b/src/main.cpp\n@@ -0,0 +1,15 @@\n+#include <Arduino.h>\n+\n+void setup() {\n+  Serial.begin(115200);\n+  pinMode(2, OUTPUT);\n+}\n+\n+void loop() {\n+  digitalWrite(2, HIGH);\n+  Serial.println(\"HEARTBEAT\");\n+  delay(1000);\n+  digitalWrite(2, LOW);\n+  Serial.println(\"HEARTBEAT\");\n+  delay(1000);\n+}",
+      "new_hash": "5c9d3ed4af8c6a2a4b1f73832ba1e13247a90bfb5dd6b39f561a6c0803a39c42",
+      "path": "src/main.cpp",
+      "preview_supported": true,
+      "previous_hash": null,
+      "safe": true,
+      "warning": null
+    }
+  ],
+  "created_at": "2026-10-05T15:38:47.547253Z",
+  "provider_id": "openrouter",
+  "review_required": true,
+  "risk_level": "unassessed",
+  "staged_manifest_hash": "e3b5d16d5f3071a60a662025eeb968ee4d68059d6967f885727d4ea2207c3c1d",
+  "staging_root": "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\staging\\agent-v3-f5ea2e6b580a406cbbdcf90adf56cbec",
+  "status": "pending",
+  "summary": "2 created, 0 modified, 0 deleted",
+  "undone_at": null,
+  "workspace_root": "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\empty-active-project"
+}

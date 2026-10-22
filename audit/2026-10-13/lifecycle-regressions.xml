@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="83" time="98.864" timestamp="2026-10-13T19:07:20.176870+05:30" hostname="SOHAIL"><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[completed_with_warning-200]" time="0.622" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[completed-200]" time="0.505" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[cancelled-200]" time="0.518" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[queued-409]" time="0.507" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[running-409]" time="0.506" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[cancelling-409]" time="0.508" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[awaiting_flash_confirmation-409]" time="0.510" /><testcase classname="tests.api.test_oct13_session_deletion" name="test_delete_uses_canonical_completion_and_retires_paused_recovery[paused_model_unavailable-200]" time="0.593" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_tool_policy_engine_requires_scoped_live_grant" time="0.020" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_tool_policy_engine_rejects_forged_grants_and_gates_services" time="0.011" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_risk_review_is_selected_from_final_diff" time="0.158" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_store_unifies_chat_and_graph_event_sequence" time="0.117" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_context_artifacts_are_incremental_verified_chains" time="0.130" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_store_renews_only_a_live_unfenced_lease" time="0.177" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_memory_provenance_is_invalidated_when_workspace_revision_changes" time="0.133" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_hardware_approval_is_one_time_and_fingerprint_bound" time="0.105" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_orchestrator_owns_action_run_and_auto_applies_low_risk_explicit_edit" time="2.981" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_autonomous_progress_updates_stages_and_preserves_failure_message" time="1.514" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_verified_build_with_invalid_final_response_saves_warning_draft_and_retries[TOOLPLAN_SCHEMA_INVALID]" time="1.321"><failure message="AssertionError: assert not True&#10; +  where True = exists()&#10; +    where exists = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging/workflow-agent-run-1eb4f259335f4fff9cc2e6052d5a2fa7').exists&#10; +      where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging/workflow-agent-run-1eb4f259335f4fff9cc2e6052d5a2fa7') = joinpath('workflow-agent-run-1eb4f259335f4fff9cc2e6052d5a2fa7')&#10; +        where joinpath = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging').joinpath&#10; +          where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging') = &lt;backend.changes.service.ChangeSetService object at 0x000002574E6408E0&gt;.staging_root">tmp_path = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0')
+failure_code = 'TOOLPLAN_SCHEMA_INVALID'
+
+    @pytest.mark.parametrize("failure_code", ["TOOLPLAN_SCHEMA_INVALID", "MODEL_OUTPUT_TRUNCATED"])
+    def test_verified_build_with_invalid_final_response_saves_warning_draft_and_retries(tmp_path: Path, failure_code: str) -&gt; None:
+        attempts = 0
+    
+        async def executor(request: object) -&gt; dict[str, object]:
+            nonlocal attempts
+            attempts += 1
+            stage = Path(getattr(request, "active_workspace_root"))
+            if attempts == 1:
+                (stage / "main.cpp").write_text("repaired", encoding="utf-8")
+                return {
+                    "success": False, "classification": failure_code,
+                    "message": "Agent response invalid", "build_verified": True,
+                    "build_result": {"success": True, "message": "Build passed"},
+                    "provider_diagnostics": {
+                        "outbound_request_count": 3, "physical_request_count": 4,
+                        "request_reached_provider": True, "last_turn": 8,
+                        "response_mode": "native_tools",
+                        "last_failure_code": failure_code,
+                        "last_repair_outcome": "failed",
+                    },
+                }
+            assert (stage / "main.cpp").read_text(encoding="utf-8") == "repaired"
+            return {
+                "success": True, "classification": "AGENT_V3_COMPLETED",
+                "message": "Revalidated", "build_verified": True,
+                "build_result": {"success": True, "message": "Build passed"},
+            }
+    
+        async def scenario() -&gt; None:
+            workspace = tmp_path / "autonomous-workspace"
+            workspace.mkdir()
+            (workspace / "main.cpp").write_text("before", encoding="utf-8")
+            changes = _changes(tmp_path)
+            orchestrator = AgentOrchestrator(
+                change_service=changes, provider_registry=_providers(tmp_path),
+                store=AgentOrchestrationStore(tmp_path / "draft.sqlite3"),
+                run_factory=ProductAgentRun, autonomous_executor=executor,
+            )
+            try:
+                first = await orchestrator.start_run(
+                    project_id="project-autonomous", active_workspace_root=workspace,
+                    instruction="repair and build firmware", provider_id="verified_template",
+                    autonomy="build_only", session_id="session-draft",
+                )
+                for _ in range(200):
+                    if orchestrator.get_run(first.run_id).status == "completed_with_warning":
+                        break
+                    await asyncio.sleep(0.01)
+                failed = orchestrator.get_run(first.run_id)
+                assert failed.status == "completed_with_warning"
+                assert failed.change_set_id
+                assert failed.recoverable is True
+                assert failed.build_result["success"] is True
+                assert failed.to_safe_dict()["build_verified"] is True
+                assert "build verified" in failed.to_safe_dict()["assistant_message"]
+                assert any(event["event_type"] == "runtime.completed_with_warning" for event in orchestrator.events(first.run_id))
+                assert failed.to_safe_dict()["provider_diagnostics"]["last_turn"] == 8
+                draft = changes.get(failed.change_set_id)
+                assert draft.status == "draft"
+                assert (Path(draft.staging_root) / "main.cpp").is_file()
+                assert not changes.staging_root.joinpath(f"workflow-{first.run_id}").exists()
+                assert (workspace / "main.cpp").read_text(encoding="utf-8") == "before"
+                replacement = await orchestrator.retry(first.run_id)
+                for _ in range(200):
+                    if orchestrator.get_run(replacement.run_id).status in {"completed", "failed"}:
+                        break
+                    await asyncio.sleep(0.01)
+                assert attempts == 2
+                assert orchestrator.get_run(replacement.run_id).status == "completed"
+            finally:
+                await orchestrator.close()
+    
+&gt;       asyncio.run(scenario())
+
+tests\unit\test_agent_orchestrator_v2.py:412: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\diwan\AppData\Local\Programs\Python\Python310\lib\asyncio\runners.py:44: in run
+    return loop.run_until_complete(main)
+C:\Users\diwan\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py:646: in run_until_complete
+    return future.result()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def scenario() -&gt; None:
+        workspace = tmp_path / "autonomous-workspace"
+        workspace.mkdir()
+        (workspace / "main.cpp").write_text("before", encoding="utf-8")
+        changes = _changes(tmp_path)
+        orchestrator = AgentOrchestrator(
+            change_service=changes, provider_registry=_providers(tmp_path),
+            store=AgentOrchestrationStore(tmp_path / "draft.sqlite3"),
+            run_factory=ProductAgentRun, autonomous_executor=executor,
+        )
+        try:
+            first = await orchestrator.start_run(
+                project_id="project-autonomous", active_workspace_root=workspace,
+                instruction="repair and build firmware", provider_id="verified_template",
+                autonomy="build_only", session_id="session-draft",
+            )
+            for _ in range(200):
+                if orchestrator.get_run(first.run_id).status == "completed_with_warning":
+                    break
+                await asyncio.sleep(0.01)
+            failed = orchestrator.get_run(first.run_id)
+            assert failed.status == "completed_with_warning"
+            assert failed.change_set_id
+            assert failed.recoverable is True
+            assert failed.build_result["success"] is True
+            assert failed.to_safe_dict()["build_verified"] is True
+            assert "build verified" in failed.to_safe_dict()["assistant_message"]
+            assert any(event["event_type"] == "runtime.completed_with_warning" for event in orchestrator.events(first.run_id))
+            assert failed.to_safe_dict()["provider_diagnostics"]["last_turn"] == 8
+            draft = changes.get(failed.change_set_id)
+            assert draft.status == "draft"
+            assert (Path(draft.staging_root) / "main.cpp").is_file()
+&gt;           assert not changes.staging_root.joinpath(f"workflow-{first.run_id}").exists()
+E           AssertionError: assert not True
+E            +  where True = exists()
+E            +    where exists = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging/workflow-agent-run-1eb4f259335f4fff9cc2e6052d5a2fa7').exists
+E            +      where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging/workflow-agent-run-1eb4f259335f4fff9cc2e6052d5a2fa7') = joinpath('workflow-agent-run-1eb4f259335f4fff9cc2e6052d5a2fa7')
+E            +        where joinpath = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging').joinpath
+E            +          where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval0/staging') = &lt;backend.changes.service.ChangeSetService object at 0x000002574E6408E0&gt;.staging_root
+
+tests\unit\test_agent_orchestrator_v2.py:400: AssertionError</failure></testcase><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_verified_build_with_invalid_final_response_saves_warning_draft_and_retries[MODEL_OUTPUT_TRUNCATED]" time="1.130"><failure message="AssertionError: assert not True&#10; +  where True = exists()&#10; +    where exists = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging/workflow-agent-run-591a2052f01c4d0badd458029a5eb331').exists&#10; +      where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging/workflow-agent-run-591a2052f01c4d0badd458029a5eb331') = joinpath('workflow-agent-run-591a2052f01c4d0badd458029a5eb331')&#10; +        where joinpath = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging').joinpath&#10; +          where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging') = &lt;backend.changes.service.ChangeSetService object at 0x000002574E57CB20&gt;.staging_root">tmp_path = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1')
+failure_code = 'MODEL_OUTPUT_TRUNCATED'
+
+    @pytest.mark.parametrize("failure_code", ["TOOLPLAN_SCHEMA_INVALID", "MODEL_OUTPUT_TRUNCATED"])
+    def test_verified_build_with_invalid_final_response_saves_warning_draft_and_retries(tmp_path: Path, failure_code: str) -&gt; None:
+        attempts = 0
+    
+        async def executor(request: object) -&gt; dict[str, object]:
+            nonlocal attempts
+            attempts += 1
+            stage = Path(getattr(request, "active_workspace_root"))
+            if attempts == 1:
+                (stage / "main.cpp").write_text("repaired", encoding="utf-8")
+                return {
+                    "success": False, "classification": failure_code,
+                    "message": "Agent response invalid", "build_verified": True,
+                    "build_result": {"success": True, "message": "Build passed"},
+                    "provider_diagnostics": {
+                        "outbound_request_count": 3, "physical_request_count": 4,
+                        "request_reached_provider": True, "last_turn": 8,
+                        "response_mode": "native_tools",
+                        "last_failure_code": failure_code,
+                        "last_repair_outcome": "failed",
+                    },
+                }
+            assert (stage / "main.cpp").read_text(encoding="utf-8") == "repaired"
+            return {
+                "success": True, "classification": "AGENT_V3_COMPLETED",
+                "message": "Revalidated", "build_verified": True,
+                "build_result": {"success": True, "message": "Build passed"},
+            }
+    
+        async def scenario() -&gt; None:
+            workspace = tmp_path / "autonomous-workspace"
+            workspace.mkdir()
+            (workspace / "main.cpp").write_text("before", encoding="utf-8")
+            changes = _changes(tmp_path)
+            orchestrator = AgentOrchestrator(
+                change_service=changes, provider_registry=_providers(tmp_path),
+                store=AgentOrchestrationStore(tmp_path / "draft.sqlite3"),
+                run_factory=ProductAgentRun, autonomous_executor=executor,
+            )
+            try:
+                first = await orchestrator.start_run(
+                    project_id="project-autonomous", active_workspace_root=workspace,
+                    instruction="repair and build firmware", provider_id="verified_template",
+                    autonomy="build_only", session_id="session-draft",
+                )
+                for _ in range(200):
+                    if orchestrator.get_run(first.run_id).status == "completed_with_warning":
+                        break
+                    await asyncio.sleep(0.01)
+                failed = orchestrator.get_run(first.run_id)
+                assert failed.status == "completed_with_warning"
+                assert failed.change_set_id
+                assert failed.recoverable is True
+                assert failed.build_result["success"] is True
+                assert failed.to_safe_dict()["build_verified"] is True
+                assert "build verified" in failed.to_safe_dict()["assistant_message"]
+                assert any(event["event_type"] == "runtime.completed_with_warning" for event in orchestrator.events(first.run_id))
+                assert failed.to_safe_dict()["provider_diagnostics"]["last_turn"] == 8
+                draft = changes.get(failed.change_set_id)
+                assert draft.status == "draft"
+                assert (Path(draft.staging_root) / "main.cpp").is_file()
+                assert not changes.staging_root.joinpath(f"workflow-{first.run_id}").exists()
+                assert (workspace / "main.cpp").read_text(encoding="utf-8") == "before"
+                replacement = await orchestrator.retry(first.run_id)
+                for _ in range(200):
+                    if orchestrator.get_run(replacement.run_id).status in {"completed", "failed"}:
+                        break
+                    await asyncio.sleep(0.01)
+                assert attempts == 2
+                assert orchestrator.get_run(replacement.run_id).status == "completed"
+            finally:
+                await orchestrator.close()
+    
+&gt;       asyncio.run(scenario())
+
+tests\unit\test_agent_orchestrator_v2.py:412: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\diwan\AppData\Local\Programs\Python\Python310\lib\asyncio\runners.py:44: in run
+    return loop.run_until_complete(main)
+C:\Users\diwan\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py:646: in run_until_complete
+    return future.result()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def scenario() -&gt; None:
+        workspace = tmp_path / "autonomous-workspace"
+        workspace.mkdir()
+        (workspace / "main.cpp").write_text("before", encoding="utf-8")
+        changes = _changes(tmp_path)
+        orchestrator = AgentOrchestrator(
+            change_service=changes, provider_registry=_providers(tmp_path),
+            store=AgentOrchestrationStore(tmp_path / "draft.sqlite3"),
+            run_factory=ProductAgentRun, autonomous_executor=executor,
+        )
+        try:
+            first = await orchestrator.start_run(
+                project_id="project-autonomous", active_workspace_root=workspace,
+                instruction="repair and build firmware", provider_id="verified_template",
+                autonomy="build_only", session_id="session-draft",
+            )
+            for _ in range(200):
+                if orchestrator.get_run(first.run_id).status == "completed_with_warning":
+                    break
+                await asyncio.sleep(0.01)
+            failed = orchestrator.get_run(first.run_id)
+            assert failed.status == "completed_with_warning"
+            assert failed.change_set_id
+            assert failed.recoverable is True
+            assert failed.build_result["success"] is True
+            assert failed.to_safe_dict()["build_verified"] is True
+            assert "build verified" in failed.to_safe_dict()["assistant_message"]
+            assert any(event["event_type"] == "runtime.completed_with_warning" for event in orchestrator.events(first.run_id))
+            assert failed.to_safe_dict()["provider_diagnostics"]["last_turn"] == 8
+            draft = changes.get(failed.change_set_id)
+            assert draft.status == "draft"
+            assert (Path(draft.staging_root) / "main.cpp").is_file()
+&gt;           assert not changes.staging_root.joinpath(f"workflow-{first.run_id}").exists()
+E           AssertionError: assert not True
+E            +  where True = exists()
+E            +    where exists = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging/workflow-agent-run-591a2052f01c4d0badd458029a5eb331').exists
+E            +      where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging/workflow-agent-run-591a2052f01c4d0badd458029a5eb331') = joinpath('workflow-agent-run-591a2052f01c4d0badd458029a5eb331')
+E            +        where joinpath = WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging').joinpath
+E            +          where WindowsPath('C:/Users/diwan/AppData/Local/Temp/pytest-of-diwan/pytest-2120/test_verified_build_with_inval1/staging') = &lt;backend.changes.service.ChangeSetService object at 0x000002574E57CB20&gt;.staging_root
+
+tests\unit\test_agent_orchestrator_v2.py:400: AssertionError</failure></testcase><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_failed_build_saves_unverified_draft_and_retry_error_context" time="2.722" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_unexpected_autonomous_failure_retains_safe_unverified_files" time="1.486" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_autonomous_context_checkpoint_is_durable_and_preserves_payload" time="1.107" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_orchestrator_heartbeats_session_lease_during_long_workflow" time="0.950" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_validation_decision_blocks_run_and_skips_unreachable_nodes" time="1.541" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_explicit_approval_applies_successfully_built_staged_project" time="1.598" /><testcase classname="tests.unit.test_agent_orchestrator_v2" name="test_tool_policy_engine_rejects_workspace_mismatch" time="0.010" /><testcase classname="tests.unit.test_agent_recovery" name="test_session_store_migrates_legacy_json_once_into_sqlite" time="0.095" /><testcase classname="tests.unit.test_agent_recovery" name="test_restart_invalidates_approval_and_retry_is_idempotent" time="1.169" /><testcase classname="tests.unit.test_agent_recovery" name="test_checkpoint_rejects_non_settled_event_boundary" time="0.089" /><testcase classname="tests.unit.test_agent_recovery" name="test_model_unavailable_pause_survives_restart_and_can_retry" time="0.988" /><testcase classname="tests.unit.test_context_checkpoint_compaction" name="test_context_checkpoint_is_deterministic_and_retains_failures" time="0.012" /><testcase classname="tests.unit.test_context_checkpoint_compaction" name="test_context_checkpoint_is_not_created_before_threshold" time="0.010" /><testcase classname="tests.unit.test_context_checkpoint_compaction" name="test_compaction_keeps_compiler_errors_visible_after_many_reads" time="0.010" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_saved_draft_verification_needs_no_planner_and_does_not_claim_completion" time="0.142" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_saved_draft_verification_requires_trust" time="0.016" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_default_build_keeps_the_environment_selected_by_platformio" time="0.105" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[PROVIDER_TIMEOUT]" time="0.236" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[PROVIDER_UNAVAILABLE]" time="0.249" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[PROVIDER_BUSY]" time="0.233" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[MODEL_OUTPUT_TRUNCATED]" time="0.237" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[TOOL_ARGUMENTS_INVALID]" time="0.241" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[TOOLPLAN_SCHEMA_INVALID]" time="0.241" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_provider_outage_builds_settled_firmware_locally[AGENT_RUNTIME_LIMIT_EXCEEDED]" time="0.234" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_generation_compiles_after_three_settled_write_turns" time="0.484" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_build_then_edit_requires_fresh_build_at_final" time="0.274" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_external_source_change_or_artifact_change_invalidates_result" time="0.198" /><testcase classname="tests.unit.test_agent_verification_freshness" name="test_verified_build_finishes_after_one_read_only_followup" time="0.179" /><testcase classname="tests.unit.test_durable_continuation" name="test_resume_after_restart_is_single_linked_continuation" time="2.042" /><testcase classname="tests.unit.test_durable_continuation" name="test_live_failure_recovery_preserves_draft_contract_and_output_hint[MODEL_OUTPUT_TRUNCATED]" time="2.010" /><testcase classname="tests.unit.test_durable_continuation" name="test_live_failure_recovery_preserves_draft_contract_and_output_hint[MODEL_RETIRED]" time="2.097" /><testcase classname="tests.unit.test_durable_continuation" name="test_live_failure_recovery_preserves_draft_contract_and_output_hint[PROVIDER_REQUEST_FAILED]" time="2.000" /><testcase classname="tests.unit.test_durable_continuation" name="test_checkpoint_seal_rejects_tampering" time="0.102" /><testcase classname="tests.unit.test_durable_continuation" name="test_claimed_guidance_is_requeued_until_acknowledged" time="0.225" /><testcase classname="tests.unit.test_durable_continuation" name="test_effect_intent_cannot_be_replayed_after_restart" time="0.125" /><testcase classname="tests.unit.test_verification_permission_recovery" name="test_generation_waits_for_permission_without_claiming_a_compiler_failure[False]" time="0.121" /><testcase classname="tests.unit.test_verification_permission_recovery" name="test_generation_waits_for_permission_without_claiming_a_compiler_failure[True]" time="0.114" /><testcase classname="tests.unit.test_verification_permission_recovery" name="test_trust_revoked_during_preflight_prevents_the_compiler_launch" time="0.023" /><testcase classname="tests.unit.test_verification_permission_recovery" name="test_api_permission_block_preserves_draft_then_verifies_without_a_model" time="4.577" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_verify_saved_draft_builds_without_resolving_an_unavailable_model" time="3.278" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_product_agent_route_disabled_without_flag" time="0.473" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_api_forwards_explicit_model_instead_of_provider_default" time="0.466" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_direct_run_binds_latest_write_request_to_host_contract" time="0.450" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_major_choices_wait_for_answer_before_starting_run" time="0.783" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_create_list_and_local_reply" time="0.487" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_v2_orchestrator_keeps_chat_run_free_and_exposes_action_graph" time="4.128" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_v2_compound_project_request_uses_generate_and_build_workflow" time="1.924" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_model_question_does_not_start_run" time="0.659" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_inspect_uses_read_only_model_tool_run" time="3.185" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_read_only_create_request_explains_mode_without_starting_run" time="0.513" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_auto_generate_builds_without_flash_confirmation" time="2.711" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_edit_with_build_prohibition_uses_staged_changes" time="4.809" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_repair_activity_follows_repair_lifecycle" time="2.697" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_flash_requires_existing_confirmation_then_yes_confirms" time="3.368" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_agent_session_second_message_includes_conversation_context" time="2.816" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_fake_agent_changeset_apply_and_undo_api" time="4.856" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_autonomous_agent_builds_then_waits_for_flash_confirmation" time="1.630" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_autonomous_agent_passes_selected_provider_to_workflow_context" time="1.455" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_autonomous_agent_cancel_kills_owned_subprocesses" time="1.134" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_autonomous_agent_confirm_flash_uses_existing_flash_tool" time="2.112" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_autonomous_agent_flash_rejects_board_type_mismatch" time="2.241" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_removed_provider_is_not_routeable" time="0.497" /><testcase classname="tests.api.test_product_agent_runtime_api" name="test_changeset_apply_rejects_remote_origin" time="3.532" /></testsuite></testsuites>

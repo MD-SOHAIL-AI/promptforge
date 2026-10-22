@@ -1,0 +1,56 @@
+{
+  "success": false,
+  "status": "FAILED",
+  "timestamp": 1791360823.7125483,
+  "duration_ms": 74109,
+  "message": "PlatformIO build failed with exit code 1",
+  "metadata": {
+    "command": [
+      "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "run",
+      "--project-dir",
+      "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-b779dfb4ac5145a3967b92021af08758",
+      "--environment",
+      "esp32dev"
+    ],
+    "environment": "esp32dev",
+    "configured_environments": [
+      "esp32dev"
+    ],
+    "output_truncated": false,
+    "build_root": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-b779dfb4ac5145a3967b92021af08758\\.pio\\build",
+    "version_probe_failed": false,
+    "partition_preflight": {
+      "success": false,
+      "environment": "esp32dev",
+      "validated_environments": [],
+      "validation": "canonical_platformio_build"
+    },
+    "toolchain": {
+      "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "version": "6.2.0",
+      "environment": "esp32dev",
+      "board": "esp32dev"
+    }
+  },
+  "firmware_path": null,
+  "build_size_bytes": 0,
+  "platform": "platformio",
+  "board": "esp32dev",
+  "toolchain_version": "6.2.0",
+  "warnings_count": 1,
+  "process_exit_code": 1,
+  "process_timed_out": false,
+  "failure": {
+    "category": "COMPILATION_ERROR",
+    "message": "[COMPILATION_ERROR] stage='build' tool='platformio' \u2014 ensa/include/freertos/portmacro.h:717:41: error: static assertion failed: portGE",
+    "retryable": false,
+    "stage": "build",
+    "exception_type": "ExecutionError",
+    "raw_output": "In file included from c:\\users\\diwan\\.platformio\\packages\\toolchain-xtensa-esp32\\xtensa-esp32-elf\\sys-include\\stdio.h:35,\r\n                 from C:/Users/diwan/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h:27,\r\n                 from src/control/relay_controller.h:9,\r\n                 from src/control/relay_controller.cpp:6:\r\nC:/Users/diwan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/port/xtensa/include/freertos/portmacro.h:717:41: error: static assertion failed: portGET_ARGUMENT_COUNT() result does not match for 0 arguments\r\n _Static_assert(portGET_ARGUMENT_COUNT() == 0, \"portGET_ARGUMENT_COUNT() result does not match for 0 arguments\");\r\n                                         ^\r\nIn file included from c:\\users\\diwan\\.platformio\\packages\\toolchain-xtensa-esp32\\xtensa-esp32-elf\\sys-include\\stdio.h:35,\r\n                 from C:/Users/diwan/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h:27,\r\n                 from src/control/automation_controller.h:9,\r\n                 from src/control/automation_controller.cpp:6:\r\nC:/Users/diwan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/port/xtensa/include/freertos/portmacro.h:717:41: error: static assertion failed: portGET_ARGUMENT_COUNT() result does not match for 0 arguments\r\n _Static_assert(portGET_ARGUMENT_COUNT() == 0, \"portGET_ARGUMENT_COUNT() result does not match for 0 arguments\");\r\n                                         ^\r\nIn file included from c:\\users\\diwan\\.platformio\\packages\\toolchain-xtensa-esp32\\xtensa-esp32-elf\\sys-include\\stdio.h:35,\r\n                 from C:/Users/diwan/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h:27,\r\n                 from src/display/oled_manager.h:9,\r\n                 from src/display/oled_manager.cpp:6:\r\nC:/Users/diwan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/port/xtensa/include/freertos/portmacro.h:717:41: error: static assertion failed: portGET_ARGUMENT_COUNT() result does not match for 0 arguments\r\n _Static_assert(portGET_ARGUMENT_COUNT() == 0, \"portGET_ARGUMENT_COUNT() result does not match for 0 arguments\");\r\n                                         ^\r\nsrc/control/automation_controller.cpp: In static member function 'static void AutomationController::updateLightControl()':\r\nsrc/control/automation_controller.cpp:95:19: warning: unused variable 'lastMotion' [-Wunused-variable]\r\n     unsigned long lastMotion = MotionSensor::getLastMotionTime();\r\n                   ^~~~~~~~~~\r\nsrc/display/oled_manager.cpp: In static member function 'static void OLEDManager::updateSensorDisplay()':\r\nsrc/display/oled_manager.cpp:123:9: error: 'WiFiManager' has not been declared\r\n     if (WiFiManager::isConnected()) {\r\n         ^~~~~~~~~~~\r\n*** [.pio\\build\\esp32dev\\src\\control\\relay_controller.cpp.o] Error 1\r\n*** [.pio\\build\\esp32dev\\src\\control\\automation_controller.cpp.o] Error 1\r\n*** [.pio\\build\\esp32dev\\src\\display\\oled_manager.cpp.o] Error 1\r\nIn file included from c:\\users\\diwan\\.platformio\\packages\\toolchain-xtensa-esp32\\xtensa-esp32-elf\\sys-include\\stdio.h:35,\r\n                 from C:/Users/diwan/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h:27,\r\n                 from src/sensors/light_sensor.h:9,\r\n                 from src/sensors/light_sensor.cpp:6:\r\nC:/Users/diwan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/port/xtensa/include/freertos/portmacro.h:717:41: error: static assertion failed: portGET_ARGUMENT_COUNT() result does not match for 0 arguments\r\n _Static_assert(portGET_ARGUMENT_COUNT() == 0, \"portGET_ARGUMENT_COUNT() result does not match for 0 arguments\");\r\n                                         ^\r\nIn file included from c:\\users\\diwan\\.platformio\\packages\\toolchain-xtensa-esp32\\xtensa-esp32-elf\\sys-include\\stdio.h:35,\r\n                 from C:/Users/diwan/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h:27,\r\n                 from src/sensors/motion_sensor.h:9,\r\n    \n[TRUNCATED]",
+    "metadata": {
+      "severity": "ERROR",
+      "confidence": 0.9
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "original-nim",
+      "provider": "nvidia_nim",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "endpoint_sha256": "",
+      "access_tier": "unconfirmed",
+      "access_evidence": "",
+      "execution_profile": "standard",
+      "reports": {
+        "generation": "../.forgex/release-qualification/original-generation.json",
+        "maintenance": "../.forgex/release-qualification/original-maintenance.json",
+        "targets": "../.forgex/release-qualification/original-targets.json"
+      }
+    },
+    {
+      "id": "paid-release",
+      "provider": "",
+      "model": "",
+      "endpoint_sha256": "",
+      "access_tier": "paid",
+      "access_evidence": "",
+      "execution_profile": "standard",
+      "reports": {
+        "generation": "../.forgex/release-qualification/paid-generation.json",
+        "maintenance": "../.forgex/release-qualification/paid-maintenance.json",
+        "targets": "../.forgex/release-qualification/paid-targets.json"
+      }
+    }
+  ]
+}

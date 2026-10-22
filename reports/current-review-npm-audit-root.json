@@ -1,0 +1,11 @@
+npm warn audit request to https://registry.npmjs.org/-/npm/v1/security/advisories/bulk failed, reason: 
+npm error audit endpoint returned an error
+{
+  "message": "request to https://registry.npmjs.org/-/npm/v1/security/advisories/bulk failed, reason: ",
+  "error": {
+    "summary": "",
+    "detail": ""
+  }
+}
+npm error Log files were not written due to an error writing to the directory: C:\Users\diwan\AppData\Local\npm-cache\_logs
+npm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal

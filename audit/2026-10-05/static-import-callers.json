@@ -1,0 +1,2782 @@
+{
+  "backend/contracts/execution_plan.py": [
+    "backend/agent/coordinator.py",
+    "backend/agent/planner.py",
+    "backend/main.py",
+    "backend/services/code_generation_service.py",
+    "backend/validation/generated_project_validation.py",
+    "backend/workflow/generate_code_handler.py",
+    "backend/workflow/workflow_runner.py",
+    "examples/generate_code_handler_usage.py",
+    "examples/workflow_runner_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_execution_plan.py",
+    "tests/unit/test_generate_code_handler.py",
+    "tests/unit/test_workflow_runner.py"
+  ],
+  "backend/tools/tool_registry.py": [
+    "backend/agent/coordinator.py",
+    "backend/api/app.py",
+    "backend/main.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_tool_registry.py",
+    "tests/unit/test_wokwi_simulator.py"
+  ],
+  "backend/runtime/failure_classifier.py": [
+    "backend/agent/debugger.py",
+    "backend/tools/build_firmware.py",
+    "backend/tools/flash_firmware.py",
+    "backend/tools/wokwi_simulator.py",
+    "tests/unit/test_debugger.py"
+  ],
+  "backend/agent_runtime/api_planner_provider.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/product_provider_registry.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/api/routes/agent_runtime.py",
+    "scripts/forge_agent_provider_smoke.py",
+    "tests/api/test_outage_recovery_api.py",
+    "tests/unit/test_agent_verification_freshness.py",
+    "tests/unit/test_api_planner_provider.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_model_normalization.py",
+    "tests/unit/test_native_agent_tools.py",
+    "tests/unit/test_repair_reliability.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/activity.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "tests/unit/test_agent_activity.py"
+  ],
+  "backend/agent_runtime/capabilities.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/tool_executor.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_tool_runtime.py"
+  ],
+  "backend/agent_runtime/product_agent_service.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "tests/api/test_product_agent_runtime_api.py",
+    "tests/api/test_redesign_build_operations.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_durable_continuation.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_missing_workspace_recovery.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_recovery_actions.py"
+  ],
+  "backend/agent_runtime/product_provider_registry.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/api/app.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/agent_runtime/product_providers.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/product_provider_registry.py"
+  ],
+  "backend/agent_runtime/session_store.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/session_run_projector.py",
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "tests/api/test_model_routes.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_chat_progress.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/tool_contracts.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/api_planner_provider.py",
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/canonical_runtime.py",
+    "backend/agent_runtime/capabilities.py",
+    "backend/agent_runtime/capability_profiles.py",
+    "backend/agent_runtime/engine_tools.py",
+    "backend/agent_runtime/esp32_tools.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/product_providers.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/tool_executor.py",
+    "backend/agent_runtime/tool_policy.py",
+    "backend/agent_runtime/tool_registry.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/contracts/engine.py",
+    "scripts/forge_agent_provider_smoke.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/benchmarks/test_forge_agent_core_acceptance.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_agent_verification_freshness.py",
+    "tests/unit/test_api_planner_provider.py",
+    "tests/unit/test_attempt_settlement_integrity.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_chat_progress.py",
+    "tests/unit/test_compiler_context.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_progress_continuation.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_repair_reliability.py",
+    "tests/unit/test_shared_subagent_budget.py",
+    "tests/unit/test_staged_file_moves.py",
+    "tests/unit/test_tool_runtime.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/tool_policy.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/capabilities.py",
+    "backend/agent_runtime/capability_profiles.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/task_contract.py",
+    "backend/agent_runtime/tool_executor.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/chat.py",
+    "backend/api/routes/files.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_compiler_context.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_staged_file_moves.py",
+    "tests/unit/test_tool_runtime.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/tool_runtime.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/product_agent_service.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/agent_runtime/subagents.py",
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/turn_router.py": [
+    "backend/agent_runtime/__init__.py",
+    "backend/agent_runtime/task_understanding.py",
+    "backend/api/routes/agent_runtime.py",
+    "tests/api/test_outage_recovery_api.py",
+    "tests/benchmarks/test_forge_agent_core_acceptance.py",
+    "tests/unit/test_agent_turn_router.py"
+  ],
+  "backend/agent_runtime/public_progress.py": [
+    "backend/agent_runtime/activity_stream.py",
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/chat_service.py",
+    "backend/agent_runtime/session_store.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_chat_progress.py"
+  ],
+  "backend/changes/__init__.py": [
+    "backend/agent_runtime/api_planner_provider.py",
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/context_assembler.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/risk.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/agent_runtime/workspace_index.py",
+    "backend/api/app.py",
+    "backend/api/routes/changes.py",
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_changeset_service.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_durable_continuation.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_missing_workspace_recovery.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_production_hardening.py",
+    "tests/unit/test_progress_continuation.py",
+    "tests/unit/test_recovery_actions.py",
+    "tests/unit/test_tool_runtime.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/model_router/models.py": [
+    "backend/agent_runtime/api_planner_provider.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/product_provider_registry.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/api/routes/model_gateway.py",
+    "backend/model_router/__init__.py",
+    "backend/model_router/catalog.py",
+    "backend/model_router/normalization.py",
+    "backend/model_router/providers/base.py",
+    "backend/model_router/providers/cerebras.py",
+    "backend/model_router/providers/lmstudio.py",
+    "backend/model_router/providers/nvidia_nim.py",
+    "backend/model_router/providers/ollama.py",
+    "backend/model_router/providers/openai_provider.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/providers/openrouter.py",
+    "backend/model_router/registry.py",
+    "backend/model_router/request_recovery.py",
+    "backend/model_router/resolver.py",
+    "backend/model_router/router.py",
+    "backend/model_router/run_budget.py",
+    "backend/model_router/runtime.py",
+    "backend/model_router/usage.py",
+    "backend/services/llm_service.py",
+    "tests/api/test_model_routes.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_model_normalization.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_model_runtime_v2.py",
+    "tests/unit/test_model_selection.py",
+    "tests/unit/test_native_agent_tools.py",
+    "tests/unit/test_nvidia_nim_provider.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_openrouter_provider.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_provider_chat_stream.py",
+    "tests/unit/test_provider_transport_policy.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_repair_reliability.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/model_router/normalization.py": [
+    "backend/agent_runtime/api_planner_provider.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/model_router/providers/lmstudio.py",
+    "backend/model_router/providers/ollama.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/services/llm_service.py",
+    "tests/unit/test_model_normalization.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/observability/diagnostics.py": [
+    "backend/agent_runtime/api_planner_provider.py",
+    "backend/agent_runtime/chat_service.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/api/observability.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/diagnostics.py",
+    "backend/api/routes/websocket.py",
+    "backend/model_router/admission.py",
+    "backend/model_router/providers/nvidia_nim.py",
+    "backend/model_router/providers/openrouter.py",
+    "backend/model_router/request_recovery.py",
+    "backend/model_router/router.py",
+    "backend/observability/log_reader.py",
+    "backend/services/llm_service.py",
+    "backend/tools/build_firmware.py",
+    "scripts/capture-agent-regressions.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_api_planner_provider.py",
+    "tests/unit/test_build_firmware.py",
+    "tests/unit/test_live_diagnostics.py"
+  ],
+  "backend/agent_runtime/orchestration_store.py": [
+    "backend/agent_runtime/approvals.py",
+    "backend/agent_runtime/intake.py",
+    "backend/agent_runtime/jobs.py",
+    "backend/agent_runtime/memory.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/api/app.py",
+    "backend/services/build_operations.py",
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "scripts/benchmark-agent-observation.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_activity_stream.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_chat_progress.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_durable_continuation.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_missing_workspace_recovery.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_phase0_build_and_store_guards.py",
+    "tests/unit/test_recovery_actions.py",
+    "tests/unit/test_release_hardening.py"
+  ],
+  "backend/services/platformio_service.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/api/app.py",
+    "backend/api/routes/build.py",
+    "backend/api/routes/health.py",
+    "backend/services/firmware_manifest.py",
+    "backend/services/flash_service.py",
+    "backend/services/project_profile.py",
+    "backend/services/project_service.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "examples/platformio_service_usage.py",
+    "scripts/smoke-esp32-build.py",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_platformio_service.py"
+  ],
+  "backend/services/artifact_service.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/api/app.py",
+    "tests/unit/test_artifact_service.py"
+  ],
+  "backend/runtime/subprocess_mgr.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/api/app.py",
+    "backend/main.py",
+    "backend/runtime/result.py",
+    "backend/services/esp_idf_adapter.py",
+    "backend/services/flash_service.py",
+    "backend/services/platformio_service.py",
+    "backend/tools/build_firmware.py",
+    "backend/tools/flash_firmware.py",
+    "backend/tools/wokwi_simulator.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "examples/platformio_service_usage.py",
+    "scripts/smoke-esp32-build.py",
+    "tests/api/test_api_routes.py",
+    "tests/api/test_product_agent_runtime_api.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_activity_stream.py",
+    "tests/unit/test_build_firmware.py",
+    "tests/unit/test_flash_firmware.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_platformio_service.py",
+    "tests/unit/test_process_ownership.py",
+    "tests/unit/test_release_hardening.py",
+    "tests/unit/test_subprocess_windows_cancellation.py",
+    "tests/unit/test_unified_agent_runtime.py",
+    "tests/unit/test_wokwi_simulator.py"
+  ],
+  "backend/runtime/process_output.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/runtime/subprocess_mgr.py",
+    "tests/unit/test_activity_stream.py"
+  ],
+  "backend/tools/board_detector.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/api/app.py",
+    "backend/api/routes/devices.py",
+    "backend/api/schemas/flash.py",
+    "backend/api/serialization.py",
+    "backend/main.py",
+    "backend/services/flash_service.py",
+    "backend/tools/flash_firmware.py",
+    "backend/tools/tool_registry.py",
+    "backend/tools/wokwi_simulator.py",
+    "backend/workflow/adapters/flash_adapter.py",
+    "backend/workflow/adapters/monitor_adapter.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/api/test_product_agent_runtime_api.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_board_detector.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_flash_firmware.py",
+    "tests/unit/test_wokwi_simulator.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/tools/build_firmware.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/main.py",
+    "backend/services/platformio_service.py",
+    "backend/tools/flash_firmware.py",
+    "backend/tools/tool_registry.py",
+    "backend/tools/wokwi_simulator.py",
+    "backend/workflow/adapters/build_adapter.py",
+    "backend/workflow/adapters/flash_adapter.py",
+    "backend/workflow/adapters/generation_adapter.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_build_firmware.py",
+    "tests/unit/test_flash_firmware.py",
+    "tests/unit/test_phase0_build_and_store_guards.py",
+    "tests/unit/test_platformio_service.py",
+    "tests/unit/test_production_hardening.py",
+    "tests/unit/test_wokwi_simulator.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/tools/wokwi_simulator.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/main.py",
+    "backend/tools/tool_registry.py",
+    "tests/unit/test_wokwi_simulator.py"
+  ],
+  "backend/agent_runtime/context_assembler.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/tool_runtime.py"
+  ],
+  "backend/agent_runtime/firmware_repair.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "tests/unit/test_firmware_repair.py"
+  ],
+  "backend/agent_runtime/diagnostic_progress.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/progress_state.py",
+    "tests/unit/test_repair_reliability.py"
+  ],
+  "backend/agent_runtime/canonical_runtime.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/engine.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_attempt_settlement_integrity.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/run_reporting.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/failure_contract.py",
+    "backend/agent_runtime/run_models.py",
+    "tests/unit/test_model_normalization.py",
+    "tests/unit/test_provider_admission.py"
+  ],
+  "backend/agent_runtime/skills.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/tool_executor.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "docs/review_reproductions_2026_09_06.py"
+  ],
+  "backend/agent_runtime/subagents.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_async_planner_path.py",
+    "tests/unit/test_chat_progress.py"
+  ],
+  "backend/agent_runtime/tool_executor.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/subagents.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_activity_stream.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_compiler_context.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_staged_file_moves.py",
+    "tests/unit/test_tool_runtime.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/task_contract.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/api/routes/agent_runtime.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_task_state.py"
+  ],
+  "backend/agent_runtime/task_state.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "tests/unit/test_task_state.py"
+  ],
+  "backend/agent_runtime/engine.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/jobs.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_outage_redesign.py"
+  ],
+  "backend/agent_runtime/tool_registry.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/canonical_runtime.py",
+    "backend/agent_runtime/tool_contracts.py",
+    "backend/agent_runtime/tool_executor.py",
+    "backend/agent_runtime/tool_policy.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/api/routes/agent_runtime.py",
+    "tests/unit/test_agent_jobs_and_tools.py"
+  ],
+  "backend/agent_runtime/context_memory.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/tool_runtime.py"
+  ],
+  "backend/agent_runtime/verification.py": [
+    "backend/agent_runtime/autonomous_loop.py",
+    "backend/agent_runtime/deliverables.py",
+    "backend/agent_runtime/task_contract.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/services/llm_service.py": [
+    "backend/agent_runtime/chat_service.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/model_gateway.py",
+    "backend/api/routes/models.py",
+    "backend/model_router/admission.py",
+    "backend/model_router/circuit.py",
+    "backend/model_router/providers/anthropic.py",
+    "backend/model_router/providers/compatible.py",
+    "backend/model_router/providers/deepseek.py",
+    "backend/model_router/providers/gemini_provider.py",
+    "backend/model_router/providers/lmstudio.py",
+    "backend/model_router/providers/nvidia_nim.py",
+    "backend/model_router/providers/ollama.py",
+    "backend/model_router/providers/openai_provider.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/providers/openrouter.py",
+    "backend/model_router/request_recovery.py",
+    "backend/model_router/resolver.py",
+    "backend/model_router/retry.py",
+    "backend/model_router/router.py",
+    "backend/model_router/runtime.py",
+    "backend/services/code_generation_service.py",
+    "examples/code_generation_service_usage.py",
+    "examples/llm_service_usage.py",
+    "tests/api/test_model_routes.py",
+    "tests/api/test_outage_recovery_api.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_chunked_generation_service.py",
+    "tests/unit/test_code_generation_service.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_llm_service.py",
+    "tests/unit/test_model_normalization.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_model_runtime_v2.py",
+    "tests/unit/test_native_agent_tools.py",
+    "tests/unit/test_nvidia_nim_provider.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_openrouter_provider.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_provider_admission.py",
+    "tests/unit/test_provider_chat_stream.py",
+    "tests/unit/test_provider_circuit.py",
+    "tests/unit/test_provider_transport_policy.py",
+    "tests/unit/test_request_recovery.py"
+  ],
+  "backend/changes/service.py": [
+    "backend/agent_runtime/checkpoint_files.py",
+    "backend/agent_runtime/recovery_draft.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "backend/changes/__init__.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "tests/unit/test_changeset_backup_safety.py",
+    "tests/unit/test_changeset_service.py",
+    "tests/unit/test_staged_file_moves.py"
+  ],
+  "backend/agent_runtime/embedded_context.py": [
+    "backend/agent_runtime/context_assembler.py",
+    "backend/agent_runtime/esp32_tools.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "tests/unit/test_production_hardening.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/workspace_index.py": [
+    "backend/agent_runtime/context_assembler.py",
+    "tests/unit/test_workspace_index_cache.py"
+  ],
+  "backend/services/project_profile.py": [
+    "backend/agent_runtime/context_assembler.py",
+    "backend/agent_runtime/embedded_context.py",
+    "backend/agent_runtime/esp32_tools.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/projects.py",
+    "backend/cli.py",
+    "backend/services/esp_idf_adapter.py",
+    "scripts/generate-engine-contracts.py",
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/contracts/engine.py": [
+    "backend/agent_runtime/engine_tools.py",
+    "backend/services/firmware_manifest.py",
+    "scripts/generate-engine-contracts.py"
+  ],
+  "backend/agent_runtime/capability_profiles.py": [
+    "backend/agent_runtime/engine_tools.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "tests/benchmarks/test_forge_agent_core_acceptance.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_verification_freshness.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/jobs.py": [
+    "backend/agent_runtime/intake.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/contracts/runtime_policy.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_missing_workspace_recovery.py",
+    "tests/unit/test_outage_redesign.py"
+  ],
+  "backend/model_router/run_budget.py": [
+    "backend/agent_runtime/intake.py",
+    "backend/agent_runtime/jobs.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/api/app.py",
+    "backend/model_router/providers/ollama.py",
+    "backend/model_router/providers/openai_provider.py",
+    "backend/model_router/providers/opencode.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_repair_reliability.py"
+  ],
+  "backend/contracts/recovery.py": [
+    "backend/agent_runtime/jobs.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/api/routes/models.py",
+    "scripts/generate-engine-contracts.py"
+  ],
+  "backend/contracts/runtime_policy.py": [
+    "backend/agent_runtime/lifecycle.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/agent_runtime/verification.py",
+    "scripts/generate-engine-contracts.py"
+  ],
+  "backend/agent_runtime/activity_stream.py": [
+    "backend/agent_runtime/orchestration_store.py",
+    "backend/agent_runtime/run_models.py",
+    "tests/unit/test_activity_stream.py"
+  ],
+  "backend/runtime/process_owner.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/api/routes/execute.py",
+    "backend/runtime/subprocess_mgr.py",
+    "tests/unit/test_process_ownership.py"
+  ],
+  "backend/agent_runtime/checkpoint_files.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/recovery_draft.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_release_hardening.py"
+  ],
+  "backend/hardware/action_binding.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "tests/unit/test_hardware_action_binding.py"
+  ],
+  "backend/contracts/diagnostics.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/run_models.py",
+    "backend/agent_runtime/tool_runtime.py",
+    "scripts/generate-engine-contracts.py",
+    "tests/unit/test_complete_redesign.py"
+  ],
+  "backend/agent_runtime/approvals.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py"
+  ],
+  "backend/agent_runtime/memory.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py"
+  ],
+  "backend/agent_runtime/orchestration_graph.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "tests/unit/test_orchestration_graph.py"
+  ],
+  "backend/agent_runtime/projection.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "scripts/benchmark-agent-observation.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_release_hardening.py"
+  ],
+  "backend/agent_runtime/risk.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_production_hardening.py",
+    "tests/unit/test_staged_file_moves.py"
+  ],
+  "backend/agent_runtime/intake.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "tests/unit/test_outage_redesign.py"
+  ],
+  "backend/agent_runtime/recovery_draft.py": [
+    "backend/agent_runtime/orchestrator.py"
+  ],
+  "backend/agent_runtime/lifecycle.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/api/app.py"
+  ],
+  "backend/agent_runtime/deliverables.py": [
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/task_contract.py",
+    "backend/agent_runtime/task_state.py",
+    "tests/unit/test_complete_redesign.py"
+  ],
+  "backend/agent_runtime/run_models.py": [
+    "backend/agent_runtime/product_agent_service.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_repair_reliability.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/model_router/registry.py": [
+    "backend/agent_runtime/product_provider_registry.py",
+    "backend/api/routes/models.py",
+    "backend/model_router/__init__.py",
+    "backend/model_router/catalog.py",
+    "backend/model_router/protocols.py",
+    "backend/model_router/providers/base.py",
+    "backend/model_router/resolver.py",
+    "backend/model_router/router.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/model_router/router.py": [
+    "backend/agent_runtime/product_provider_registry.py",
+    "backend/agent_runtime/router_planner.py",
+    "backend/model_router/__init__.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/agent_runtime/router_planner.py": [
+    "backend/agent_runtime/product_provider_registry.py",
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_model_selection.py",
+    "tests/unit/test_native_agent_tools.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_repair_reliability.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/agent_runtime/templates.py": [
+    "backend/agent_runtime/product_providers.py",
+    "tests/unit/test_firmware_validator.py"
+  ],
+  "backend/agent_runtime/observation_context.py": [
+    "backend/agent_runtime/router_planner.py",
+    "tests/unit/test_agent_redesign_regressions.py"
+  ],
+  "backend/agent_runtime/failure_contract.py": [
+    "backend/agent_runtime/run_models.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_provider_admission.py"
+  ],
+  "backend/security/__init__.py": [
+    "backend/agent_runtime/tool_executor.py",
+    "backend/agent_runtime/tool_policy.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/chat.py",
+    "scripts/capture-agent-regressions.py"
+  ],
+  "backend/agent_runtime/esp32_tools.py": [
+    "backend/agent_runtime/tool_executor.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_compiler_context.py",
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/agent_runtime/progress_state.py": [
+    "backend/agent_runtime/tool_runtime.py",
+    "tests/unit/test_progress_continuation.py",
+    "tests/unit/test_repair_reliability.py"
+  ],
+  "backend/api/app.py": [
+    "backend/api/__init__.py",
+    "tests/api/test_api_routes.py",
+    "tests/api/test_local_security.py",
+    "tests/api/test_model_routes.py",
+    "tests/api/test_settings_routes.py",
+    "tests/unit/test_api_app_configuration.py"
+  ],
+  "backend/agent_runtime/autonomous_loop.py": [
+    "backend/api/app.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_verification_freshness.py",
+    "tests/unit/test_async_planner_path.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_context_checkpoint_compaction.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_production_hardening.py",
+    "tests/unit/test_repair_reliability.py",
+    "tests/unit/test_shared_subagent_budget.py",
+    "tests/unit/test_task_state.py",
+    "tests/unit/test_unified_agent_runtime.py"
+  ],
+  "backend/agent_runtime/orchestrator.py": [
+    "backend/api/app.py",
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "scripts/benchmark-agent-observation.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_durable_continuation.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_missing_workspace_recovery.py",
+    "tests/unit/test_recovery_actions.py"
+  ],
+  "backend/core/config.py": [
+    "backend/api/app.py",
+    "backend/model_router/providers/nvidia_nim.py",
+    "backend/model_router/providers/openai_provider.py",
+    "backend/services/code_generation_service.py",
+    "backend/services/llm_service.py",
+    "tests/conftest.py",
+    "tests/unit/test_api_app_configuration.py"
+  ],
+  "backend/main.py": [
+    "backend/api/app.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_planner.py"
+  ],
+  "backend/harness/__init__.py": [
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/harness.py"
+  ],
+  "backend/model_router/__init__.py": [
+    "backend/api/app.py",
+    "backend/api/routes/models.py",
+    "tests/api/test_model_routes.py",
+    "tests/api/test_settings_routes.py",
+    "tests/conftest.py",
+    "tests/unit/test_api_app_configuration.py",
+    "tests/unit/test_cerebras_provider.py",
+    "tests/unit/test_model_provider_storage.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_model_runtime_v2.py",
+    "tests/unit/test_nvidia_nim_provider.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_openrouter_provider.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_request_recovery.py"
+  ],
+  "backend/model_router/sqlite_storage.py": [
+    "backend/api/app.py",
+    "tests/unit/test_model_sqlite_storage.py"
+  ],
+  "backend/model_router/usage.py": [
+    "backend/api/app.py",
+    "backend/model_router/__init__.py",
+    "backend/model_router/router.py",
+    "tests/unit/test_model_sqlite_storage.py",
+    "tests/unit/test_opencode_engine.py"
+  ],
+  "backend/observability/metrics.py": [
+    "backend/api/app.py",
+    "backend/main.py",
+    "tests/unit/test_metrics.py"
+  ],
+  "backend/observability/runtime_logs.py": [
+    "backend/api/app.py",
+    "backend/main.py",
+    "backend/workspace/workspace_manager.py",
+    "tests/unit/test_runtime_logs.py",
+    "tests/unit/test_workspace_manager.py"
+  ],
+  "backend/services/code_generation_service.py": [
+    "backend/api/app.py",
+    "backend/api/routes/models.py",
+    "backend/main.py",
+    "backend/services/project_service.py",
+    "backend/workflow/generate_code_handler.py",
+    "examples/code_generation_service_usage.py",
+    "examples/generate_code_handler_usage.py",
+    "tests/api/test_model_routes.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_chunked_generation_service.py",
+    "tests/unit/test_code_generation_service.py",
+    "tests/unit/test_generate_code_handler.py"
+  ],
+  "backend/services/generation_diagnostics_store.py": [
+    "backend/api/app.py",
+    "backend/services/code_generation_service.py",
+    "tests/api/test_model_routes.py",
+    "tests/unit/test_chunked_generation_service.py",
+    "tests/unit/test_generation_diagnostics_storage.py"
+  ],
+  "backend/services/flash_service.py": [
+    "backend/api/app.py",
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/services/project_import_service.py": [
+    "backend/api/app.py",
+    "backend/api/dependencies.py",
+    "backend/api/routes/files.py",
+    "backend/api/routes/projects.py",
+    "tests/unit/test_live_log_reliability.py"
+  ],
+  "backend/services/project_service.py": [
+    "backend/api/app.py",
+    "backend/api/dependencies.py",
+    "backend/api/routes/build.py",
+    "backend/api/routes/files.py",
+    "backend/api/routes/projects.py",
+    "backend/main.py",
+    "backend/workflow/generate_code_handler.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "examples/generate_code_handler_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/api/test_model_routes.py",
+    "tests/api/test_settings_routes.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_generate_code_handler.py",
+    "tests/unit/test_production_hardening.py",
+    "tests/unit/test_project_service.py"
+  ],
+  "backend/services/serial_service.py": [
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/monitor.py",
+    "backend/tools/flash_firmware.py",
+    "backend/tools/serial_monitor.py",
+    "examples/serial_service_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_serial_service.py"
+  ],
+  "backend/services/terminal_service.py": [
+    "backend/api/app.py",
+    "backend/api/routes/terminal.py",
+    "tests/api/test_websocket.py",
+    "tests/unit/test_terminal_service.py"
+  ],
+  "backend/settings/__init__.py": [
+    "backend/api/app.py",
+    "tests/api/test_settings_routes.py"
+  ],
+  "backend/utils/paths.py": [
+    "backend/api/app.py",
+    "backend/workspace/workspace_manager.py",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_paths.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_workspace_manager.py"
+  ],
+  "backend/workspace/workspace_manager.py": [
+    "backend/api/app.py",
+    "backend/api/routes/workspace.py",
+    "backend/workspace/__init__.py",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_workspace_manager.py"
+  ],
+  "backend/api/errors.py": [
+    "backend/api/app.py",
+    "backend/api/dependencies.py",
+    "backend/api/local_security.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/build.py",
+    "backend/api/routes/changes.py",
+    "backend/api/routes/chat.py",
+    "backend/api/routes/devices.py",
+    "backend/api/routes/diagnostics.py",
+    "backend/api/routes/execute.py",
+    "backend/api/routes/files.py",
+    "backend/api/routes/flash.py",
+    "backend/api/routes/harness.py",
+    "backend/api/routes/model_gateway.py",
+    "backend/api/routes/models.py",
+    "backend/api/routes/monitor.py",
+    "backend/api/routes/projects.py",
+    "backend/api/routes/settings.py",
+    "backend/api/routes/terminal.py",
+    "backend/api/routes/workspace.py",
+    "tests/api/test_model_routes.py"
+  ],
+  "backend/api/service_container.py": [
+    "backend/api/app.py",
+    "backend/api/dependencies.py"
+  ],
+  "backend/api/local_security.py": [
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/changes.py",
+    "backend/api/routes/chat.py",
+    "backend/api/routes/diagnostics.py",
+    "backend/api/routes/harness.py",
+    "backend/api/routes/model_gateway.py",
+    "backend/api/routes/terminal.py",
+    "backend/api/routes/websocket.py",
+    "tests/api/test_local_security.py",
+    "tests/api/test_websocket.py"
+  ],
+  "backend/api/observability.py": [
+    "backend/api/app.py",
+    "backend/api/routes/execute.py",
+    "backend/model_router/router.py"
+  ],
+  "backend/api/progress.py": [
+    "backend/api/app.py",
+    "backend/api/routes/execute.py",
+    "backend/api/routes/websocket.py",
+    "tests/api/test_websocket.py"
+  ],
+  "backend/api/routes/__init__.py": [
+    "backend/api/app.py",
+    "tests/unit/test_harness_client.py"
+  ],
+  "backend/api/routes/agent_runtime.py": [
+    "backend/api/app.py",
+    "backend/api/routes/diagnostics.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_agent_turn_router.py",
+    "tests/unit/test_harness_client.py"
+  ],
+  "backend/api/routes/build.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/changes.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/devices.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/diagnostics.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/execute.py": [
+    "backend/api/app.py",
+    "backend/api/routes/agent_runtime.py"
+  ],
+  "backend/api/routes/files.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/flash.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/harness.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/health.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/models.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/model_gateway.py": [
+    "backend/api/app.py",
+    "tests/api/test_model_routes.py"
+  ],
+  "backend/api/routes/monitor.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/projects.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/settings.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/terminal.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/websocket.py": [
+    "backend/api/app.py"
+  ],
+  "backend/api/routes/workspace.py": [
+    "backend/api/app.py"
+  ],
+  "backend/agent_runtime/chat_service.py": [
+    "backend/api/app.py",
+    "tests/unit/test_chat_progress.py"
+  ],
+  "backend/services/build_operations.py": [
+    "backend/api/app.py",
+    "tests/unit/test_complete_redesign.py"
+  ],
+  "backend/api/routes/chat.py": [
+    "backend/api/app.py"
+  ],
+  "backend/utils/data_migration.py": [
+    "backend/api/app.py",
+    "tests/unit/test_release_data_and_budgets.py"
+  ],
+  "backend/agent_runtime/session_run_projector.py": [
+    "backend/api/app.py"
+  ],
+  "backend/agent_runtime/retention.py": [
+    "backend/api/app.py",
+    "tests/unit/test_beta_agent_reliability.py"
+  ],
+  "backend/api/schemas/common.py": [
+    "backend/api/errors.py",
+    "backend/api/routes/execute.py",
+    "backend/api/routes/model_gateway.py",
+    "backend/api/routes/models.py",
+    "backend/api/routes/terminal.py",
+    "backend/api/schemas/build.py",
+    "backend/api/schemas/devices.py",
+    "backend/api/schemas/execution.py",
+    "backend/api/schemas/files.py",
+    "backend/api/schemas/flash.py",
+    "backend/api/schemas/health.py",
+    "backend/api/schemas/monitor.py",
+    "backend/api/schemas/project_import.py",
+    "backend/api/schemas/projects.py",
+    "backend/api/schemas/websocket.py",
+    "backend/api/schemas/workspace.py"
+  ],
+  "backend/api/schemas/websocket.py": [
+    "backend/api/progress.py",
+    "backend/api/routes/websocket.py"
+  ],
+  "backend/agent_runtime/slash_commands.py": [
+    "backend/api/routes/agent_runtime.py",
+    "tests/unit/test_agent_slash_commands.py"
+  ],
+  "backend/api/dependencies.py": [
+    "backend/api/routes/agent_runtime.py",
+    "backend/api/routes/build.py",
+    "backend/api/routes/changes.py",
+    "backend/api/routes/chat.py",
+    "backend/api/routes/devices.py",
+    "backend/api/routes/diagnostics.py",
+    "backend/api/routes/execute.py",
+    "backend/api/routes/files.py",
+    "backend/api/routes/harness.py",
+    "backend/api/routes/health.py",
+    "backend/api/routes/model_gateway.py",
+    "backend/api/routes/models.py",
+    "backend/api/routes/monitor.py",
+    "backend/api/routes/projects.py",
+    "backend/api/routes/settings.py",
+    "backend/api/routes/terminal.py",
+    "backend/api/routes/workspace.py"
+  ],
+  "backend/agent_runtime/engine_tools.py": [
+    "backend/api/routes/agent_runtime.py",
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/agent_runtime/task_understanding.py": [
+    "backend/api/routes/agent_runtime.py",
+    "tests/unit/test_agent_jobs_and_tools.py"
+  ],
+  "backend/api/schemas/build.py": [
+    "backend/api/routes/build.py",
+    "backend/api/schemas/flash.py"
+  ],
+  "backend/api/schemas/devices.py": [
+    "backend/api/routes/devices.py"
+  ],
+  "backend/runtime_contract.py": [
+    "backend/api/routes/diagnostics.py",
+    "backend/api/routes/health.py",
+    "backend/observability/diagnostics.py",
+    "scripts/prepare-release.py",
+    "scripts/smoke-live-log-reliability.py"
+  ],
+  "backend/observability/log_reader.py": [
+    "backend/api/routes/diagnostics.py",
+    "tests/unit/test_live_log_reliability.py"
+  ],
+  "backend/api/schemas/execution.py": [
+    "backend/api/routes/execute.py",
+    "backend/api/serialization.py"
+  ],
+  "backend/api/serialization.py": [
+    "backend/api/routes/execute.py"
+  ],
+  "backend/contracts/generated_project.py": [
+    "backend/api/routes/files.py",
+    "backend/services/chunked_generation_writer.py",
+    "backend/services/code_generation_service.py",
+    "backend/services/generation_validators.py",
+    "backend/services/project_service.py",
+    "backend/validation/generated_project_validation.py",
+    "backend/workflow/adapters/generation_adapter.py",
+    "backend/workflow/generate_code_handler.py",
+    "docs/review_reproductions_2026_09_06.py",
+    "examples/generated_project_usage.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_firmware_validator.py",
+    "tests/unit/test_generate_code_handler.py",
+    "tests/unit/test_generated_project.py",
+    "tests/unit/test_generation_diagnostics_storage.py",
+    "tests/unit/test_project_service.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/api/schemas/files.py": [
+    "backend/api/routes/files.py"
+  ],
+  "backend/api/schemas/flash.py": [
+    "backend/api/routes/flash.py"
+  ],
+  "backend/api/schemas/health.py": [
+    "backend/api/routes/health.py"
+  ],
+  "backend/model_router/selection.py": [
+    "backend/api/routes/model_gateway.py",
+    "backend/model_router/resolver.py",
+    "backend/model_router/router.py",
+    "tests/api/test_model_routes.py",
+    "tests/unit/test_model_selection.py",
+    "tests/unit/test_model_selection_validation.py"
+  ],
+  "backend/model_router/storage.py": [
+    "backend/api/routes/models.py",
+    "backend/model_router/__init__.py",
+    "backend/model_router/registry.py",
+    "backend/model_router/sqlite_storage.py",
+    "backend/model_router/usage.py",
+    "backend/services/generation_diagnostics_store.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/conftest.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_model_sqlite_storage.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/api/schemas/monitor.py": [
+    "backend/api/routes/monitor.py"
+  ],
+  "backend/api/schemas/project_import.py": [
+    "backend/api/routes/projects.py"
+  ],
+  "backend/api/schemas/projects.py": [
+    "backend/api/routes/projects.py"
+  ],
+  "backend/settings/models.py": [
+    "backend/api/routes/settings.py"
+  ],
+  "backend/settings/service.py": [
+    "backend/api/routes/settings.py",
+    "backend/settings/__init__.py",
+    "tests/unit/test_settings_service.py"
+  ],
+  "backend/api/schemas/workspace.py": [
+    "backend/api/routes/workspace.py"
+  ],
+  "backend/agent/coordinator.py": [
+    "backend/api/serialization.py",
+    "backend/main.py",
+    "backend/workflow/generate_code_handler.py",
+    "backend/workflow/workflow_runner.py",
+    "examples/generate_code_handler_usage.py",
+    "examples/workflow_runner_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_coordinator.py",
+    "tests/unit/test_debugger.py",
+    "tests/unit/test_generate_code_handler.py",
+    "tests/unit/test_workflow_runner.py"
+  ],
+  "backend/workflow/generate_code_handler.py": [
+    "backend/api/serialization.py",
+    "backend/main.py",
+    "examples/generate_code_handler_usage.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_generate_code_handler.py"
+  ],
+  "backend/changes/models.py": [
+    "backend/changes/__init__.py",
+    "backend/changes/service.py"
+  ],
+  "backend/utils/serialization.py": [
+    "backend/contracts/execution_context.py",
+    "backend/contracts/task.py",
+    "backend/models/runtime.py",
+    "backend/models/tool_result.py",
+    "backend/services/artifact_service.py",
+    "backend/services/llm_service.py",
+    "backend/workflow/generate_code_handler.py"
+  ],
+  "backend/contracts/transport.py": [
+    "backend/contracts/runtime_policy.py",
+    "backend/model_router/models.py",
+    "backend/model_router/providers/openai_provider.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/services/llm_service.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_provider_transport_policy.py"
+  ],
+  "backend/hardware/compatibility/compatibility_matrix.py": [
+    "backend/hardware/constraints/constraint_engine.py",
+    "backend/validation/generated_project_validation.py",
+    "tests/unit/test_compatibility_matrix.py",
+    "tests/unit/test_constraint_engine.py"
+  ],
+  "backend/harness/client.py": [
+    "backend/harness/__init__.py",
+    "tests/unit/test_harness_client.py"
+  ],
+  "backend/agent/planner.py": [
+    "backend/main.py",
+    "backend/services/code_generation_service.py",
+    "backend/workflow/workflow_runner.py",
+    "examples/code_generation_service_usage.py",
+    "examples/generate_code_handler_usage.py",
+    "examples/workflow_runner_usage.py",
+    "tests/unit/test_chunked_generation_service.py",
+    "tests/unit/test_code_generation_service.py",
+    "tests/unit/test_coordinator.py",
+    "tests/unit/test_debugger.py",
+    "tests/unit/test_execution_context.py",
+    "tests/unit/test_execution_plan.py",
+    "tests/unit/test_generated_project.py",
+    "tests/unit/test_planner.py"
+  ],
+  "backend/contracts/execution_context.py": [
+    "backend/main.py",
+    "backend/services/code_generation_service.py",
+    "backend/validation/generated_project_validation.py",
+    "backend/workflow/adapters/build_adapter.py",
+    "backend/workflow/adapters/flash_adapter.py",
+    "backend/workflow/adapters/generation_adapter.py",
+    "backend/workflow/adapters/monitor_adapter.py",
+    "backend/workflow/generate_code_handler.py",
+    "backend/workflow/workflow_runner.py",
+    "examples/code_generation_service_usage.py",
+    "examples/execution_context_usage.py",
+    "examples/generate_code_handler_usage.py",
+    "examples/workflow_adapters_usage.py",
+    "examples/workflow_runner_usage.py",
+    "tests/unit/test_chunked_generation_service.py",
+    "tests/unit/test_code_generation_service.py",
+    "tests/unit/test_execution_context.py",
+    "tests/unit/test_generate_code_handler.py",
+    "tests/unit/test_planner.py",
+    "tests/unit/test_workflow_adapters.py",
+    "tests/unit/test_workflow_runner.py"
+  ],
+  "backend/contracts/task.py": [
+    "backend/main.py",
+    "backend/workflow/workflow_runner.py",
+    "examples/generate_code_handler_usage.py",
+    "examples/task_usage.py",
+    "examples/workflow_runner_usage.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_task.py",
+    "tests/unit/test_workflow_runner.py"
+  ],
+  "backend/runtime/result.py": [
+    "backend/main.py",
+    "backend/services/esp_idf_adapter.py",
+    "backend/services/flash_service.py",
+    "backend/services/platformio_service.py",
+    "backend/tools/build_firmware.py",
+    "backend/tools/flash_firmware.py",
+    "backend/tools/serial_monitor.py",
+    "backend/tools/tool_registry.py",
+    "backend/tools/wokwi_simulator.py",
+    "backend/workflow/adapters/build_adapter.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/api/test_api_routes.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_build_firmware.py",
+    "tests/unit/test_coordinator.py",
+    "tests/unit/test_debugger.py",
+    "tests/unit/test_engine_redesign.py",
+    "tests/unit/test_flash_firmware.py",
+    "tests/unit/test_platformio_service.py",
+    "tests/unit/test_serial_monitor.py",
+    "tests/unit/test_unified_agent_runtime.py",
+    "tests/unit/test_wokwi_simulator.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/validation/board_validator.py": [
+    "backend/main.py",
+    "backend/services/flash_service.py",
+    "tests/unit/test_board_validator.py"
+  ],
+  "backend/workflow/adapters/build_adapter.py": [
+    "backend/main.py",
+    "backend/services/flash_service.py",
+    "backend/workflow/adapters/flash_adapter.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/workflow/adapters/flash_adapter.py": [
+    "backend/main.py",
+    "backend/workflow/adapters/monitor_adapter.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/workflow/adapters/generation_adapter.py": [
+    "backend/main.py",
+    "backend/workflow/generate_code_handler.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/workflow/adapters/monitor_adapter.py": [
+    "backend/main.py",
+    "examples/workflow_adapters_usage.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/workflow/workflow_runner.py": [
+    "backend/main.py",
+    "examples/generate_code_handler_usage.py",
+    "examples/workflow_runner_usage.py",
+    "tests/unit/test_workflow_runner.py"
+  ],
+  "backend/model_router/credentials.py": [
+    "backend/model_router/__init__.py",
+    "backend/model_router/storage.py",
+    "scripts/smoke-live-log-reliability.py",
+    "tests/conftest.py",
+    "tests/unit/test_agent_orchestrator_v2.py",
+    "tests/unit/test_agent_recovery.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_model_sqlite_storage.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_request_recovery.py",
+    "tests/unit/test_router_product_planner.py"
+  ],
+  "backend/model_router/catalog.py": [
+    "backend/model_router/__init__.py",
+    "backend/model_router/resolver.py",
+    "backend/model_router/router.py",
+    "tests/unit/test_model_runtime_v2.py"
+  ],
+  "backend/model_router/resolver.py": [
+    "backend/model_router/__init__.py",
+    "backend/model_router/router.py",
+    "backend/model_router/runtime.py",
+    "tests/unit/test_model_runtime_v2.py"
+  ],
+  "backend/model_router/runtime.py": [
+    "backend/model_router/__init__.py",
+    "backend/model_router/router.py",
+    "tests/unit/test_model_runtime_v2.py"
+  ],
+  "backend/model_router/errors.py": [
+    "backend/model_router/__init__.py"
+  ],
+  "backend/model_router/retry.py": [
+    "backend/model_router/circuit.py",
+    "backend/model_router/providers/nvidia_nim.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/request_recovery.py",
+    "backend/model_router/runtime.py",
+    "tests/unit/test_model_runtime_v2.py",
+    "tests/unit/test_opencode_engine.py"
+  ],
+  "backend/model_router/providers/base.py": [
+    "backend/model_router/providers/__init__.py",
+    "backend/model_router/providers/lmstudio.py",
+    "backend/model_router/providers/ollama.py",
+    "backend/model_router/providers/openai_provider.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/runtime.py"
+  ],
+  "backend/model_router/providers/cerebras.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/api/test_model_routes.py",
+    "tests/unit/test_cerebras_provider.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/anthropic.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/deepseek.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/compatible.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/gemini_provider.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/groq.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/lmstudio.py": [
+    "backend/model_router/providers/__init__.py",
+    "backend/model_router/providers/opencode.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/nvidia_nim.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_nvidia_nim_provider.py",
+    "tests/unit/test_provider_transport_policy.py",
+    "tests/unit/test_request_recovery.py"
+  ],
+  "backend/model_router/providers/ollama.py": [
+    "backend/model_router/providers/__init__.py",
+    "backend/model_router/providers/opencode.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durable_provider_boundary.py"
+  ],
+  "backend/model_router/providers/openai_provider.py": [
+    "backend/model_router/providers/__init__.py",
+    "backend/model_router/providers/anthropic.py",
+    "backend/model_router/providers/cerebras.py",
+    "backend/model_router/providers/compatible.py",
+    "backend/model_router/providers/deepseek.py",
+    "backend/model_router/providers/gemini_provider.py",
+    "backend/model_router/providers/groq.py",
+    "backend/model_router/providers/lmstudio.py",
+    "backend/model_router/providers/nvidia_nim.py",
+    "backend/model_router/providers/ollama.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/providers/openrouter.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_provider_chat_stream.py",
+    "tests/unit/test_request_recovery.py"
+  ],
+  "backend/model_router/providers/openrouter.py": [
+    "backend/model_router/providers/__init__.py",
+    "tests/unit/test_durable_provider_boundary.py",
+    "tests/unit/test_openrouter_provider.py",
+    "tests/unit/test_request_recovery.py"
+  ],
+  "backend/model_router/opencode_catalog.py": [
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/registry.py",
+    "tests/unit/test_cerebras_provider.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_opencode_engine.py"
+  ],
+  "backend/model_router/request_recovery.py": [
+    "backend/model_router/providers/openrouter.py",
+    "backend/model_router/router.py",
+    "backend/model_router/runtime.py",
+    "tests/unit/test_nvidia_nim_provider.py",
+    "tests/unit/test_opencode_engine.py",
+    "tests/unit/test_openrouter_provider.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_provider_transport_policy.py",
+    "tests/unit/test_request_recovery.py"
+  ],
+  "backend/model_router/protocols.py": [
+    "backend/model_router/resolver.py"
+  ],
+  "backend/model_router/providers/__init__.py": [
+    "backend/model_router/router.py",
+    "tests/unit/test_model_router.py",
+    "tests/unit/test_nvidia_nim_provider.py",
+    "tests/unit/test_openrouter_provider.py"
+  ],
+  "backend/model_router/admission.py": [
+    "backend/model_router/router.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_provider_admission.py"
+  ],
+  "backend/model_router/circuit.py": [
+    "backend/model_router/router.py",
+    "tests/unit/test_outage_redesign.py",
+    "tests/unit/test_provider_circuit.py"
+  ],
+  "backend/model_router/providers/opencode.py": [
+    "backend/model_router/router.py",
+    "tests/unit/test_cerebras_provider.py",
+    "tests/unit/test_opencode_engine.py"
+  ],
+  "backend/utils/serial_compat.py": [
+    "backend/runtime/serial_runtime.py",
+    "backend/tools/board_detector.py",
+    "backend/tools/flash_firmware.py"
+  ],
+  "backend/runtime/windows_job.py": [
+    "backend/runtime/subprocess_mgr.py",
+    "scripts/smoke-desktop.py",
+    "scripts/smoke-packaged.py"
+  ],
+  "backend/security/secret_scanner.py": [
+    "backend/security/__init__.py"
+  ],
+  "backend/services/generation_strategy.py": [
+    "backend/services/code_generation_service.py",
+    "tests/unit/test_generation_strategy.py"
+  ],
+  "backend/services/generation_validators.py": [
+    "backend/services/code_generation_service.py",
+    "tests/unit/test_chunked_generation_service.py"
+  ],
+  "backend/services/chunked_generation_writer.py": [
+    "backend/services/code_generation_service.py",
+    "backend/workflow/generate_code_handler.py",
+    "tests/unit/test_chunked_generation_service.py",
+    "tests/unit/test_generation_diagnostics_storage.py"
+  ],
+  "backend/services/firmware_manifest.py": [
+    "backend/services/esp_idf_adapter.py",
+    "backend/services/flash_service.py",
+    "backend/services/platformio_service.py",
+    "backend/tools/flash_firmware.py",
+    "scripts/smoke-esp32-build.py",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/tools/flash_firmware.py": [
+    "backend/services/flash_service.py",
+    "backend/tools/tool_registry.py",
+    "backend/workflow/adapters/flash_adapter.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_flash_firmware.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/services/partition_preflight.py": [
+    "backend/services/platformio_service.py",
+    "tests/unit/test_live_log_reliability.py"
+  ],
+  "backend/security/build_policy.py": [
+    "backend/services/platformio_service.py",
+    "backend/tools/build_firmware.py",
+    "tests/unit/test_phase0_build_and_store_guards.py"
+  ],
+  "backend/runtime/serial_runtime.py": [
+    "backend/services/serial_service.py",
+    "backend/tools/serial_monitor.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_release_hardening.py",
+    "tests/unit/test_serial_monitor.py",
+    "tests/unit/test_serial_service.py"
+  ],
+  "backend/settings/defaults.py": [
+    "backend/settings/service.py"
+  ],
+  "backend/tools/serial_monitor.py": [
+    "backend/tools/tool_registry.py",
+    "backend/workflow/adapters/monitor_adapter.py",
+    "tests/integration/test_blink_led_workflow.py",
+    "tests/unit/test_release_data_and_budgets.py",
+    "tests/unit/test_serial_monitor.py",
+    "tests/unit/test_workflow_adapters.py"
+  ],
+  "backend/hardware/constraints/constraint_engine.py": [
+    "backend/validation/generated_project_validation.py",
+    "tests/unit/test_constraint_engine.py"
+  ],
+  "backend/validation/firmware_validator.py": [
+    "backend/validation/generated_project_validation.py",
+    "tests/unit/test_firmware_validator.py"
+  ],
+  "backend/validation/safety_validator.py": [
+    "backend/validation/generated_project_validation.py",
+    "tests/unit/test_safety_validator.py"
+  ],
+  "backend/validation/generated_project_validation.py": [
+    "backend/workflow/generate_code_handler.py"
+  ],
+  "backend/state/persistence.py": [
+    "backend/workspace/workspace_manager.py",
+    "tests/unit/test_persistence.py",
+    "tests/unit/test_workspace_manager.py"
+  ],
+  "tests/unit/test_agent_orchestrator_v2.py": [
+    "docs/review-evidence-2026-10-04/audit_probes.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_durability_admission.py",
+    "tests/unit/test_durable_continuation.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_missing_workspace_recovery.py",
+    "tests/unit/test_recovery_actions.py"
+  ],
+  "electron/desktop-logging.ts": [
+    "electron/backend-manager.ts",
+    "electron/diagnostics.ts",
+    "electron/frontend-manager.ts",
+    "electron/harness-manager.ts",
+    "electron/main.ts",
+    "electron/window-manager.ts"
+  ],
+  "electron/backend-recovery.ts": [
+    "electron/backend-manager.ts"
+  ],
+  "electron/paths.ts": [
+    "electron/backend-manager.ts",
+    "electron/frontend-manager.ts",
+    "electron/harness-manager.ts",
+    "electron/main.ts",
+    "electron/window-manager.ts"
+  ],
+  "electron/python-resolver.ts": [
+    "electron/backend-manager.ts"
+  ],
+  "electron/background-assets.ts": [
+    "electron/ipc.ts",
+    "electron/main.ts"
+  ],
+  "electron/backend-manager.ts": [
+    "electron/ipc.ts",
+    "electron/main.ts"
+  ],
+  "electron/harness-manager.ts": [
+    "electron/ipc.ts",
+    "electron/main.ts"
+  ],
+  "electron/diagnostics.ts": [
+    "electron/ipc.ts",
+    "electron/main.ts",
+    "electron/window-manager.ts"
+  ],
+  "electron/frontend-manager.ts": [
+    "electron/main.ts"
+  ],
+  "electron/ipc.ts": [
+    "electron/main.ts"
+  ],
+  "electron/window-manager.ts": [
+    "electron/main.ts"
+  ],
+  "electron/renderer-recovery.ts": [
+    "electron/window-manager.ts"
+  ],
+  "frontend/app/globals.css": [
+    "frontend/app/layout.tsx"
+  ],
+  "frontend/app/design-system.css": [
+    "frontend/app/layout.tsx"
+  ],
+  "frontend/app/runtime-diagnostics.tsx": [
+    "frontend/app/layout.tsx"
+  ],
+  "frontend/components/ide/ide-error-boundary.tsx": [
+    "frontend/app/page.tsx"
+  ],
+  "frontend/components/ide/dialogs/forgex-dialog-provider.tsx": [
+    "frontend/app/page.tsx",
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/settings/security-settings.tsx",
+    "frontend/hooks/use-promptforge-workspace.ts"
+  ],
+  "frontend/components/nexus/nexus-shell.tsx": [
+    "frontend/app/page.tsx"
+  ],
+  "frontend/lib/diagnostics.ts": [
+    "frontend/app/runtime-diagnostics.tsx",
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/lib/api.ts",
+    "frontend/lib/diagnostics.test.mts"
+  ],
+  "frontend/lib/activity-stream.ts": [
+    "frontend/components/agent-activity/activity-card.tsx",
+    "frontend/components/agent-activity/agent-activity-feed.tsx",
+    "frontend/components/agent-activity/agent-activity-item.tsx",
+    "frontend/components/agent-activity/agent-status-indicator.tsx",
+    "frontend/components/agent-activity/approval-card.tsx",
+    "frontend/components/agent-activity/build-result-card.tsx",
+    "frontend/components/agent-activity/chat-response-activity.tsx",
+    "frontend/components/agent-activity/command-execution-card.tsx",
+    "frontend/components/agent-activity/context-recall-block.tsx",
+    "frontend/components/agent-activity/file-change-card.tsx",
+    "frontend/components/agent-activity/plan-progress.tsx",
+    "frontend/components/agent-activity/thinking-block.tsx",
+    "frontend/components/agent-activity/tool-call-card.tsx",
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/lib/activity-stream.test.mts"
+  ],
+  "frontend/components/agent-activity/agent-status-indicator.tsx": [
+    "frontend/components/agent-activity/activity-card.tsx",
+    "frontend/components/agent-activity/agent-activity-feed.tsx"
+  ],
+  "frontend/types/index.ts": [
+    "frontend/components/agent-activity/agent-activity-feed.tsx",
+    "frontend/components/code/code-viewer.tsx",
+    "frontend/components/console/build-console.tsx",
+    "frontend/components/explorer/file-explorer.tsx",
+    "frontend/components/ide/ai-assistant-panel.tsx",
+    "frontend/components/ide/bottom-panel.tsx",
+    "frontend/components/ide/editor-workbench.tsx",
+    "frontend/components/ide/generation-progress-panel.tsx",
+    "frontend/components/ide/ide-explorer.tsx",
+    "frontend/components/ide/integrated-terminal.tsx",
+    "frontend/components/ide/model-settings-panel.tsx",
+    "frontend/components/ide/workflow-swarm-board.tsx",
+    "frontend/components/inspector/task-inspector.tsx",
+    "frontend/components/nexus/agent-job-controls.tsx",
+    "frontend/components/nexus/chat-canvas.tsx",
+    "frontend/components/nexus/conversation.tsx",
+    "frontend/components/nexus/evidence-canvas.tsx",
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/components/nexus/work-canvases.tsx",
+    "frontend/components/settings/about-settings.tsx",
+    "frontend/components/settings/setting-controls.tsx",
+    "frontend/components/settings/settings-page.tsx",
+    "frontend/components/settings/types.ts",
+    "frontend/components/sidebar/workspace-sidebar.tsx",
+    "frontend/components/terminal/forgex-terminal.tsx",
+    "frontend/components/terminal/use-terminal-session.ts",
+    "frontend/components/workflow/workflow-timeline.tsx",
+    "frontend/hooks/use-agent-change-set.ts",
+    "frontend/hooks/use-chat-session.ts",
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/hooks/use-forgex-settings.ts",
+    "frontend/hooks/use-model-runtime-state.ts",
+    "frontend/hooks/use-promptforge-workspace.ts",
+    "frontend/hooks/workspace-preferences.tsx",
+    "frontend/lib/agent-recovery.ts",
+    "frontend/lib/api.ts",
+    "frontend/lib/chat-stream.ts",
+    "frontend/lib/composer-model-options.ts",
+    "frontend/lib/forge-agent-activity.ts",
+    "frontend/lib/model-provider-status.ts",
+    "frontend/lib/model-role-bindings.ts",
+    "frontend/lib/nexus-agent-view.ts",
+    "frontend/lib/theme.ts",
+    "frontend/lib/websocket.ts",
+    "frontend/lib/workflow-stage-state.ts",
+    "frontend/lib/workspace-helpers.test.mts",
+    "frontend/lib/workspace-helpers.ts"
+  ],
+  "frontend/components/agent-activity/activity-card.tsx": [
+    "frontend/components/agent-activity/agent-activity-feed.tsx",
+    "frontend/components/agent-activity/agent-activity-item.tsx",
+    "frontend/components/agent-activity/chat-response-activity.tsx"
+  ],
+  "frontend/components/agent-activity/agent-activity-item.tsx": [
+    "frontend/components/agent-activity/agent-activity-feed.tsx"
+  ],
+  "frontend/components/agent-activity/approval-card.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/agent-activity/build-result-card.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/agent-activity/command-execution-card.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx",
+    "frontend/components/agent-activity/build-result-card.tsx"
+  ],
+  "frontend/components/agent-activity/context-recall-block.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/agent-activity/file-change-card.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/agent-activity/plan-progress.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/agent-activity/thinking-block.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/agent-activity/tool-call-card.tsx": [
+    "frontend/components/agent-activity/agent-activity-item.tsx"
+  ],
+  "frontend/components/ui/button.tsx": [
+    "frontend/components/console/build-console.tsx",
+    "frontend/components/prompt/prompt-command.tsx"
+  ],
+  "frontend/lib/utils.ts": [
+    "frontend/components/console/build-console.tsx",
+    "frontend/components/ide/workflow-swarm-board.tsx",
+    "frontend/components/inspector/task-inspector.tsx",
+    "frontend/components/ui/badge.tsx",
+    "frontend/components/ui/button.tsx",
+    "frontend/components/ui/separator.tsx",
+    "frontend/components/ui/tooltip.tsx",
+    "frontend/components/workflow/workflow-timeline.tsx"
+  ],
+  "frontend/components/ide/generation-progress-panel.tsx": [
+    "frontend/components/ide/ai-assistant-panel.tsx"
+  ],
+  "frontend/components/ide/workflow-swarm-board.tsx": [
+    "frontend/components/ide/ai-assistant-panel.tsx"
+  ],
+  "frontend/components/terminal/forgex-terminal.tsx": [
+    "frontend/components/ide/bottom-panel.tsx",
+    "frontend/components/ide/integrated-terminal.tsx"
+  ],
+  "frontend/hooks/workspace-preferences.tsx": [
+    "frontend/components/ide/bottom-panel.tsx",
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/nexus/work-canvases.tsx"
+  ],
+  "frontend/components/ide/dialogs/confirm-dialog.tsx": [
+    "frontend/components/ide/dialogs/forgex-dialog-provider.tsx"
+  ],
+  "frontend/components/ide/dialogs/input-dialog.tsx": [
+    "frontend/components/ide/dialogs/forgex-dialog-provider.tsx"
+  ],
+  "frontend/components/ide/dialogs/message-dialog.tsx": [
+    "frontend/components/ide/dialogs/forgex-dialog-provider.tsx"
+  ],
+  "frontend/components/code/code-viewer.tsx": [
+    "frontend/components/ide/editor-workbench.tsx"
+  ],
+  "frontend/lib/errors.ts": [
+    "frontend/components/ide/ide-error-boundary.tsx",
+    "frontend/components/ide/model-settings-panel.tsx",
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/hooks/use-forgex-settings.ts",
+    "frontend/hooks/use-promptforge-workspace.ts",
+    "frontend/lib/api.ts"
+  ],
+  "frontend/components/explorer/file-explorer.tsx": [
+    "frontend/components/ide/ide-explorer.tsx"
+  ],
+  "frontend/lib/api.ts": [
+    "frontend/components/ide/ide-explorer.tsx",
+    "frontend/components/ide/model-settings-panel.tsx",
+    "frontend/components/nexus/agent-job-controls.tsx",
+    "frontend/components/nexus/chat-canvas.tsx",
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/components/nexus/work-canvases.tsx",
+    "frontend/components/settings/about-settings.tsx",
+    "frontend/components/terminal/forgex-terminal.tsx",
+    "frontend/components/terminal/use-terminal-session.ts",
+    "frontend/hooks/use-agent-change-set.ts",
+    "frontend/hooks/use-chat-session.ts",
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/hooks/use-forgex-settings.ts",
+    "frontend/hooks/use-model-runtime-state.ts",
+    "frontend/hooks/use-promptforge-workspace.ts"
+  ],
+  "frontend/lib/model-provider-status.ts": [
+    "frontend/components/ide/model-settings-panel.tsx",
+    "frontend/lib/model-provider-status.test.mts"
+  ],
+  "frontend/lib/model-role-bindings.ts": [
+    "frontend/components/ide/model-settings-panel.tsx",
+    "frontend/lib/model-role-bindings.test.mts"
+  ],
+  "frontend/components/ui/badge.tsx": [
+    "frontend/components/inspector/task-inspector.tsx"
+  ],
+  "frontend/components/ui/separator.tsx": [
+    "frontend/components/inspector/task-inspector.tsx"
+  ],
+  "frontend/components/agent-activity/agent-activity-feed.tsx": [
+    "frontend/components/nexus/activity-stream.tsx"
+  ],
+  "frontend/lib/download-json.ts": [
+    "frontend/components/nexus/agent-job-controls.tsx",
+    "frontend/components/settings/about-settings.tsx"
+  ],
+  "frontend/components/agent-activity/chat-response-activity.tsx": [
+    "frontend/components/nexus/chat-canvas.tsx"
+  ],
+  "frontend/components/nexus/conversation.tsx": [
+    "frontend/components/nexus/chat-canvas.tsx",
+    "frontend/components/nexus/task-canvas.tsx"
+  ],
+  "frontend/hooks/use-chat-session.ts": [
+    "frontend/components/nexus/chat-canvas.tsx",
+    "frontend/components/nexus/nexus-shell.tsx"
+  ],
+  "frontend/lib/composer-model-options.ts": [
+    "frontend/components/nexus/chat-canvas.tsx",
+    "frontend/components/nexus/conversation.tsx",
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/hooks/use-model-runtime-state.ts",
+    "frontend/lib/composer-model-options.test.mts"
+  ],
+  "frontend/lib/agent-slash-commands.ts": [
+    "frontend/components/nexus/conversation.tsx",
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/lib/agent-slash-commands.test.mts"
+  ],
+  "frontend/components/nexus/work-canvases.tsx": [
+    "frontend/components/nexus/evidence-canvas.tsx",
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/nexus/task-canvas.tsx"
+  ],
+  "frontend/components/nexus/chat-canvas.tsx": [
+    "frontend/components/nexus/nexus-shell.tsx"
+  ],
+  "frontend/components/nexus/task-canvas.tsx": [
+    "frontend/components/nexus/nexus-shell.tsx"
+  ],
+  "frontend/components/nexus/evidence-canvas.tsx": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/nexus/task-canvas.tsx"
+  ],
+  "frontend/types/engine-contracts.ts": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/lib/api.ts"
+  ],
+  "frontend/components/settings/settings-page.tsx": [
+    "frontend/components/nexus/nexus-shell.tsx"
+  ],
+  "frontend/components/nexus/workspace-background.tsx": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/settings/appearance-settings.tsx"
+  ],
+  "frontend/components/settings/types.ts": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/settings/appearance-settings.tsx",
+    "frontend/components/settings/editor-settings.tsx",
+    "frontend/components/settings/general-settings.tsx",
+    "frontend/components/settings/hardware-settings.tsx",
+    "frontend/components/settings/model-settings.tsx",
+    "frontend/components/settings/security-settings.tsx",
+    "frontend/components/settings/settings-page.tsx",
+    "frontend/components/settings/settings-sidebar.tsx",
+    "frontend/components/settings/terminal-settings.tsx",
+    "frontend/components/settings/workspace-settings.tsx"
+  ],
+  "frontend/hooks/use-forge-agent-session.ts": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/nexus/task-canvas.tsx"
+  ],
+  "frontend/hooks/use-forgex-settings.ts": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/hooks/use-promptforge-workspace.ts": [
+    "frontend/components/nexus/nexus-shell.tsx",
+    "frontend/components/sidebar/workspace-sidebar.tsx"
+  ],
+  "frontend/hooks/use-model-runtime-state.ts": [
+    "frontend/components/nexus/nexus-shell.tsx"
+  ],
+  "frontend/components/nexus/activity-stream.tsx": [
+    "frontend/components/nexus/task-canvas.tsx"
+  ],
+  "frontend/components/nexus/agent-job-controls.tsx": [
+    "frontend/components/nexus/task-canvas.tsx"
+  ],
+  "frontend/lib/nexus-agent-view.ts": [
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/components/nexus/work-canvases.tsx",
+    "frontend/lib/nexus-agent-view.test.mts"
+  ],
+  "frontend/lib/agent-recovery.ts": [
+    "frontend/components/nexus/task-canvas.tsx",
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/lib/agent-recovery.test.mts"
+  ],
+  "frontend/components/ide/editor-workbench.tsx": [
+    "frontend/components/nexus/work-canvases.tsx"
+  ],
+  "frontend/components/ide/ide-explorer.tsx": [
+    "frontend/components/nexus/work-canvases.tsx"
+  ],
+  "frontend/components/ide/bottom-panel.tsx": [
+    "frontend/components/nexus/work-canvases.tsx"
+  ],
+  "frontend/components/nexus/nexus-primitives.tsx": [
+    "frontend/components/nexus/work-canvases.tsx"
+  ],
+  "frontend/hooks/use-agent-change-set.ts": [
+    "frontend/components/nexus/work-canvases.tsx"
+  ],
+  "frontend/components/settings/setting-controls.tsx": [
+    "frontend/components/settings/appearance-settings.tsx",
+    "frontend/components/settings/editor-settings.tsx",
+    "frontend/components/settings/general-settings.tsx",
+    "frontend/components/settings/hardware-settings.tsx",
+    "frontend/components/settings/security-settings.tsx",
+    "frontend/components/settings/terminal-settings.tsx",
+    "frontend/components/settings/workspace-settings.tsx"
+  ],
+  "frontend/lib/theme.ts": [
+    "frontend/components/settings/appearance-settings.tsx",
+    "frontend/hooks/use-forgex-settings.ts"
+  ],
+  "frontend/lib/background-image.ts": [
+    "frontend/components/settings/appearance-settings.tsx",
+    "frontend/lib/theme.ts"
+  ],
+  "frontend/components/ide/model-settings-panel.tsx": [
+    "frontend/components/settings/model-settings.tsx"
+  ],
+  "frontend/components/settings/about-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/appearance-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/editor-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/general-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/hardware-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/model-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/security-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/settings-sidebar.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/terminal-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/settings/workspace-settings.tsx": [
+    "frontend/components/settings/settings-page.tsx"
+  ],
+  "frontend/components/terminal/use-terminal-session.ts": [
+    "frontend/components/terminal/forgex-terminal.tsx"
+  ],
+  "frontend/lib/websocket.ts": [
+    "frontend/components/terminal/use-terminal-session.ts",
+    "frontend/hooks/use-promptforge-workspace.ts",
+    "frontend/lib/websocket.test.mts"
+  ],
+  "frontend/e2e/fixtures/workspace.ts": [
+    "frontend/e2e/build-evidence.spec.ts",
+    "frontend/e2e/conversations.spec.ts",
+    "frontend/e2e/recovery-controls.spec.ts",
+    "frontend/e2e/redesign.spec.ts"
+  ],
+  "frontend/lib/chat-stream.ts": [
+    "frontend/hooks/use-chat-session.ts",
+    "frontend/lib/chat-stream.test.mts"
+  ],
+  "frontend/lib/agent-stream-policy.ts": [
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/lib/agent-stream-policy.test.mts"
+  ],
+  "frontend/lib/forge-agent-activity.ts": [
+    "frontend/hooks/use-forge-agent-session.ts",
+    "frontend/lib/forge-agent-activity.test.mts",
+    "frontend/lib/nexus-agent-view.ts"
+  ],
+  "frontend/lib/settings-write-queue.ts": [
+    "frontend/hooks/use-forgex-settings.ts",
+    "frontend/lib/settings-write-queue.test.mts"
+  ],
+  "frontend/lib/single-flight.ts": [
+    "frontend/hooks/use-promptforge-workspace.ts",
+    "frontend/lib/api.ts",
+    "frontend/lib/single-flight.test.mts"
+  ],
+  "frontend/lib/workspace-helpers.ts": [
+    "frontend/hooks/use-promptforge-workspace.ts",
+    "frontend/lib/workspace-helpers.test.mts"
+  ],
+  "frontend/lib/workflow-stage-state.ts": [
+    "frontend/hooks/use-promptforge-workspace.ts",
+    "frontend/lib/workflow-stage-state.test.mts"
+  ],
+  "frontend/lib/request-deadline.ts": [
+    "frontend/lib/api.ts",
+    "frontend/lib/request-deadline.test.mts"
+  ],
+  "frontend/lib/runtime-policy.generated.ts": [
+    "frontend/lib/api.ts"
+  ],
+  "frontend/lib/backend-proxy.ts": [
+    "frontend/lib/backend-proxy.test.mts",
+    "frontend/middleware.ts"
+  ],
+  "frontend/lib/forge-agent-autonomy.ts": [
+    "frontend/lib/forge-agent-autonomy.test.mts"
+  ],
+  "harness/src/contracts.ts": [
+    "harness/src/event-store.ts",
+    "harness/src/idempotency.ts",
+    "harness/src/opencode-providers.generated.ts",
+    "harness/src/plugins.ts",
+    "harness/src/providers.ts",
+    "harness/src/runtime.ts",
+    "harness/src/sandbox.ts",
+    "harness/src/server.ts",
+    "harness/src/subagents.ts",
+    "harness/src/tool-pipeline.ts",
+    "harness/src/workflow.ts"
+  ],
+  "harness/src/opencode-providers.generated.ts": [
+    "harness/src/providers.ts"
+  ],
+  "harness/src/event-store.ts": [
+    "harness/src/runtime.ts",
+    "harness/src/server.ts",
+    "harness/src/subagents.ts"
+  ],
+  "harness/src/providers.ts": [
+    "harness/src/runtime.ts"
+  ],
+  "harness/src/tool-pipeline.ts": [
+    "harness/src/runtime.ts"
+  ],
+  "harness/src/plugins.ts": [
+    "harness/src/runtime.ts"
+  ],
+  "harness/src/subagents.ts": [
+    "harness/src/runtime.ts",
+    "harness/src/workflow.ts"
+  ],
+  "harness/src/workflow.ts": [
+    "harness/src/runtime.ts"
+  ],
+  "harness/src/idempotency.ts": [
+    "harness/src/server.ts"
+  ],
+  "harness/src/runtime.ts": [
+    "harness/src/server.ts"
+  ],
+  "third_party/opencode/packages/llm/src/llm.ts": [
+    "model-router/src/engine.mjs",
+    "third_party/opencode/packages/llm/src/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/client.ts": [
+    "model-router/src/engine.mjs",
+    "third_party/opencode/packages/llm/src/index.ts",
+    "third_party/opencode/packages/llm/src/llm.ts",
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/providers/amazon-bedrock.ts",
+    "third_party/opencode/packages/llm/src/providers/anthropic.ts",
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/cloudflare.ts",
+    "third_party/opencode/packages/llm/src/providers/github-copilot.ts",
+    "third_party/opencode/packages/llm/src/providers/google.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-compatible.ts",
+    "third_party/opencode/packages/llm/src/providers/openai.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/providers/xai.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/schema/options.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/executor.ts": [
+    "model-router/src/engine.mjs",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/executor.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/schema/messages.ts": [
+    "model-router/src/engine.mjs",
+    "third_party/opencode/packages/llm/src/cache-policy.ts",
+    "third_party/opencode/packages/llm/src/schema/events.ts",
+    "third_party/opencode/packages/llm/src/schema/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/index.ts": [
+    "model-router/src/engine.mjs"
+  ],
+  "third_party/opencode/packages/llm/src/provider-error.ts": [
+    "model-router/src/engine.mjs",
+    "third_party/opencode/packages/llm/src/index.ts",
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/route/executor.ts"
+  ],
+  "model-router/src/engine.mjs": [
+    "model-router/src/worker.mjs"
+  ],
+  "scripts/logs-live.mjs": [
+    "scripts/logs-live.test.mjs"
+  ],
+  "scripts/agent_qualification.py": [
+    "scripts/qualify-agent-prompts.py",
+    "scripts/qualify-agent-quality.py",
+    "tests/unit/test_durable_qualification.py"
+  ],
+  "scripts/scan-packaged-content.mjs": [
+    "scripts/release-desktop.mjs",
+    "scripts/scan-packaged-content.test.mjs"
+  ],
+  "scripts/release-shell.mjs": [
+    "scripts/release-desktop.mjs",
+    "scripts/release-shell.test.mjs"
+  ],
+  "scripts/scan-release-content.mjs": [
+    "scripts/scan-release-content.test.mjs"
+  ],
+  "scripts/verify-agent-quality.mjs": [
+    "scripts/verify-agent-quality.test.mjs",
+    "scripts/verify-release-evidence.mjs"
+  ],
+  "scripts/verify-beta.mjs": [
+    "scripts/verify-beta.test.mjs"
+  ],
+  "scripts/verify-release-evidence.mjs": [
+    "scripts/verify-release-evidence.test.mjs"
+  ],
+  "tests/api/test_product_agent_runtime_api.py": [
+    "tests/api/test_agent_jobs_api.py",
+    "tests/api/test_chat_boundary.py",
+    "tests/api/test_chat_sessions.py",
+    "tests/api/test_missing_workspace_recovery_api.py",
+    "tests/api/test_outage_recovery_api.py"
+  ],
+  "tests/api/test_api_routes.py": [
+    "tests/api/test_agent_jobs_api.py",
+    "tests/api/test_chat_boundary.py",
+    "tests/api/test_chat_sessions.py",
+    "tests/api/test_local_security.py",
+    "tests/api/test_missing_workspace_recovery_api.py",
+    "tests/api/test_outage_recovery_api.py",
+    "tests/api/test_product_agent_runtime_api.py",
+    "tests/api/test_redesign_build_operations.py",
+    "tests/api/test_websocket.py",
+    "tests/unit/test_agent_verification_freshness.py"
+  ],
+  "tests/unit/test_chat_progress.py": [
+    "tests/api/test_chat_boundary.py",
+    "tests/api/test_chat_sessions.py"
+  ],
+  "tests/unit/test_platformio_service.py": [
+    "tests/unit/test_agent_jobs_and_tools.py"
+  ],
+  "tests/unit/test_agent_verification_freshness.py": [
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_durability_admission.py"
+  ],
+  "tests/unit/test_tool_runtime.py": [
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_agent_verification_freshness.py",
+    "tests/unit/test_async_planner_path.py",
+    "tests/unit/test_beta_agent_reliability.py",
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_live_log_reliability.py",
+    "tests/unit/test_staged_file_moves.py"
+  ],
+  "backend/agent_runtime/__init__.py": [
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_api_planner_provider.py",
+    "tests/unit/test_product_agent_runtime.py",
+    "tests/unit/test_progress_continuation.py",
+    "tests/unit/test_staged_file_moves.py",
+    "tests/unit/test_tool_runtime.py"
+  ],
+  "tests/unit/test_model_runtime_v2.py": [
+    "tests/unit/test_agent_redesign_regressions.py",
+    "tests/unit/test_model_selection.py"
+  ],
+  "tests/unit/test_router_product_planner.py": [
+    "tests/unit/test_complete_redesign.py",
+    "tests/unit/test_outage_redesign.py"
+  ],
+  "tests/unit/test_provider_transport_policy.py": [
+    "tests/unit/test_complete_redesign.py"
+  ],
+  "backend/agent/debugger.py": [
+    "tests/unit/test_debugger.py"
+  ],
+  "backend/cli.py": [
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/services/esp_idf_adapter.py": [
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "tests/unit/test_flash_firmware.py": [
+    "tests/unit/test_engine_redesign.py"
+  ],
+  "backend/models/execution.py": [
+    "tests/unit/test_execution_models.py"
+  ],
+  "backend/models/firmware.py": [
+    "tests/unit/test_firmware_models.py"
+  ],
+  "backend/utils/logger.py": [
+    "tests/unit/test_logger.py"
+  ],
+  "tests/unit/test_changeset_service.py": [
+    "tests/unit/test_production_hardening.py"
+  ],
+  "tests/unit/test_build_firmware.py": [
+    "tests/unit/test_production_hardening.py"
+  ],
+  "tests/unit/test_project_service.py": [
+    "tests/unit/test_production_hardening.py"
+  ],
+  "tests/unit/test_model_router.py": [
+    "tests/unit/test_provider_chat_stream.py"
+  ],
+  "backend/models/runtime.py": [
+    "tests/unit/test_runtime_models.py"
+  ],
+  "backend/models/tool_result.py": [
+    "tests/unit/test_tool_result_model.py"
+  ],
+  "third_party/opencode/packages/llm/src/schema/options.ts": [
+    "third_party/opencode/packages/llm/src/cache-policy.ts",
+    "third_party/opencode/packages/llm/src/schema/events.ts",
+    "third_party/opencode/packages/llm/src/schema/index.ts",
+    "third_party/opencode/packages/llm/src/schema/messages.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/auth.ts": [
+    "third_party/opencode/packages/llm/src/index.ts",
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-auth.ts",
+    "third_party/opencode/packages/llm/src/providers/amazon-bedrock.ts",
+    "third_party/opencode/packages/llm/src/providers/anthropic.ts",
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/cloudflare.ts",
+    "third_party/opencode/packages/llm/src/providers/google.ts",
+    "third_party/opencode/packages/llm/src/route/auth-options.ts",
+    "third_party/opencode/packages/llm/src/route/auth.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/http.ts",
+    "third_party/opencode/packages/llm/src/route/transport/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/provider.ts": [
+    "third_party/opencode/packages/llm/src/index.ts",
+    "third_party/opencode/packages/llm/src/provider.ts"
+  ],
+  "third_party/opencode/packages/llm/src/schema/index.ts": [
+    "third_party/opencode/packages/llm/src/index.ts",
+    "third_party/opencode/packages/llm/src/llm.ts",
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/protocols/shared.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-cache.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-media.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/lifecycle.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/openai-options.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/tool-schema.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/tool-stream.ts",
+    "third_party/opencode/packages/llm/src/provider-error.ts",
+    "third_party/opencode/packages/llm/src/provider.ts",
+    "third_party/opencode/packages/llm/src/providers/amazon-bedrock.ts",
+    "third_party/opencode/packages/llm/src/providers/anthropic.ts",
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/cloudflare.ts",
+    "third_party/opencode/packages/llm/src/providers/github-copilot.ts",
+    "third_party/opencode/packages/llm/src/providers/google.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-compatible.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-options.ts",
+    "third_party/opencode/packages/llm/src/providers/openai.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/providers/xai.ts",
+    "third_party/opencode/packages/llm/src/route/auth.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/endpoint.ts",
+    "third_party/opencode/packages/llm/src/route/executor.ts",
+    "third_party/opencode/packages/llm/src/route/framing.ts",
+    "third_party/opencode/packages/llm/src/route/protocol.ts",
+    "third_party/opencode/packages/llm/src/route/transport/http.ts",
+    "third_party/opencode/packages/llm/src/route/transport/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/websocket.ts",
+    "third_party/opencode/packages/llm/src/tool-runtime.ts",
+    "third_party/opencode/packages/llm/src/tool.ts"
+  ],
+  "third_party/opencode/packages/llm/src/tool.ts": [
+    "third_party/opencode/packages/llm/src/index.ts",
+    "third_party/opencode/packages/llm/src/llm.ts",
+    "third_party/opencode/packages/llm/src/tool-runtime.ts",
+    "third_party/opencode/packages/llm/src/tool.ts"
+  ],
+  "third_party/opencode/packages/llm/src/tool-runtime.ts": [
+    "third_party/opencode/packages/llm/src/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/endpoint.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/endpoint.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/http.ts",
+    "third_party/opencode/packages/llm/src/route/transport/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/framing.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-event-stream.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/framing.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/http.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/protocol.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/route/protocol.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/shared.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-event-stream.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/protocols/shared.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-auth.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-media.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/tool-stream.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/endpoint.ts",
+    "third_party/opencode/packages/llm/src/route/framing.ts",
+    "third_party/opencode/packages/llm/src/route/transport/http.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/cache.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-cache.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/lifecycle.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/lifecycle.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/tool-schema.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/tool-stream.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/tool-stream.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts": [
+    "third_party/opencode/packages/llm/src/protocols/anthropic-messages.ts",
+    "third_party/opencode/packages/llm/src/protocols/index.ts",
+    "third_party/opencode/packages/llm/src/providers/anthropic.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/bedrock-event-stream.ts": [
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/bedrock-event-stream.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/bedrock-auth.ts": [
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-auth.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/bedrock-cache.ts": [
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-cache.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/bedrock-media.ts": [
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/bedrock-media.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts": [
+    "third_party/opencode/packages/llm/src/protocols/bedrock-converse.ts",
+    "third_party/opencode/packages/llm/src/protocols/index.ts",
+    "third_party/opencode/packages/llm/src/providers/amazon-bedrock.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/gemini-tool-schema.ts": [
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/gemini-tool-schema.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/tool-schema.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/gemini.ts": [
+    "third_party/opencode/packages/llm/src/protocols/gemini.ts",
+    "third_party/opencode/packages/llm/src/protocols/index.ts",
+    "third_party/opencode/packages/llm/src/providers/google.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/openai-chat.ts": [
+    "third_party/opencode/packages/llm/src/protocols/index.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts",
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/github-copilot.ts",
+    "third_party/opencode/packages/llm/src/providers/openai.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts": [
+    "third_party/opencode/packages/llm/src/protocols/index.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts",
+    "third_party/opencode/packages/llm/src/providers/cloudflare.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-compatible.ts",
+    "third_party/opencode/packages/llm/src/providers/xai.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/openai-responses.ts": [
+    "third_party/opencode/packages/llm/src/protocols/index.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/github-copilot.ts",
+    "third_party/opencode/packages/llm/src/providers/openai.ts",
+    "third_party/opencode/packages/llm/src/providers/xai.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/transport/index.ts": [
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/route/client.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/http.ts",
+    "third_party/opencode/packages/llm/src/route/transport/websocket.ts"
+  ],
+  "third_party/opencode/packages/llm/src/protocols/utils/openai-options.ts": [
+    "third_party/opencode/packages/llm/src/protocols/openai-chat.ts",
+    "third_party/opencode/packages/llm/src/protocols/openai-responses.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/openai-options.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-options.ts"
+  ],
+  "third_party/opencode/packages/llm/src/utils/record.ts": [
+    "third_party/opencode/packages/llm/src/protocols/shared.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/gemini-tool-schema.ts",
+    "third_party/opencode/packages/llm/src/protocols/utils/tool-schema.ts",
+    "third_party/opencode/packages/llm/src/schema/messages.ts",
+    "third_party/opencode/packages/llm/src/schema/options.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/auth-options.ts": [
+    "third_party/opencode/packages/llm/src/providers/anthropic.ts",
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/cloudflare.ts",
+    "third_party/opencode/packages/llm/src/providers/github-copilot.ts",
+    "third_party/opencode/packages/llm/src/providers/google.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-compatible.ts",
+    "third_party/opencode/packages/llm/src/providers/openai.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/providers/xai.ts",
+    "third_party/opencode/packages/llm/src/route/auth-options.ts",
+    "third_party/opencode/packages/llm/src/route/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/openai-options.ts": [
+    "third_party/opencode/packages/llm/src/providers/azure.ts",
+    "third_party/opencode/packages/llm/src/providers/github-copilot.ts",
+    "third_party/opencode/packages/llm/src/providers/openai-options.ts",
+    "third_party/opencode/packages/llm/src/providers/openai.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/anthropic.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/amazon-bedrock.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/azure.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/cloudflare.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/github-copilot.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/google.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/openai.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/openai-compatible.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/openrouter.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/xai.ts": [
+    "third_party/opencode/packages/llm/src/providers/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/providers/openai-compatible-profile.ts": [
+    "third_party/opencode/packages/llm/src/providers/openai-compatible.ts",
+    "third_party/opencode/packages/llm/src/providers/openrouter.ts",
+    "third_party/opencode/packages/llm/src/providers/xai.ts"
+  ],
+  "third_party/opencode/packages/llm/src/cache-policy.ts": [
+    "third_party/opencode/packages/llm/src/route/client.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/transport/websocket.ts": [
+    "third_party/opencode/packages/llm/src/route/transport/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/route/transport/http.ts": [
+    "third_party/opencode/packages/llm/src/route/transport/index.ts",
+    "third_party/opencode/packages/llm/src/route/transport/websocket.ts"
+  ],
+  "third_party/opencode/packages/llm/src/schema/ids.ts": [
+    "third_party/opencode/packages/llm/src/schema/errors.ts",
+    "third_party/opencode/packages/llm/src/schema/events.ts",
+    "third_party/opencode/packages/llm/src/schema/index.ts",
+    "third_party/opencode/packages/llm/src/schema/messages.ts",
+    "third_party/opencode/packages/llm/src/schema/options.ts"
+  ],
+  "third_party/opencode/packages/llm/src/schema/errors.ts": [
+    "third_party/opencode/packages/llm/src/schema/events.ts",
+    "third_party/opencode/packages/llm/src/schema/index.ts"
+  ],
+  "third_party/opencode/packages/llm/src/schema/events.ts": [
+    "third_party/opencode/packages/llm/src/schema/index.ts"
+  ],
+  "third_party/opencode/packages/schema/src/llm.ts": [
+    "third_party/opencode/packages/schema/src/llm.ts"
+  ],
+  "third_party/opencode/packages/schema/src/schema.ts": [
+    "third_party/opencode/packages/schema/src/llm.ts"
+  ],
+  "third_party/opencode/reference/error.ts": [
+    "third_party/opencode/reference/error.ts"
+  ],
+  "third_party/opencode/reference/retry.ts": [
+    "third_party/opencode/reference/retry.ts"
+  ]
+}

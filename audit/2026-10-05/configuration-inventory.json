@@ -1,0 +1,272 @@
+[
+  {
+    "path": ".env.example",
+    "bytes": 1397,
+    "sha256": "02bf000d8fa2b53b8f3df21b85354296e2ae354ae25c54bca2db7feb9c34c22a",
+    "kind": "configuration"
+  },
+  {
+    "path": "package-lock.json",
+    "bytes": 281241,
+    "sha256": "98f01ad6ec07bd0bf9b78cb9a7cf9e3355cff1e1251b2c9c096e53be93136e1c",
+    "kind": "configuration"
+  },
+  {
+    "path": "package.json",
+    "bytes": 5145,
+    "sha256": "156db067282af11e357c57272d845ab309ed86971486e4fc61221a6bc444ae4a",
+    "kind": "configuration"
+  },
+  {
+    "path": "pyproject.toml",
+    "bytes": 93,
+    "sha256": "4ffba1292b2e95c3edb1948a9a6326ccf8c5df36adb8d86273a43b3815934415",
+    "kind": "configuration"
+  },
+  {
+    "path": "requirements-runtime.in",
+    "bytes": 301,
+    "sha256": "ca76df703f0d83218d9311ea8bf8bb1d15110a71b1c981d216b1f798fa9317b9",
+    "kind": "configuration"
+  },
+  {
+    "path": "requirements-runtime.lock",
+    "bytes": 79377,
+    "sha256": "e611b840b67e9dae3e6b0a4af0a4d4d39a5c32ce8e4904a1aea3baea6b064563",
+    "kind": "configuration"
+  },
+  {
+    "path": "requirements.in",
+    "bytes": 303,
+    "sha256": "eb4d57147ab2dfc5ac80409ebd4fe2922cf889a09db236798065c78b89ea2ebb",
+    "kind": "configuration"
+  },
+  {
+    "path": "requirements.txt",
+    "bytes": 446,
+    "sha256": "4fcba159f6f5e67d3b39a1fadfdcd02427ae134a00c98ccea6a80a8e173d983d",
+    "kind": "configuration"
+  },
+  {
+    "path": ".github/workflows/production-beta.yml",
+    "bytes": 3515,
+    "sha256": "c402295c4d1129a731816f5caacfb03a4bdd81e41c12f27cf31ea85244382a1d",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/agent_runtime/builtin_skills/firmware-review/SKILL.md",
+    "bytes": 417,
+    "sha256": "ce0ddc0a40aef0572cf81df35a7b63767b79106791a89253d825776a68b9cc5e",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/agent_runtime/builtin_skills/platformio-repair/SKILL.md",
+    "bytes": 734,
+    "sha256": "eb3aaec15077b12d54612c6fc24498ff2d5a87669cc264ab1ab400a5667933b0",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/agent_runtime/builtin_skills/serial-debug/SKILL.md",
+    "bytes": 530,
+    "sha256": "99c49d5f860054478e76779ded03bf111806f132d2ee7bac5f0ead3faca78567",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/hardware/boards/arduino_uno.json",
+    "bytes": 1014,
+    "sha256": "0d88e85e42ad831e58bbdc10031696078a8b66bda710dea4d0d2d8176f2514c2",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/hardware/boards/esp32.json",
+    "bytes": 1544,
+    "sha256": "9ed7476ed143f6d2a008f86b9cc66dbeda85eb54604cc1b76b6177d62148409c",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/hardware/boards/stm32.json",
+    "bytes": 1455,
+    "sha256": "206652d0ae4da13af19430a380ec4d41cafdaad9b70718f570b09ad89dfcbdb8",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/model_router/data/models-dev.json",
+    "bytes": 5752267,
+    "sha256": "f03e0399437b976943239663b2d962f0ad0eae40c427b750961426447c3f4661",
+    "kind": "configuration"
+  },
+  {
+    "path": "backend/model_router/data/models-dev.metadata.json",
+    "bytes": 203,
+    "sha256": "7cb8f4d79f7f1add2f19d5e103ebeb33a2a9ea67c120f4a372391450f707e48f",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/agent-durability-references.json",
+    "bytes": 3603,
+    "sha256": "0591ecf02232cdc73118adbc201f02010d1b8d580f11f8178cd63b5b0889eee6",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/engine-contracts.schema.json",
+    "bytes": 29252,
+    "sha256": "e4a88e78a266790a0d5bca1eef549a41fda3529e6dccab981843b29caee88146",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/release-clean-machine-template.json",
+    "bytes": 2050,
+    "sha256": "00909f9e8ac1beea418482b51dc0d1bc3b3a7a2ae5c447d5453bc6a86a304aba",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/runtime-policy.generated.json",
+    "bytes": 1096,
+    "sha256": "3dbbd27ca36604d9238760ac61f04708f31907ff9bf7c026390384d61b36aad4",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/redesign-evidence-2026-10-04/qualification-results.json",
+    "bytes": 1838,
+    "sha256": "eae2e800b1567c57dadb72c935f72176ee8fa2ff2ae792bb78b197868b73153e",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/review-evidence-2026-10-04/inventory.json",
+    "bytes": 365,
+    "sha256": "6d586605c241cc41f6594debb99ae6b9d4ec1bcfb847395cf32d2ad10068591f",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/review-evidence-2026-10-04/latest-failure.json",
+    "bytes": 6353,
+    "sha256": "c023159add528c7372dce8d57ea91d9244f453faef76a69e7d0aaccbac22bcbf",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/review-evidence-2026-10-04/probe-results.json",
+    "bytes": 1926,
+    "sha256": "b31b17af59c0f9711e837888311d71932a4aac7c2af3ac3f07db55a0499397f0",
+    "kind": "configuration"
+  },
+  {
+    "path": "docs/review-evidence-2026-10-04/verification-results.json",
+    "bytes": 2447,
+    "sha256": "c7089d6190b3c2e722b9e7aa51c1e534e1f70dfc529bad8751a34f6ec7381ef1",
+    "kind": "configuration"
+  },
+  {
+    "path": "electron/tsconfig.json",
+    "bytes": 332,
+    "sha256": "d5e268a8f88bec61d551fba174f822abd1042179076764d744fedfa600ad70fe",
+    "kind": "configuration"
+  },
+  {
+    "path": "frontend/package-lock.json",
+    "bytes": 300802,
+    "sha256": "c3bc187846fc4a960240740a72d0e743df3c695dfe9921c499b57c6b03b2a8ea",
+    "kind": "configuration"
+  },
+  {
+    "path": "frontend/package.json",
+    "bytes": 1504,
+    "sha256": "3e7bb921ccbbfd60573858660fea38e451017c43b6942f0c398fb695de9e2127",
+    "kind": "configuration"
+  },
+  {
+    "path": "frontend/tsconfig.json",
+    "bytes": 826,
+    "sha256": "050a363fcc5a47894d3eef9be70ddb770064d8ae03f5a7b24992a43f66a797a4",
+    "kind": "configuration"
+  },
+  {
+    "path": "frontend/vendor/braces/package.json",
+    "bytes": 313,
+    "sha256": "e7cd97f3d08f713092371380e7b8796a7d0f433381b3e04925039805a1f6fec7",
+    "kind": "vendor"
+  },
+  {
+    "path": "harness/package.json",
+    "bytes": 203,
+    "sha256": "2cf05ea2c9f248dfd619090b5c2a742a06d451cf1abc66b6a2c96bba6d6ea0f0",
+    "kind": "configuration"
+  },
+  {
+    "path": "harness/tsconfig.json",
+    "bytes": 343,
+    "sha256": "162e82e58bfd35cb6fc05ad7fbc66351299b66011550731230dc1d9655291b1e",
+    "kind": "configuration"
+  },
+  {
+    "path": "scripts/home-launcher.package.json",
+    "bytes": 264,
+    "sha256": "a405fd5e60bcaa3adb8afcf7dbb5441ab038715d6ea18a94ecbca25a91a935ca",
+    "kind": "configuration"
+  },
+  {
+    "path": "scripts/source-release-manifest.json",
+    "bytes": 2792,
+    "sha256": "3a87a59017d8857c5e0b6ce39ae00375714bad235769305eee7086aa1e50adaf",
+    "kind": "configuration"
+  },
+  {
+    "path": "tests/fixtures/agent-maintenance-suite.json",
+    "bytes": 36344,
+    "sha256": "d1f553d027e087da6c0beeedcc6a362e2de8b922bddb7d2a6c6d200e54ad3994",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/agent-quality-suite.json",
+    "bytes": 45829,
+    "sha256": "8b73041c17726631607b5a7fd8d75c549a0c9c4deff48488f4fa4b4b27910418",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/beta-agent-prompts.json",
+    "bytes": 27569,
+    "sha256": "91735a6cb10b3077a29d36deb870d7b4222166e843b58eefd0c905fce946d2dc",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/durability-incidents.json",
+    "bytes": 1199,
+    "sha256": "16882acb3b315d160922d7c5e19a60a788704c5453cff519d5d71999328c7bee",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/repair-budget-incident.json",
+    "bytes": 1769,
+    "sha256": "3dd852fc639bfadc8a4844d38766e551601cc8ae394adaa3f0486c96a682b920",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/nvidia_nim/agent_tool_request.template.json",
+    "bytes": 998,
+    "sha256": "0fc5ec376c405a358611c2802601af36e4f8f7685a5d0131fdfa530051112615",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/openrouter/agent_tool_request.template.json",
+    "bytes": 856,
+    "sha256": "ec4d49405beef6646afedc3776d958630fe18c211f866efdeea710686950ff18",
+    "kind": "fixture"
+  },
+  {
+    "path": "tests/fixtures/openrouter/embedded_provider_errors.json",
+    "bytes": 1474,
+    "sha256": "ffb7386f920b2e9be28be51105704d62bb36e5337c3f612ce2a3f6a567e2bb4a",
+    "kind": "fixture"
+  },
+  {
+    "path": "third_party/deepseek-harness/PIN.json",
+    "bytes": 485,
+    "sha256": "6fa635f946e7b186e15015399f93350c8c31f81dcd649c6de46a1a9aad0ce2f8",
+    "kind": "vendor"
+  },
+  {
+    "path": "third_party/opencode/provenance.json",
+    "bytes": 7526,
+    "sha256": "43bc15e1489b67e8d1aff247502131953e9b9730f1ab6cf6229ad4156e8e74da",
+    "kind": "vendor"
+  }
+]

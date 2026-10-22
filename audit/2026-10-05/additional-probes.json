@@ -1,0 +1,16 @@
+{
+  "context_instruction_secret_forwarded": true,
+  "synthetic_key_matches_normal_secret_gate": true,
+  "terminal_fault_injection": {
+    "timed_out_after_kill": true,
+    "kill_called": true,
+    "session_closed": false
+  },
+  "model_worker_stdin_fault_injection": {
+    "outer_timeout_required": true,
+    "stdin_drain_entered": true,
+    "configured_total_seconds": 0.1,
+    "external_cancel_seconds": 0.3,
+    "child_killed_on_cancel": true
+  }
+}

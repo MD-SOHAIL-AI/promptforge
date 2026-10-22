@@ -1,0 +1,141 @@
+{
+  "codex_oauth": [
+    {
+      "path": ".env.example",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 13,
+          "text": "# FORGEX_MODEL_PROVIDER=codex_oauth"
+        },
+        {
+          "line": 17,
+          "text": "CODEX_OAUTH_ENABLED=true"
+        },
+        {
+          "line": 18,
+          "text": "CODEX_OAUTH_MODEL=gpt-5.5"
+        },
+        {
+          "line": 20,
+          "text": "# CODEX_OAUTH_COMMAND=codex.cmd"
+        }
+      ]
+    }
+  ],
+  "CODEX_OAUTH": [
+    {
+      "path": ".env.example",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 13,
+          "text": "# FORGEX_MODEL_PROVIDER=codex_oauth"
+        },
+        {
+          "line": 17,
+          "text": "CODEX_OAUTH_ENABLED=true"
+        },
+        {
+          "line": 18,
+          "text": "CODEX_OAUTH_MODEL=gpt-5.5"
+        },
+        {
+          "line": 20,
+          "text": "# CODEX_OAUTH_COMMAND=codex.cmd"
+        }
+      ]
+    }
+  ],
+  "Google OAuth": [
+    {
+      "path": "docs/gemini-cli-bridge-plan.md",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 21,
+          "text": "- reverse-engineer Google OAuth"
+        }
+      ]
+    }
+  ],
+  "Gemini OAuth": [],
+  "Google AI subscription": [],
+  "AI One": [],
+  "AI Pro": [
+    {
+      "path": "third_party/opencode/packages/llm/src/protocols/openai-compatible-chat.ts",
+      "kind": "vendor",
+      "matches": [
+        {
+          "line": 11,
+          "text": " * Route for non-OpenAI providers that expose an OpenAI Chat-compatible"
+        }
+      ]
+    },
+    {
+      "path": "docs/phase-2-3-visual-qa-report.md",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 62,
+          "text": "- AI prompt execution controls remain present."
+        }
+      ]
+    },
+    {
+      "path": "docs/phase-2-5-8-10A-operator-api-key-validation-real-smoke-results.md",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 18,
+          "text": "**Q2. Was the real OpenAI provider still disabled by default?**  "
+        },
+        {
+          "line": 57,
+          "text": "**Q15. Is the OpenAI provider production-ready or still spike-only?**  "
+        }
+      ]
+    },
+    {
+      "path": "docs/historical/FORGEX_GAP_ANALYSIS_V1_2026-06-17.md",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 46,
+          "text": "| Model router | Single env provider | AI provider support | Built-in | Anthropic/3P | Many providers | Gemini/3P | N/A | High |"
+        }
+      ]
+    }
+  ],
+  "subscription authentication": [],
+  "Model Context Protocol": [],
+  "MCP server": [
+    {
+      "path": "third_party/opencode/packages/llm/src/tool.ts",
+      "kind": "vendor",
+      "matches": [
+        {
+          "line": 118,
+          "text": " *    schema comes from an external source (MCP server, plugin manifest,"
+        }
+      ]
+    },
+    {
+      "path": "docs/historical/FORGEX_GAP_ANALYSIS_V1_2026-06-17.md",
+      "kind": "documentation/configuration",
+      "matches": [
+        {
+          "line": 112,
+          "text": "- Custom tools, rules, policies, commands, formatters, MCP servers, SDK/server/plugin model."
+        }
+      ]
+    }
+  ],
+  "MCP client": [],
+  "stdio transport": [],
+  "Streamable HTTP": [],
+  "tools/list": [],
+  "resources/list": [],
+  "prompts/list": []
+}

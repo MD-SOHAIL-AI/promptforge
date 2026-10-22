@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-07",
+  "scope": "Extend provider timeout fixes to all identified free models and free/trial account provider families",
+  "catalog_zero_token_price_text_entries": 607,
+  "catalog_provider_count": 76,
+  "timeout_policy_coverage_gaps": 0,
+  "broad_regression": {
+    "passed": 299,
+    "warnings": 2,
+    "duration_seconds": 140.13,
+    "evidence": "python-tests.log"
+  },
+  "final_focused_regression": {
+    "passed": 70,
+    "duration_seconds": 21.82,
+    "evidence": "focused-tests.log",
+    "overlaps_broad_regression": true,
+    "includes_final_provider_family_expansion": true
+  },
+  "isolated_backend_startup": "healthy",
+  "startup_evidence": "startup-validation.json",
+  "diff_check": "passed",
+  "external_generation_requests": 0,
+  "production_state_used": false,
+  "api_rate_limit_settings_changed": false,
+  "saved_model_selections_changed": false,
+  "billing_labels_changed": false,
+  "installed_desktop_release_packaged_or_deployed": false
+}

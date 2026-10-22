@@ -1,0 +1,257 @@
+Build an advanced ESP32-based IoT Smart Environment Monitoring and Control System.
+
+The project should be designed like a real embedded systems product, not just a basic Arduino demo.
+
+Core requirements:
+
+Hardware:
+- ESP32 development board
+- DHT22 for temperature and humidity
+- MQ-135 air quality sensor
+- LDR for ambient light
+- PIR motion sensor
+- OLED display using I2C
+- Relay module to control a fan or lamp
+- Buzzer for alerts
+- Status LEDs
+- Push buttons for manual control
+- Optional microSD card for local data logging
+
+Main features:
+1. Continuously monitor temperature, humidity, air quality, light level, and motion.
+2. Display sensor values and system status on the OLED.
+3. Automatically control a fan through a relay when temperature crosses a configurable threshold.
+4. Automatically control a light based on LDR readings and motion detection.
+5. Trigger buzzer alerts when air quality becomes unsafe.
+6. Support both AUTO mode and MANUAL mode.
+7. Allow manual relay control using physical push buttons.
+8. Connect the ESP32 to Wi-Fi.
+9. Host a responsive web dashboard directly from the ESP32.
+10. Show live sensor values on the dashboard without refreshing the entire webpage.
+11. Use WebSockets Events for real-time updates.
+12. Allow the user to control relays and operating modes from the dashboard.
+13. Allow threshold values to be changed from the dashboard.
+14. Store configuration values permanently using ESP32 Preferences/NVS.
+15. Automatically reconnect to Wi-Fi if the connection is lost.
+16. If Wi-Fi is unavailable, the embedded control logic must continue working normally.
+17. Add an Access Point configuration mode so Wi-Fi credentials can be entered without hardcoding them.
+18. Include OTA firmware update support.
+19. Add a watchdog mechanism or recovery logic for unexpected failures.
+20. Use non-blocking programming. Avoid unnecessary delay() calls.
+21. Use millis(), timers, tasks, or event-driven logic where appropriate.
+22. Use FreeRTOS tasks if they improve the architecture.
+23. Protect shared data correctly if multiple FreeRTOS tasks are used.
+24. Add sensor-failure detection and graceful fallback behaviour.
+25. Log important system events such as Wi-Fi connection, relay changes, alarms, sensor errors, and startup events.
+26. Optionally log sensor readings to a microSD card in CSV format.
+
+Software architecture:
+
+Design the firmware using separate modules such as:
+
+main.cpp
+├── sensors/
+│   ├── temperature_sensor
+│   ├── air_quality_sensor
+│   ├── light_sensor
+│   └── motion_sensor
+├── control/
+│   ├── automation_controller
+│   └── relay_controller
+├── network/
+│   ├── wifi_manager
+│   ├── web_server
+│   └── websocket_manager
+├── storage/
+│   ├── settings_manager
+│   └── data_logger
+├── display/
+│   └── oled_manager
+└── system/
+    ├── diagnostics
+    └── watchdog
+
+Use a state-machine-based design wherever appropriate.
+
+Create system states such as:
+
+BOOT
+↓
+INITIALIZATION
+↓
+WIFI_CONNECTING
+↓
+NORMAL_OPERATION
+├── AUTO_MODE
+├── MANUAL_MODE
+└── ALARM_MODE
+↓
+ERROR_RECOVERY
+
+Web dashboard:
+
+Create a modern responsive dashboard with:
+
+- Temperature card
+- Humidity card
+- Air quality card
+- Light level card
+- Motion status
+- Relay/fan status
+- Light status
+- Wi-Fi status
+- Device uptime
+- AUTO/MANUAL mode selector
+- Fan ON/OFF controls
+- Light ON/OFF controls
+- Temperature threshold adjustment
+- Air-quality threshold adjustment
+- Live updating charts for sensor history
+- System logs
+
+The frontend can use:
+- HTML
+- CSS
+- JavaScript
+- Chart.js if appropriate
+
+The dashboard should work on both desktop and mobile.
+
+Networking:
+
+Use ESPAsyncWebServer if appropriate.
+
+Implement:
+- WebSocket/SSE communication
+- JSON messages
+- Automatic client reconnection
+- REST API endpoints where useful
+
+Example API structure:
+
+GET /api/sensors
+GET /api/status
+POST /api/mode
+POST /api/relay
+POST /api/settings
+GET /api/logs
+
+Embedded-system requirements:
+
+The device must remain functional even when:
+- Wi-Fi disconnects
+- Dashboard is closed
+- A sensor fails temporarily
+- Internet access is unavailable
+
+The ESP32 itself must be responsible for automation and safety logic.
+
+Do not make the cloud or web interface responsible for critical control.
+
+FreeRTOS architecture:
+
+If using FreeRTOS, consider separate tasks for:
+
+Task 1: Sensor acquisition
+Task 2: Control logic
+Task 3: OLED updates
+Task 4: Network/web server
+Task 5: Data logging
+Task 6: System monitoring
+
+Use queues, mutexes, semaphores, or event groups where appropriate.
+
+Safety logic:
+
+Examples:
+
+If temperature > configured threshold:
+    Fan ON
+
+If temperature < threshold - hysteresis:
+    Fan OFF
+
+If air quality exceeds dangerous threshold:
+    Buzzer ON
+    Alarm status ON
+
+If darkness detected AND motion detected:
+    Light ON
+
+If no motion for a configurable timeout:
+    Light OFF
+
+Implement hysteresis so relays do not rapidly switch ON and OFF around threshold values.
+
+Code quality requirements:
+
+- Use modern C++ suitable for ESP32.
+- Keep the code modular.
+- Avoid putting the entire program inside one file.
+- Use meaningful variable and function names.
+- Avoid global variables where possible.
+- Add comments for important logic.
+- Use enums and structs for system states and sensor data.
+- Handle errors explicitly.
+- Avoid blocking code.
+- Make the project easy to extend later.
+
+Development environment:
+
+Prefer PlatformIO with VS Code.
+
+Also explain how the same project could be compiled with Arduino IDE if practical.
+
+Provide:
+
+1. Complete project architecture.
+2. Hardware component list.
+3. Detailed pin mapping table.
+4. Wiring explanation.
+5. System block diagram.
+6. Data-flow diagram.
+7. State-machine diagram.
+8. FreeRTOS task architecture.
+9. Complete folder structure.
+10. Complete ESP32 firmware.
+11. Complete HTML/CSS/JavaScript dashboard.
+12. WebSocket/API protocol.
+13. Configuration storage implementation.
+14. Wi-Fi provisioning implementation.
+15. OTA update implementation.
+16. Sensor failure handling.
+17. Relay safety logic.
+18. Data logging implementation.
+19. PlatformIO configuration file.
+20. Library dependencies.
+21. Step-by-step build instructions.
+22. Flashing instructions.
+23. Testing procedure.
+24. Example sensor values and expected behaviour.
+25. Common errors and troubleshooting.
+26. Explanation of how each firmware module works.
+27. Suggestions for future upgrades.
+
+Future upgrade ideas should include:
+
+- MQTT
+- Home Assistant integration
+- ESP-NOW
+- Bluetooth provisioning
+- Mobile application
+- Cloud database
+- Grafana dashboard
+- InfluxDB
+- Multiple ESP32 sensor nodes
+- LoRa communication
+- Matter smart-home integration
+- Voice assistant integration
+- Machine-learning-based anomaly detection
+- Predictive control
+
+Most importantly, build this like a proper embedded/IoT engineering project rather than a single-file Arduino tutorial.
+
+Start by explaining the architecture and block diagram before generating the code.
+
+Confirmed choices:
+component_1: WebSockets

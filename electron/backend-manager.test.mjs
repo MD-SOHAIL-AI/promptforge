@@ -1,0 +1,343 @@
+import { EventEmitter } from "node:events";
+import assert from "node:assert/strict";
+import test from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { liveLogPath } from "../dist/electron/diagnostics.js";
+
+import {
+  BACKEND_RUNTIME_CONTRACT,
+  BackendManager,
+  computeBackendSourceFingerprint,
+} from "../dist/electron/backend-manager.js";
+
+const sourceFingerprint = computeBackendSourceFingerprint(process.cwd());
+
+const healthy = {
+  reachable: true,
+  forgeX: true,
+  healthy: true,
+  body: {
+    status: "healthy",
+    service: "forgex-backend",
+    runtime_contract: BACKEND_RUNTIME_CONTRACT,
+    source_fingerprint: sourceFingerprint,
+  },
+};
+const resolvedPython = { executable: "python", source: "fallback" };
+
+function fakeProcess(pid = 12345) {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.pid = pid;
+  child.killed = false;
+  child.killCalls = [];
+  child.kill = (signal) => {
+    child.killed = true;
+    child.killCalls.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  return child;
+}
+
+function isolatedEvents(t) {
+  const prior = process.env.FORGEX_LIVE_LOG_PATH;
+  process.env.FORGEX_LIVE_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "forgex-supervisor-")), "events.jsonl");
+  const file = liveLogPath();
+  t.after(() => {
+    if (prior === undefined) delete process.env.FORGEX_LIVE_LOG_PATH;
+    else process.env.FORGEX_LIVE_LOG_PATH = prior;
+  });
+  return () => fs.readFileSync(file, "utf8").trim().split("\n").map(line => JSON.parse(line));
+}
+
+test("BackendManager reuses healthy existing ForgeX backend", async () => {
+  let spawned = false;
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => healthy,
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => {
+      spawned = true;
+      return fakeProcess();
+    },
+  });
+
+  const status = await manager.start();
+  await manager.stop();
+
+  assert.equal(status.state, "ready");
+  assert.equal(status.ownsProcess, false);
+  assert.equal(status.pid, undefined);
+  assert.equal(spawned, false);
+});
+
+test("BackendManager rejects non-ForgeX service on the backend port", async () => {
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => ({
+      reachable: true,
+      forgeX: false,
+      healthy: false,
+      statusCode: 200,
+      body: { service: "other-service" },
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => fakeProcess(),
+  });
+
+  await assert.rejects(
+    manager.start(),
+    /Port 8000 is already in use by another process/,
+  );
+  assert.equal(manager.getStatus().ownsProcess, false);
+});
+
+test("BackendManager handles health timeout without spawning", async () => {
+  let spawned = false;
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => ({
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      timedOut: true,
+      error: "Health request timed out",
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => {
+      spawned = true;
+      return fakeProcess();
+    },
+  });
+
+  await assert.rejects(manager.start(), /health check timed out/);
+  assert.equal(spawned, false);
+});
+
+test("BackendManager records spawned PID and stops only spawned backend", async (t) => {
+  const events = isolatedEvents(t);
+  const child = fakeProcess(24680);
+  const probes = [
+    {
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      error: "ECONNREFUSED",
+    },
+    healthy,
+  ];
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    readinessIntervalMs: 1,
+    healthProbe: async () => probes.shift() ?? healthy,
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => child,
+  });
+
+  const status = await manager.start();
+  await manager.stop();
+
+  assert.equal(status.state, "ready");
+  assert.equal(status.ownsProcess, true);
+  assert.equal(status.pid, 24680);
+  assert.deepEqual(child.killCalls, ["SIGTERM"]);
+  const exit = events().find(event => event.event === "backend.exited");
+  assert.equal(exit.backend_pid, 24680);
+  assert.equal(exit.expected, true);
+  assert.equal(exit.signal, "SIGTERM");
+});
+
+test("BackendManager cleanup does not kill reused backend", async () => {
+  const child = fakeProcess(11111);
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => healthy,
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => child,
+  });
+
+  await manager.start();
+  await manager.stop();
+
+  assert.deepEqual(child.killCalls, []);
+});
+
+test("BackendManager rejects a stale ForgeX backend source fingerprint", async () => {
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => ({
+      ...healthy,
+      body: {
+        ...healthy.body,
+        source_fingerprint: "stale-source",
+      },
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => fakeProcess(),
+  });
+
+  await assert.rejects(manager.start(), /started from older source code/);
+  assert.equal(manager.getStatus().ownsProcess, false);
+});
+
+test("BackendManager reports Python resolver startup failures cleanly", async () => {
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => ({
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      error: "ECONNREFUSED",
+    }),
+    resolvePython: () => {
+      throw new Error("ForgeX backend dependencies are not installed.");
+    },
+    spawnBackend: () => fakeProcess(),
+  });
+
+  await assert.rejects(manager.start(), /ForgeX backend dependencies are not installed/);
+  assert.equal(manager.getStatus().ownsProcess, false);
+});
+
+test("BackendManager cleans up an owned backend when readiness times out", async () => {
+  const child = fakeProcess(33333);
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    readinessTimeoutMs: 5,
+    readinessIntervalMs: 1,
+    healthProbe: async () => ({
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      error: "ECONNREFUSED",
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => child,
+  });
+
+  await assert.rejects(manager.start(), /did not become healthy/);
+  assert.deepEqual(child.killCalls, ["SIGTERM"]);
+  assert.equal(manager.getStatus().state, "crashed");
+  assert.equal(manager.getStatus().ownsProcess, false);
+  assert.equal(manager.getStatus().pid, undefined);
+});
+
+test("BackendManager allows a configured cold startup beyond one minute", async (t) => {
+  const previous = process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS;
+  process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS = "180000";
+  t.after(() => {
+    if (previous === undefined) delete process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS;
+    else process.env.FORGEX_BACKEND_STARTUP_TIMEOUT_MS = previous;
+  });
+  let clock = -70_000;
+  t.mock.method(Date, "now", () => {clock += 70_000; return clock;});
+  const probes = [{reachable: false, forgeX: false, healthy: false}, healthy];
+  const manager = new BackendManager({cwd: process.cwd(), readinessIntervalMs: 1,
+    healthProbe: async () => probes.shift() ?? healthy,
+    resolvePython: () => resolvedPython, spawnBackend: () => fakeProcess(55555)});
+  t.after(() => manager.stop());
+  assert.equal((await manager.start()).state, "ready");
+});
+
+test("BackendManager reports a synchronous backend spawn failure cleanly", async () => {
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    healthProbe: async () => ({
+      reachable: false,
+      forgeX: false,
+      healthy: false,
+      error: "ECONNREFUSED",
+    }),
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => {
+      throw new Error("spawn EACCES");
+    },
+  });
+
+  await assert.rejects(manager.start(), /Failed to start ForgeX backend process: spawn EACCES/);
+  assert.equal(manager.getStatus().state, "crashed");
+  assert.equal(manager.getStatus().ownsProcess, false);
+});
+
+test("BackendManager clears ownership when the owned backend exits", async (t) => {
+  const events = isolatedEvents(t);
+  const child = fakeProcess(44444);
+  const probes = [
+    { reachable: false, forgeX: false, healthy: false, error: "ECONNREFUSED" },
+    healthy,
+  ];
+  const manager = new BackendManager({
+    port: 8000,
+    cwd: process.cwd(),
+    readinessIntervalMs: 1,
+    healthProbe: async () => probes.shift() ?? healthy,
+    resolvePython: () => resolvedPython,
+    spawnBackend: () => child,
+  });
+
+  await manager.start();
+  child.emit("exit", 1, null);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(manager.getStatus().state, "crashed");
+  assert.equal(manager.getStatus().ownsProcess, false);
+  assert.equal(manager.getStatus().pid, undefined);
+  const records = events();
+  const spawned = records.find(event => event.event === "backend.spawned");
+  const exited = records.find(event => event.event === "backend.exited");
+  assert.equal(exited.backend_instance, spawned.backend_instance);
+  assert.equal(exited.backend_pid, 44444);
+  assert.equal(exited.exit_code, 1);
+  assert.equal(exited.expected, false);
+  assert.ok(records.some(event => event.event === "backend.restart.scheduled"));
+  await manager.stop();
+});
+
+test("owned backend restarts are bounded and Stop cancels pending recovery", async () => {
+  const children = [];
+  let live = false;
+  const manager = new BackendManager({
+    port:8000, cwd:process.cwd(), restartDelaysMs:[2,2,2], readinessIntervalMs:1,
+    healthProbe:async () => live ? healthy : {reachable:false, forgeX:false, healthy:false, error:"ECONNREFUSED"},
+    resolvePython:() => resolvedPython,
+    spawnBackend:() => {live = true; const child = fakeProcess(12345 + children.length); children.push(child); return child;},
+  });
+  await manager.start();
+  for (let count=1; count <= 3; count++) {
+    live = false;
+    children.at(-1).emit("exit", 1, null);
+    for (let wait=0; wait < 100 && children.length <= count; wait++) await new Promise(resolve => setTimeout(resolve,2));
+    assert.equal(children.length, count+1);
+    assert.equal(manager.getStatus().state,"ready");
+  }
+  live = false;
+  children.at(-1).emit("exit",1,null);
+  await new Promise(resolve => setTimeout(resolve,10));
+  assert.equal(children.length,4);
+  assert.match(manager.getStatus().lastError, /three attempts/);
+  await manager.stop();
+  const stopped = new BackendManager({port:8000,cwd:process.cwd(),restartDelaysMs:[15],readinessIntervalMs:1,
+    healthProbe:async () => live ? healthy : {reachable:false,forgeX:false,healthy:false},
+    resolvePython:() => resolvedPython,
+    spawnBackend:() => {live = true; const child = fakeProcess(); children.push(child); return child;}});
+  await stopped.start();
+  live = false;
+  children.at(-1).emit("exit",1,null);
+  await stopped.stop();
+  await new Promise(resolve => setTimeout(resolve,25));
+  assert.equal(children.length,5);
+  assert.equal(stopped.getStatus().state,"stopped");
+});

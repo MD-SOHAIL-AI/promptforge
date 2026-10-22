@@ -1,0 +1,108 @@
+{
+  "run_id": "agent-run-b9c0ec32c9034cc2b242efada2ba67fd",
+  "status": "completed_with_warning",
+  "classification": "DRAFT_BUILD_VERIFIED",
+  "build_verified": true,
+  "active_workspace_unchanged": true,
+  "change_set_id": "changeset-fcdaec2ab25341918222c5c712a9a9d3",
+  "hardware_verified": false,
+  "stage_statuses": {
+    "planning": "pending",
+    "generation": "pending",
+    "changes": "pending",
+    "build": "completed",
+    "repair": "pending",
+    "flash_confirmation": "pending",
+    "flash": "pending",
+    "monitor": "pending"
+  },
+  "build_result": {
+    "success": true,
+    "build_id": "build-8b4d665c51584975988abf1766c7ce84",
+    "workspace_revision": "workspace:2e9ceacc9546db1d9afa9e9c",
+    "source_manifest_hash": "workspace:2e9ceacc9546db1d9afa9e9c",
+    "build_log_artifact_id": "build-8b4d665c51584975988abf1766c7ce84-log",
+    "firmware_artifact_id": "build-8b4d665c51584975988abf1766c7ce84-firmware",
+    "status": "SUCCESS",
+    "message": "PlatformIO build succeeded: firmware.bin",
+    "firmware_path": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-agent-run-b9c0ec32c9034cc2b242efada2ba67fd\\.pio\\build\\esp32dev\\firmware.bin",
+    "firmware_hash": "98c2692e6cde5c47b077e852d1d2e47219004ab39be616ddeb28f6da4ac0883c",
+    "build_size_bytes": 272096,
+    "board": "esp32dev",
+    "platform": "platformio",
+    "warnings_count": 0,
+    "diagnostics": "\nProcessing esp32dev (platform: espressif32; board: esp32dev; framework: arduino)\r\n--------------------------------------------------------------------------------\r\nLibrary Manager: Installing adafruit/DHT sensor library @ ^1.4.6\r\nUnpacking 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%\r\nLibrary Manager: DHT sensor library@1.4.7 has been installed!\r\nLibrary Manager: Resolving dependencies...\r\nLibrary Manager: Installing Adafruit Unified Sensor\r\nUnpacking 0% 10% 20% 30% 40% 50% 60% 70%\r\nLibrary Manager: Adafruit Unified Sensor@1.1.15 has been installed!\r\nVerbose mode can be enabled via `-v, --verbose` option\r\nCONFIGURATION: https://docs.platformio.org/page/boards/espressif32/esp32dev.html\r\nPLATFORM: Espressif 32 (7.0.1) > Espressif ESP32 Dev Module\r\nHARDWARE: ESP32 240MHz, 320KB RAM, 4MB Flash\r\nDEBUG: Current (cmsis-dap) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)\r\nPACKAGES: \r\n - framework-arduinoespressif32 @ 3.20017.241212+sha.dcc1105b \r\n - tool-esptoolpy @ 2.41100.0 (4.11.0) \r\n - toolchain-xtensa-esp32 @ 8.4.0+2021r2-patch5\r\nLDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf\r\nLDF Modes: Finder ~ chain, Compatibility ~ soft\r\nFound 35 compatible libraries\r\nScanning dependencies...\r\nDependency Graph\r\n|-- DHT sensor library @ 1.4.7\r\n|-- Adafruit Unified Sensor @ 1.1.15\r\nBuilding in release mode\r\nCompiling .pio\\build\\esp32dev\\src\\main.cpp.o\r\nBuilding .pio\\build\\esp32dev\\bootloader.bin\r\nGenerating partitions .pio\\build\\esp32dev\\partitions.bin\r\nesptool.py v4.11.0\r\nCreating esp32 image...\r\nMerged 1 ELF section\r\nSuccessfully created esp32 image.\r\nCompiling .pio\\build\\esp32dev\\libf91\\Adafruit Unified Sensor\\Adafruit_Sensor.cpp.o\r\nCompiling .pio\\build\\esp32dev\\libd64\\DHT sensor library\\DHT.cpp.o\r\nCompiling .pio\\build\\esp32dev\\libd64\\DHT sensor library\\DHT_U.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\Esp.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\FirmwareMSC.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\FunctionalInterrupt.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\HWCDC.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\HardwareSerial.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\IPAddress.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\IPv6Address.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\MD5Builder.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\Print.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\Stream.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\StreamString.cpp.o\r\nArchiving .pio\\build\\esp32dev\\libf91\\libAdafruit Unified Sensor.a\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\Tone.cpp.o\r\nArchiving .pio\\build\\esp32dev\\libd64\\libDHT sensor library.a\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\USB.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\USBCDC.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\USBMSC.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\WMath.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\WString.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\base64.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\cbuf.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-adc.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-bt.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-cpu.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-dac.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-gpio.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-i2c-slave.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-i2c.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-ledc.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-matrix.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-misc.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-psram.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-rgb-led.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-rmt.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-sigmadelta.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-spi.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-time.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-timer.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-tinyusb.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-touch.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\esp32-hal-uart.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\firmware_msc_fat.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\libb64\\cdecode.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\libb64\\cencode.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\main.cpp.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\stdlib_noniso.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\wiring_pulse.c.o\r\nCompiling .pio\\build\\esp32dev\\FrameworkArduino\\wiring_shift.c.o\r\nArchiving .pio\\build\\esp32dev\\libFrameworkArduino.a\r\nLinking .pio\\build\\esp32dev\\firmware.elf\r\nRetrieving maximum program size .pio\\build\\esp32dev\\firmware.elf\r\nChecking size .pio\\build\\esp32dev\\firmware.elf\r\nAdvanced Memory Usage is available via \"PlatformIO Home > Project Inspect\"\r\nRAM:   [=         ]   6.6% (used 21488 bytes from 327680 bytes)\r\nFlash: [==        ]  20.7% (used 271737 bytes from 1310720 bytes)\r\nBuilding .pio\\build\\esp32dev\\firmware.bin with action:\r\n  \"$PYTHONEXE\" \"$OBJCOPY\" --chip esp32 elf2image --flash_mode ${__get_board_flash_mode(__env__)} --flash_freq ${__get_board_f_image(__env__)} --flash_size 4MB --elf-sha256-offset 0xb0 -o $TARGET $SOURCES\r\nBuilding .pio\\build\\esp32dev\\firmware.bin\r\nesptool.py v4.11.0\r\nCreating esp32 image...\r\nMerged 2 ELF sections\r\nSuccessfully created esp32 image.\r\n========================= [SUCCESS] Took 68.10 seconds =========================\r\n",
+    "compiler_diagnostics": [],
+    "environment": null,
+    "toolchain": {
+      "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "version": "6.2.0",
+      "environment": null,
+      "board": "esp32dev"
+    },
+    "artifact_manifest": {
+      "schema_version": 1,
+      "chip": "esp32",
+      "environment": "esp32dev",
+      "board": "esp32dev",
+      "toolchain": {
+        "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+        "version": "6.2.0",
+        "environment": null,
+        "board": "esp32dev"
+      },
+      "images": [
+        {
+          "role": "bootloader",
+          "offset": 4096,
+          "sha256": "3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8",
+          "size_bytes": 17536,
+          "filename": "bootloader.bin"
+        },
+        {
+          "role": "partitions",
+          "offset": 32768,
+          "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1",
+          "size_bytes": 3072,
+          "filename": "partitions.bin"
+        },
+        {
+          "role": "ota_data",
+          "offset": 57344,
+          "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+          "size_bytes": 8192,
+          "filename": "ota_data.bin"
+        },
+        {
+          "role": "application",
+          "offset": 65536,
+          "sha256": "98c2692e6cde5c47b077e852d1d2e47219004ab39be616ddeb28f6da4ac0883c",
+          "size_bytes": 272096,
+          "filename": "application.bin"
+        }
+      ],
+      "sha256": "fefc86e5d16f9b4efa159509d52abeab018d5117829c8101581059ba613e1d01",
+      "artifact_root": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\artifacts\\firmware-manifests\\fefc86e5d16f9b4efa159509d52abeab018d5117829c8101581059ba613e1d01"
+    },
+    "flash_ready": true,
+    "flash_readiness_error": null,
+    "exit_code": 0,
+    "dependency_candidates": [],
+    "failure": null,
+    "error_code": null,
+    "terminal": false,
+    "elf_path": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-agent-run-b9c0ec32c9034cc2b242efada2ba67fd\\.pio\\build\\esp32dev\\firmware.elf",
+    "elf_sha256": "6329044b7c5cb2178ceae27651293222a993ff666e5f7d4f03f9a8e8df887f38"
+  },
+  "job": {
+    "job_id": "job-d40f07b482514387a8a648029ed58d63",
+    "status": "completed_with_warning",
+    "consumed": {
+      "elapsed_seconds": 394.2350000000006,
+      "input_bytes": 435299,
+      "output_tokens": 13939,
+      "requests": 11,
+      "tool_calls_used": 10
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "success": true,
+  "status": "SUCCESS",
+  "timestamp": 1791357857.6257823,
+  "duration_ms": 108108,
+  "message": "PlatformIO build succeeded: firmware.bin",
+  "metadata": {
+    "command": [
+      "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "run",
+      "--project-dir",
+      "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-platformio-repair-20261007",
+      "--environment",
+      "esp32dev"
+    ],
+    "environment": "esp32dev",
+    "configured_environments": [
+      "esp32dev"
+    ],
+    "output_truncated": false,
+    "build_root": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-platformio-repair-20261007\\.pio\\build",
+    "version_probe_failed": false,
+    "ram_used_bytes": 44556,
+    "ram_total_bytes": 327680,
+    "flash_used_bytes": 851309,
+    "flash_total_bytes": 1310720,
+    "artifact_type": "bin",
+    "artifact_environment": "esp32dev",
+    "artifacts": [
+      "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-platformio-repair-20261007\\.pio\\build\\esp32dev\\firmware.bin",
+      "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-platformio-repair-20261007\\.pio\\build\\esp32dev\\firmware.elf"
+    ],
+    "partition_preflight": {
+      "success": true,
+      "environment": "esp32dev",
+      "validated_environments": [],
+      "validation": "canonical_platformio_build"
+    },
+    "toolchain": {
+      "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "version": "6.2.0",
+      "environment": "esp32dev",
+      "board": "esp32dev"
+    },
+    "artifact_manifest": {
+      "schema_version": 1,
+      "chip": "esp32",
+      "environment": "esp32dev",
+      "board": "esp32dev",
+      "toolchain": {
+        "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+        "version": "6.2.0",
+        "environment": "esp32dev",
+        "board": "esp32dev"
+      },
+      "images": [
+        {
+          "role": "bootloader",
+          "offset": 4096,
+          "sha256": "3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8",
+          "size_bytes": 17536,
+          "filename": "bootloader.bin"
+        },
+        {
+          "role": "partitions",
+          "offset": 32768,
+          "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1",
+          "size_bytes": 3072,
+          "filename": "partitions.bin"
+        },
+        {
+          "role": "ota_data",
+          "offset": 57344,
+          "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+          "size_bytes": 8192,
+          "filename": "ota_data.bin"
+        },
+        {
+          "role": "application",
+          "offset": 65536,
+          "sha256": "6a389879c1437aed56c84db36b8967eaab930795311f2b7f98381cdd2f948f7e",
+          "size_bytes": 857888,
+          "filename": "application.bin"
+        }
+      ],
+      "sha256": "a3cd3c22d5c4d6e12f9c2e90c8356cc0db83ad8f719cfb0409bd4940370a38d8",
+      "artifact_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-07\\platformio-dependency-fix\\firmware-manifests\\a3cd3c22d5c4d6e12f9c2e90c8356cc0db83ad8f719cfb0409bd4940370a38d8"
+    },
+    "flash_ready": true
+  },
+  "firmware_path": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-platformio-repair-20261007\\.pio\\build\\esp32dev\\firmware.bin",
+  "build_size_bytes": 857888,
+  "platform": "platformio",
+  "board": "esp32dev",
+  "toolchain_version": "6.2.0",
+  "warnings_count": 0,
+  "process_exit_code": 0,
+  "process_timed_out": false,
+  "failure": null
+}

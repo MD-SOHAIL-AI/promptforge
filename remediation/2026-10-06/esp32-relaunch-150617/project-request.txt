@@ -1,0 +1,300 @@
+The workspace is empty because prior results are staged drafts. Stop searching or rereading empty paths. Create all four files now with exactly the complete contents below. This is the same ESP32 Wi-Fi dashboard project, with the compile errors repaired. Preserve these files as one reviewable draft. Compile with ForgeX's build tool if local-build permission is available; if permission is blocked, save the draft and finish clearly. Do not change trust settings or flash hardware.
+
+FILE: platformio.ini
+~~~ini
+[env:esp32dev]
+platform = espressif32
+board = esp32dev
+framework = arduino
+monitor_speed = 115200
+~~~
+
+FILE: include/config.h
+~~~cpp
+#ifndef ESP32_DASHBOARD_CONFIG_H
+#define ESP32_DASHBOARD_CONFIG_H
+
+#include <Arduino.h>
+#include <IPAddress.h>
+
+#ifndef LED_PIN
+#define LED_PIN 2
+#endif
+#ifndef LED_ACTIVE_HIGH
+#define LED_ACTIVE_HIGH true
+#endif
+
+static const char AP_SSID[] = "ESP32-Dashboard";
+static const char AP_PASSWORD[] = "esp32demo123";
+static const IPAddress AP_IP(192, 168, 4, 1);
+static const IPAddress AP_SUBNET(255, 255, 255, 0);
+static const uint16_t HTTP_PORT = 80;
+static const uint32_t SERIAL_BAUD = 115200;
+
+#endif
+~~~
+
+FILE: src/main.cpp
+~~~cpp
+#include <WiFi.h>
+#include <WebServer.h>
+#include <esp_timer.h>
+#include "config.h"
+
+WebServer server(HTTP_PORT);
+bool ledOn = false;
+bool serverReady = false;
+static const char* REQUEST_HEADERS[] = {"Content-Type"};
+
+static const char DASHBOARD_HTML[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 Dashboard</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101824;color:#edf3fa}
+body{margin:0;padding:24px}main{max-width:760px;margin:auto}h1{margin-bottom:6px}
+.sub{color:#a6b8cc}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:28px 0}
+.card,.control{background:#1a293b;border:1px solid #31445a;border-radius:14px;padding:20px}
+.label{color:#a6b8cc;font-size:14px}.value{font-size:28px;font-weight:650;margin-top:12px;overflow-wrap:anywhere}
+.control{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+button{border:0;border-radius:9px;padding:13px 22px;background:#65d7bf;color:#10232c;font-weight:650;cursor:pointer}
+button.secondary{background:#34485e;color:#edf3fa}button:disabled{opacity:.5;cursor:wait}
+#message{min-height:24px;color:#a6b8cc;margin-top:20px}#message.error{color:#ffb2ae}
+</style>
+</head>
+<body>
+<main>
+<h1>ESP32 Dashboard</h1>
+<p class="sub">Local Wi-Fi control · ESP32-Dashboard · 192.168.4.1</p>
+<div class="grid">
+<div class="card"><div class="label">Uptime</div><div class="value" id="uptime">--</div></div>
+<div class="card"><div class="label">Free memory</div><div class="value" id="heap">--</div></div>
+<div class="card"><div class="label">Wi-Fi clients</div><div class="value" id="clients">--</div></div>
+</div>
+<div class="control">
+<div><div class="label">LED output</div><div class="value" id="led">--</div></div>
+<div><button id="on">Turn on</button> <button class="secondary" id="off">Turn off</button></div>
+</div>
+<p id="message" role="status" aria-live="polite">Connecting to the ESP32...</p>
+<p class="sub">Refreshes every second. LED state shows the commanded output.</p>
+</main>
+<script>
+const message = document.getElementById('message');
+const buttons = [document.getElementById('on'), document.getElementById('off')];
+let refreshing = false;
+
+function showMessage(text, isError = false) {
+  message.textContent = text;
+  message.className = isError ? 'error' : '';
+}
+function renderStatus(data) {
+  const seconds = Number(data.uptimeSeconds);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const remainder = seconds % 60;
+  document.getElementById('uptime').textContent =
+    String(hours).padStart(2, '0') + ':' +
+    String(minutes).padStart(2, '0') + ':' +
+    String(remainder).padStart(2, '0');
+  document.getElementById('heap').textContent = Number(data.freeHeap).toLocaleString() + ' B';
+  document.getElementById('clients').textContent = data.clients;
+  document.getElementById('led').textContent = data.led ? 'ON' : 'OFF';
+}
+async function requestJson(path, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(path, {...options, cache: 'no-store', signal: controller.signal});
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+async function refreshStatus() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    renderStatus(await requestJson('/api/status'));
+    showMessage('Connected · Updated ' + new Date().toLocaleTimeString());
+  } catch (error) {
+    showMessage('Connection failed: ' + error.message + '. Check the ESP32 Wi-Fi connection.', true);
+  } finally {
+    refreshing = false;
+  }
+}
+async function setLed(state) {
+  buttons.forEach(button => button.disabled = true);
+  try {
+    const data = await requestJson('/led', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({state: state}).toString()
+    });
+    renderStatus(data);
+    showMessage('LED switched ' + (data.led ? 'on' : 'off'));
+    await refreshStatus();
+  } catch (error) {
+    showMessage('LED request failed: ' + error.message, true);
+  } finally {
+    buttons.forEach(button => button.disabled = false);
+  }
+}
+document.getElementById('on').addEventListener('click', () => setLed('on'));
+document.getElementById('off').addEventListener('click', () => setLed('off'));
+refreshStatus();
+setInterval(refreshStatus, 1000);
+</script>
+</body>
+</html>
+)HTML";
+
+void writeLed() {
+  const uint8_t level = (ledOn == static_cast<bool>(LED_ACTIVE_HIGH)) ? HIGH : LOW;
+  digitalWrite(LED_PIN, level);
+}
+
+void sendStatus() {
+  char json[192];
+  const unsigned long long seconds =
+      static_cast<unsigned long long>(esp_timer_get_time() / 1000000LL);
+  snprintf(json, sizeof(json),
+           "{\"uptimeSeconds\":%llu,\"freeHeap\":%lu,\"clients\":%u,\"led\":%s}",
+           seconds, static_cast<unsigned long>(ESP.getFreeHeap()),
+           static_cast<unsigned int>(WiFi.softAPgetStationNum()),
+           ledOn ? "true" : "false");
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", json);
+}
+
+void handlePage() {
+  if (server.method() != HTTP_GET) {
+    server.sendHeader("Allow", "GET");
+    server.send(405, "text/plain", "Use GET");
+    return;
+  }
+  server.send_P(200, "text/html; charset=utf-8", DASHBOARD_HTML);
+}
+
+void handleStatus() {
+  if (server.method() != HTTP_GET) {
+    server.sendHeader("Allow", "GET");
+    server.send(405, "text/plain", "Use GET");
+    return;
+  }
+  sendStatus();
+}
+
+void handleLed() {
+  if (server.method() != HTTP_POST) {
+    server.sendHeader("Allow", "POST");
+    server.send(405, "text/plain", "Use POST");
+    return;
+  }
+  String contentType = server.header("Content-Type");
+  const int separator = contentType.indexOf(';');
+  if (separator >= 0) contentType = contentType.substring(0, separator);
+  contentType.trim();
+  contentType.toLowerCase();
+  if (contentType != "application/x-www-form-urlencoded") {
+    server.send(415, "text/plain", "Use application/x-www-form-urlencoded");
+    return;
+  }
+  if (server.args() != 1 || server.argName(0) != "state") {
+    server.send(400, "text/plain", "Provide exactly one state parameter");
+    return;
+  }
+  const String state = server.arg(0);
+  if (state != "on" && state != "off") {
+    server.send(400, "text/plain", "State must be on or off");
+    return;
+  }
+  ledOn = state == "on";
+  writeLed();
+  sendStatus();
+}
+
+void setup() {
+  Serial.begin(SERIAL_BAUD);
+  ledOn = false;
+  writeLed();
+  pinMode(LED_PIN, OUTPUT);
+  writeLed();
+
+  if (!WiFi.mode(WIFI_AP) ||
+      !WiFi.softAPConfig(AP_IP, AP_IP, AP_SUBNET) ||
+      !WiFi.softAP(AP_SSID, AP_PASSWORD)) {
+    Serial.println("Access point initialization failed. Restart to retry.");
+    return;
+  }
+
+  server.collectHeaders(REQUEST_HEADERS, 1);
+  server.on("/", handlePage);
+  server.on("/dashboard", handlePage);
+  server.on("/api/status", handleStatus);
+  server.on("/led", handleLed);
+  server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+  server.begin();
+  serverReady = true;
+  Serial.print("Dashboard ready at http://");
+  Serial.println(WiFi.softAPIP());
+  Serial.print("Wi-Fi network: ");
+  Serial.println(AP_SSID);
+}
+
+void loop() {
+  if (serverReady) server.handleClient();
+  yield();
+}
+~~~
+
+FILE: README.md
+~~~markdown
+# ESP32 Wi-Fi Dashboard
+
+A local Wi-Fi dashboard for a standard ESP32 DevKit, using PlatformIO and the Arduino framework. It controls a configurable LED output and shows uptime, free memory and the number of clients connected to the ESP32 access point.
+
+## Hardware
+
+Use an ESP32 DevKit compatible with PlatformIO's esp32dev target. Power it through its USB connector. ESP32 GPIO uses 3.3 V logic; do not feed 5 V into a GPIO.
+
+GPIO 2 is the default LED pin. LED availability and polarity vary by board. Change LED_PIN and LED_ACTIVE_HIGH in include/config.h to match yours. The default is active high, and the commanded state starts OFF.
+
+For an optional external LED with active-high configuration, connect GPIO 2 through a 220–330 ohm resistor to the LED anode, and the cathode to GND. Use LED_ACTIVE_HIGH true. Do not connect the LED directly without a resistor.
+
+## Build and upload
+
+The project uses only libraries included with the ESP32 Arduino core. No lib_deps entry is needed.
+
+- Compile: pio run -e esp32dev
+- Upload when the intended ESP32 is connected: pio run -e esp32dev -t upload --upload-port YOUR_PORT
+- Open serial output: pio device monitor -b 115200 -p YOUR_PORT
+
+ForgeX's build view can compile the saved project. Review and apply its draft files before uploading. Select the port belonging to the ESP32, since Bluetooth COM ports do not identify an ESP32.
+
+## Connect to the dashboard
+
+After uploading and booting:
+
+1. Join the Wi-Fi network ESP32-Dashboard.
+2. Use the demo password esp32demo123.
+3. Open http://192.168.4.1 in your browser. The /dashboard alias serves the same page.
+
+The dashboard works offline, updates every second and refreshes after LED commands. Change the demo AP credentials in include/config.h before using it outside a test setup.
+
+## HTTP API
+
+GET /api/status returns JSON with uptimeSeconds, freeHeap, clients and a boolean led value. Clients counts Wi-Fi stations, including a phone or computer connected to the AP.
+
+POST /led expects application/x-www-form-urlencoded with exactly one parameter: state=on or state=off. A successful response contains the updated status JSON. Invalid/missing/extra/duplicate parameters return 400. Wrong methods return 405. Unsupported content types return 415. Unknown routes return 404.
+
+## Validation
+
+A successful build confirms the firmware compiles for esp32dev. It does not confirm Wi-Fi behavior, LED wiring or operation on a physical board. Those require uploading to the intended ESP32 and testing the dashboard there.
+
+The LED status shows the commanded output, not electrical feedback from the pin or LED. Uptime uses the ESP32 timer instead of a 32-bit millisecond counter.
+~~~
+

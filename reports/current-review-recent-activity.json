@@ -1,0 +1,49 @@
+[
+  {
+    "run_id": "agent-run-f9bea11b3703469db118d86ade2da223",
+    "status": "failed",
+    "created_ist": "2026-10-20T18:44:24.441390+05:30",
+    "updated_ist": "2026-10-20T18:44:30.051745+05:30",
+    "provider": "openrouter",
+    "model": "openai/gpt-oss-20b:free",
+    "classification": "PROVIDER_REQUEST_FAILED",
+    "assistant_message": "ForgeX could not continue the Agent runtime.",
+    "changed_files": [],
+    "fallback_used": false,
+    "build": {
+      "success": false,
+      "status": null,
+      "message": "missing platformio.ini: D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-f9bea11b3703469db118d86ade2da223\\platformio.ini",
+      "exit_code": null,
+      "flash_ready": null,
+      "build_size_bytes": null,
+      "error_code": "BUILD_CONFIGURATION_MISSING",
+      "terminal": false
+    }
+  },
+  {
+    "run_id": "agent-run-fa6cc14c4fc94d8ebc1650ca04017f51",
+    "status": "failed",
+    "created_ist": "2026-10-20T18:44:45.907294+05:30",
+    "updated_ist": "2026-10-20T18:46:51.276277+05:30",
+    "provider": "openrouter",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "classification": "BUILD_ERROR",
+    "assistant_message": "Forge Agent stopped without a successful required build. Generated files were saved as an unverified recovery draft. Retry to repair and validate them.",
+    "changed_files": [
+      "platformio.ini",
+      "src/main.cpp"
+    ],
+    "fallback_used": false,
+    "build": {
+      "success": false,
+      "status": "SUCCESS",
+      "message": "PlatformIO build succeeded: firmware.bin",
+      "exit_code": 0,
+      "flash_ready": true,
+      "build_size_bytes": 270656,
+      "error_code": null,
+      "terminal": false
+    }
+  }
+]

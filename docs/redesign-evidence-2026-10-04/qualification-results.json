@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "candidate": {
+    "scope": "Workspace source; installed binary unchanged",
+    "runtime_contract": "forgex-agent-runtime-v3",
+    "backend_source_fingerprint": "a19ecde06b01f60f9ba596f5949136008d86d3ac3d1e53f1395c9aa3dc30bd91",
+    "python": "3.10.6",
+    "node": "24.14.0",
+    "release_python_target": "3.13.15"
+  },
+  "checks": {
+    "python": {"passed": 2218, "skipped": 4, "warnings": 2, "failed": 0, "log": ".forgex/redesign-validation/python-qualified.log"},
+    "browser": {"passed": 52, "failed": 0, "log": ".forgex/redesign-validation/browser-qualified-final.log"},
+    "ui_state": {"passed": 79, "failed": 0, "log": ".forgex/redesign-validation/ui-state-qualified.log"},
+    "electron": {"passed": 43, "failed": 0, "log": ".forgex/redesign-validation/electron-final.log"},
+    "harness": {"passed": 11, "failed": 0, "log": ".forgex/redesign-validation/harness.log"},
+    "release_scripts": {"passed": 35, "failed": 0, "log": ".forgex/redesign-validation/release-scripts.log"},
+    "frontend_types": {"status": "passed", "log": ".forgex/redesign-validation/frontend-types-final.log"},
+    "frontend_lint": {"status": "passed", "log": ".forgex/redesign-validation/frontend-lint-final.log"},
+    "frontend_build": {"status": "passed", "log": ".forgex/redesign-validation/frontend-build-qualified.log"}
+  },
+  "external_release_gates": {
+    "live_providers": "not_run",
+    "real_esp32_compilation": "not_run",
+    "physical_upload_and_serial": "not_run",
+    "signed_installer_and_clean_machine": "not_run",
+    "complete_accessibility_certification": "not_claimed"
+  },
+  "evidence_scope": "Controlled transports and isolated workspaces; browser captures use fixtures. Host-dependent skips concern unavailable directory symlinks. This document does not replace the packaged release evidence gate."
+}

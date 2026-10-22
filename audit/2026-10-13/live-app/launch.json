@@ -1,0 +1,11 @@
+{
+  "backend_pid": 25192,
+  "frontend_pid": 892,
+  "backend_url": "http://127.0.0.1:8300",
+  "frontend_url": "http://127.0.0.1:3300",
+  "project": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-13\\live-app\\ESP32_Smart_Monitor",
+  "prompt": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-13\\live-app\\prompt.txt",
+  "provider": "nvidia_nim",
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "prompt_characters": 11043
+}

@@ -1,0 +1,98 @@
+{
+  "started_at": "2026-10-05T15:39:46.428849+00:00",
+  "finished_at": "2026-10-05T15:40:56.713710+00:00",
+  "success": true,
+  "status": "ResultStatus.SUCCESS",
+  "message": "PlatformIO build succeeded: firmware.bin",
+  "metadata": {
+    "command": [
+      "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "run",
+      "--project-dir",
+      "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\staging\\agent-v3-f5ea2e6b580a406cbbdcf90adf56cbec",
+      "--environment",
+      "esp32dev"
+    ],
+    "environment": "esp32dev",
+    "configured_environments": [
+      "esp32dev"
+    ],
+    "output_truncated": false,
+    "build_root": "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\staging\\agent-v3-f5ea2e6b580a406cbbdcf90adf56cbec\\.pio\\build",
+    "version_probe_failed": false,
+    "ram_used_bytes": 21464,
+    "ram_total_bytes": 327680,
+    "flash_used_bytes": 269081,
+    "flash_total_bytes": 1310720,
+    "artifact_type": "bin",
+    "artifact_environment": "esp32dev",
+    "artifacts": [
+      "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\staging\\agent-v3-f5ea2e6b580a406cbbdcf90adf56cbec\\.pio\\build\\esp32dev\\firmware.bin",
+      "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\staging\\agent-v3-f5ea2e6b580a406cbbdcf90adf56cbec\\.pio\\build\\esp32dev\\firmware.elf"
+    ],
+    "partition_preflight": {
+      "success": true,
+      "environment": "esp32dev",
+      "validated_environments": [],
+      "validation": "canonical_platformio_build"
+    },
+    "toolchain": {
+      "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "version": "6.2.0",
+      "environment": "esp32dev",
+      "board": "esp32dev"
+    },
+    "artifact_manifest": {
+      "schema_version": 1,
+      "chip": "esp32",
+      "environment": "esp32dev",
+      "board": "esp32dev",
+      "toolchain": {
+        "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+        "version": "6.2.0",
+        "environment": "esp32dev",
+        "board": "esp32dev"
+      },
+      "images": [
+        {
+          "role": "bootloader",
+          "offset": 4096,
+          "sha256": "3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8",
+          "size_bytes": 17536,
+          "filename": "bootloader.bin"
+        },
+        {
+          "role": "partitions",
+          "offset": 32768,
+          "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1",
+          "size_bytes": 3072,
+          "filename": "partitions.bin"
+        },
+        {
+          "role": "ota_data",
+          "offset": 57344,
+          "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+          "size_bytes": 8192,
+          "filename": "ota_data.bin"
+        },
+        {
+          "role": "application",
+          "offset": 65536,
+          "sha256": "7c3eb79914c76da21c0d6ec69793374bc324bbcb57f8c678a668cd5f486cfaf5",
+          "size_bytes": 269440,
+          "filename": "application.bin"
+        }
+      ],
+      "sha256": "b17b0a4af62b9c65d2e348bce9554444da547023091e0251e095ebd543dcb6f4",
+      "artifact_root": "D:\\projects\\ForgeX-Phase6-Final\\remediation\\2026-10-05\\model-output-recovery\\live-qualification\\sealed-artifacts\\b17b0a4af62b9c65d2e348bce9554444da547023091e0251e095ebd543dcb6f4"
+    },
+    "flash_ready": true
+  },
+  "source_sha256": {
+    "platformio.ini": "b90541544310c41a16be51a5c32b5f04a460df88175d97b3903753404f0a30ff",
+    "src/main.cpp": "5c9d3ed4af8c6a2a4b1f73832ba1e13247a90bfb5dd6b39f561a6c0803a39c42"
+  },
+  "hardware_verified": false,
+  "flash_performed": false,
+  "active_workspace_empty": true
+}

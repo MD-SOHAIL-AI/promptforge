@@ -1,0 +1,1573 @@
+{
+  "stats": {
+    "files": 659,
+    "loc": 143664,
+    "by_extension": {
+      ".py": 382,
+      ".cjs": 1,
+      ".mjs": 41,
+      ".ts": 135,
+      ".css": 2,
+      ".tsx": 66,
+      ".mts": 22,
+      ".js": 8,
+      ".ps1": 2
+    },
+    "by_kind": {
+      "owned": 411,
+      "test": 177,
+      "generated": 3,
+      "vendor": 68
+    },
+    "by_top": {
+      "backend": {
+        "files": 223,
+        "loc": 69349
+      },
+      "docs": {
+        "files": 3,
+        "loc": 304
+      },
+      "electron": {
+        "files": 23,
+        "loc": 3414
+      },
+      "electron-builder.config.cjs": {
+        "files": 1,
+        "loc": 47
+      },
+      "examples": {
+        "files": 11,
+        "loc": 549
+      },
+      "frontend": {
+        "files": 151,
+        "loc": 21311
+      },
+      "harness": {
+        "files": 13,
+        "loc": 3225
+      },
+      "model-router": {
+        "files": 3,
+        "loc": 607
+      },
+      "scripts": {
+        "files": 43,
+        "loc": 3806
+      },
+      "tests": {
+        "files": 128,
+        "loc": 31054
+      },
+      "third_party": {
+        "files": 60,
+        "loc": 9998
+      }
+    },
+    "syntax_errors": []
+  },
+  "owned_files_over_500": 55,
+  "owned_files_over_1000": 17,
+  "owned_functions_over_100": 84,
+  "owned_functions_over_150": 44,
+  "largest_functions": [
+    {
+      "name": "usePromptForgeWorkspace",
+      "line": 335,
+      "end": 1431,
+      "size": 1097,
+      "path": "frontend/hooks/use-promptforge-workspace.ts",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "useForgeAgentSession",
+      "line": 48,
+      "end": 1068,
+      "size": 1021,
+      "path": "frontend/hooks/use-forge-agent-session.ts",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "run_product_async",
+      "line": 129,
+      "end": 1140,
+      "size": 1012,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/tool_runtime.py",
+      "kind": "owned"
+    },
+    {
+      "name": "NexusShell",
+      "line": 102,
+      "end": 853,
+      "size": 752,
+      "path": "frontend/components/nexus/nexus-shell.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "create_app",
+      "line": 97,
+      "end": 806,
+      "size": 710,
+      "type": "FunctionDef",
+      "purpose": "Compose only product-owned core, model, agent and hardware services.",
+      "path": "backend/api/app.py",
+      "kind": "owned"
+    },
+    {
+      "name": "run",
+      "line": 260,
+      "end": 880,
+      "size": 621,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "kind": "owned"
+    },
+    {
+      "name": "append_agent_session_message",
+      "line": 438,
+      "end": 1035,
+      "size": 598,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/api/routes/agent_runtime.py",
+      "kind": "owned"
+    },
+    {
+      "name": "ModelSettingsPanel",
+      "line": 43,
+      "end": 612,
+      "size": 570,
+      "path": "frontend/components/ide/model-settings-panel.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "TaskCanvas",
+      "line": 106,
+      "end": 633,
+      "size": 528,
+      "path": "frontend/components/nexus/task-canvas.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "_execute_autonomous",
+      "line": 1622,
+      "end": 2088,
+      "size": 467,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/orchestrator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_generate_chunked_project",
+      "line": 897,
+      "end": 1226,
+      "size": 330,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/services/code_generation_service.py",
+      "kind": "owned"
+    },
+    {
+      "name": "ChatCanvas",
+      "line": 22,
+      "end": 340,
+      "size": 319,
+      "path": "frontend/components/nexus/chat-canvas.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "execute",
+      "line": 206,
+      "end": 523,
+      "size": 318,
+      "type": "AsyncFunctionDef",
+      "purpose": "Generate, validate, persist, and describe one firmware project.",
+      "path": "backend/workflow/generate_code_handler.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_build_once",
+      "line": 1361,
+      "end": 1668,
+      "size": 308,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "kind": "owned"
+    },
+    {
+      "name": "build",
+      "line": 156,
+      "end": 456,
+      "size": 301,
+      "type": "AsyncFunctionDef",
+      "purpose": "Validate and execute exactly one PlatformIO build attempt.",
+      "path": "backend/tools/build_firmware.py",
+      "kind": "owned"
+    },
+    {
+      "name": "useTerminalSession",
+      "line": 24,
+      "end": 322,
+      "size": 299,
+      "path": "frontend/components/terminal/use-terminal-session.ts",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "project_activity",
+      "line": 27,
+      "end": 314,
+      "size": 288,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/activity_stream.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_generate",
+      "line": 458,
+      "end": 740,
+      "size": 283,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/router_planner.py",
+      "kind": "owned"
+    },
+    {
+      "name": "validate_call",
+      "line": 144,
+      "end": 417,
+      "size": 274,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/tool_policy.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_execute_staged",
+      "line": 1355,
+      "end": 1620,
+      "size": 266,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/orchestrator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "smoke",
+      "line": 98,
+      "end": 361,
+      "size": 264,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "scripts/smoke-desktop.py",
+      "kind": "owned"
+    },
+    {
+      "name": "generate_project",
+      "line": 476,
+      "end": 724,
+      "size": 249,
+      "type": "AsyncFunctionDef",
+      "purpose": "Generate and validate an in-memory project from ``request``.",
+      "path": "backend/services/code_generation_service.py",
+      "kind": "owned"
+    },
+    {
+      "name": "simulate",
+      "line": 114,
+      "end": 344,
+      "size": 231,
+      "type": "AsyncFunctionDef",
+      "purpose": "Validate and execute exactly one virtual hardware run.",
+      "path": "backend/tools/wokwi_simulator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "useChatSession",
+      "line": 11,
+      "end": 232,
+      "size": 222,
+      "path": "frontend/hooks/use-chat-session.ts",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "_run",
+      "line": 107,
+      "end": 326,
+      "size": 220,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/subagents.py",
+      "kind": "owned"
+    },
+    {
+      "name": "ForgeXTerminal",
+      "line": 35,
+      "end": 254,
+      "size": 220,
+      "path": "frontend/components/terminal/forgex-terminal.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "TerminalTabPane",
+      "line": 280,
+      "end": 488,
+      "size": 209,
+      "path": "frontend/components/terminal/forgex-terminal.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "execute",
+      "line": 74,
+      "end": 270,
+      "size": 197,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/tool_executor.py",
+      "kind": "owned"
+    },
+    {
+      "name": "autonomous_workflow_executor",
+      "line": 259,
+      "end": 447,
+      "size": 189,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/api/app.py",
+      "kind": "owned"
+    },
+    {
+      "name": "route",
+      "line": 102,
+      "end": 287,
+      "size": 186,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/turn_router.py",
+      "kind": "owned"
+    },
+    {
+      "name": "execute_workflow",
+      "line": 50,
+      "end": 232,
+      "size": 183,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/api/routes/execute.py",
+      "kind": "owned"
+    },
+    {
+      "name": "AiAssistantPanel",
+      "line": 26,
+      "end": 207,
+      "size": 182,
+      "path": "frontend/components/ide/ai-assistant-panel.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "to_safe_dict",
+      "line": 273,
+      "end": 445,
+      "size": 173,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/run_models.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_execute_invocation",
+      "line": 913,
+      "end": 1083,
+      "size": 171,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_repair_build_failures",
+      "line": 313,
+      "end": 481,
+      "size": 169,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/main.py",
+      "kind": "owned"
+    },
+    {
+      "name": "execute_task",
+      "line": 143,
+      "end": 310,
+      "size": 168,
+      "type": "AsyncFunctionDef",
+      "purpose": "Execute one task through planning, generation, tools, and coordination.",
+      "path": "backend/main.py",
+      "kind": "owned"
+    },
+    {
+      "name": "ConversationComposer",
+      "line": 271,
+      "end": 435,
+      "size": 165,
+      "path": "frontend/components/nexus/conversation.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "_request_turn",
+      "line": 296,
+      "end": 456,
+      "size": 161,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/router_planner.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_start_product_run",
+      "line": 1169,
+      "end": 1329,
+      "size": 161,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/api/routes/agent_runtime.py",
+      "kind": "owned"
+    },
+    {
+      "name": "CodeViewer",
+      "line": 104,
+      "end": 264,
+      "size": 161,
+      "path": "frontend/components/code/code-viewer.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "inspect_embedded_project",
+      "line": 95,
+      "end": 251,
+      "size": 157,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/embedded_context.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_restore_runs",
+      "line": 2581,
+      "end": 2737,
+      "size": 157,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/orchestrator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "ModelPicker",
+      "line": 114,
+      "end": 269,
+      "size": 156,
+      "path": "frontend/components/nexus/conversation.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "WorkspaceSidebar",
+      "line": 36,
+      "end": 187,
+      "size": 152,
+      "path": "frontend/components/sidebar/workspace-sidebar.tsx",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "_generate_chunk_file",
+      "line": 1300,
+      "end": 1447,
+      "size": 148,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/services/code_generation_service.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_flash_locked",
+      "line": 151,
+      "end": 297,
+      "size": 147,
+      "type": "AsyncFunctionDef",
+      "purpose": "Execute exactly one flash attempt and return a ``FlashResult``.",
+      "path": "backend/tools/flash_firmware.py",
+      "kind": "owned"
+    },
+    {
+      "name": "startInternal",
+      "line": 104,
+      "end": 250,
+      "size": 147,
+      "path": "electron/backend-manager.ts",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "start_run",
+      "line": 125,
+      "end": 270,
+      "size": 146,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/orchestrator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_confirm_flash_impl",
+      "line": 1190,
+      "end": 1331,
+      "size": 142,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/orchestrator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "observe",
+      "line": 150,
+      "end": 291,
+      "size": 142,
+      "type": "AsyncFunctionDef",
+      "purpose": "Run one bounded observation window and return its terminal result.\n\nEvery observation is collected before the optional callback is invoked.\nCallback exceptions terminate the operation with ``ERROR``. External\ncancellation is re-raised after transport cleanup.",
+      "path": "backend/tools/serial_monitor.py",
+      "kind": "owned"
+    },
+    {
+      "name": "execute",
+      "line": 264,
+      "end": 404,
+      "size": 141,
+      "type": "AsyncFunctionDef",
+      "purpose": "Execute ``plan`` in order and return a terminal outcome.\n\nA failed step always stops dependent work. Recoverability is recorded\nfor the runtime/retry layer, but this coordinator never retries or\nproceeds with potentially invalid downstream inputs.\n\nExternal ``asyncio`` cancellation is converted into a ``CANCELLED``\noutcome so the caller receives the requested structured terminal\nrecord. The coordinator does not own subprocess cleanup; tools and the\nruntime retain that responsibility.",
+      "path": "backend/agent/coordinator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "stream_model",
+      "line": 263,
+      "end": 401,
+      "size": 139,
+      "type": "AsyncFunctionDef",
+      "purpose": "Stream canonical events from one explicitly selected model route.",
+      "path": "backend/model_router/router.py",
+      "kind": "owned"
+    },
+    {
+      "name": "useForgeXSettings",
+      "line": 12,
+      "end": 150,
+      "size": 139,
+      "path": "frontend/hooks/use-forgex-settings.ts",
+      "kind": "owned",
+      "type": "TSFunction"
+    },
+    {
+      "name": "build_and_flash",
+      "line": 65,
+      "end": 202,
+      "size": 138,
+      "type": "AsyncFunctionDef",
+      "purpose": "",
+      "path": "backend/services/flash_service.py",
+      "kind": "owned"
+    },
+    {
+      "name": "validate",
+      "line": 103,
+      "end": 236,
+      "size": 134,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/validation/generated_project_validation.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_build_generation_artifact_summary",
+      "line": 842,
+      "end": 975,
+      "size": 134,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/workflow/generate_code_handler.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_request_turn_impl",
+      "line": 245,
+      "end": 376,
+      "size": 132,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/api_planner_provider.py",
+      "kind": "owned"
+    },
+    {
+      "name": "normalize_stream_event",
+      "line": 187,
+      "end": 316,
+      "size": 130,
+      "type": "FunctionDef",
+      "purpose": "Convert a provider stream packet into typed canonical events.",
+      "path": "backend/model_router/normalization.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_runtime_event",
+      "line": 2307,
+      "end": 2430,
+      "size": 124,
+      "type": "FunctionDef",
+      "purpose": "",
+      "path": "backend/agent_runtime/orchestrator.py",
+      "kind": "owned"
+    },
+    {
+      "name": "_reconnect_loop",
+      "line": 962,
+      "end": 1084,
+      "size": 123,
+      "type": "AsyncFunctionDef",
+      "purpose": "Attempt to re-open the serial port after a hardware disconnect.\n\nDESIGN DECISIONS:\n\n1. PORT CHANGE AFTER RECONNECT\n   ESP32 and STM32 devices occasionally re-enumerate on a different\n   /dev/ttyUSBN index after a USB reset. We handle this by:\n   a) First probing the last-known port name.\n   b) If that fails, falling back to VID:PID auto-detection.\n   c) Updating _active_port_name to the new port.\n   This means consumers observing the RECONNECT source see the old\n   AND new port names in the metadata.\n\n2. RECONNECT BUDGET\n   max_reconnect_attempts > 0 limits the reconnect loop. When\n   exhausted, state is set to FAILED and we return without raising \u2014\n   the monitoring loop caller sees the state change and stops.\n\n3. RAPID RECONNECT LOOPS\n   A device that reboots in a tight loop (e.g. watchdog cascade) would\n   saturate reconnect attempts quickly. The reconnect_delay is not\n   shortened between attempts, which provides natural back-pressure.\n\n4. STOP DURING RECONNECT\n   We check _stop_event on every iteration so that disconnect() called\n   from another task is honoured within one reconnect_delay window.",
+      "path": "backend/runtime/serial_runtime.py",
+      "kind": "owned"
+    }
+  ],
+  "duplicate_top_level_functions": [
+    {
+      "path": "backend/api/routes/agent_runtime.py",
+      "name": "agent_tool_catalog",
+      "count": 2
+    }
+  ],
+  "broad_exception_handlers": [
+    {
+      "path": "backend/agent/coordinator.py",
+      "line": 518,
+      "end": 522,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent/coordinator.py",
+      "line": 445,
+      "end": 453,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent/coordinator.py",
+      "line": 478,
+      "end": 489,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/activity.py",
+      "line": 136,
+      "end": 138,
+      "pass_only": true
+    },
+    {
+      "path": "backend/agent_runtime/api_planner_provider.py",
+      "line": 660,
+      "end": 673,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/api_planner_provider.py",
+      "line": 819,
+      "end": 833,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1397,
+      "end": 1399,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1447,
+      "end": 1469,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 508,
+      "end": 536,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1377,
+      "end": 1385,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1514,
+      "end": 1515,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1545,
+      "end": 1546,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1562,
+      "end": 1563,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/chat_service.py",
+      "line": 166,
+      "end": 179,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/context_assembler.py",
+      "line": 102,
+      "end": 103,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/context_assembler.py",
+      "line": 112,
+      "end": 113,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestration_store.py",
+      "line": 1001,
+      "end": 1008,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 2914,
+      "end": 2915,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 447,
+      "end": 452,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 1004,
+      "end": 1006,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 1091,
+      "end": 1104,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 1184,
+      "end": 1188,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 1615,
+      "end": 1620,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 2036,
+      "end": 2076,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 327,
+      "end": 328,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 961,
+      "end": 963,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 1304,
+      "end": 1311,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 2515,
+      "end": 2518,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 2578,
+      "end": 2579,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 2381,
+      "end": 2386,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/orchestrator.py",
+      "line": 294,
+      "end": 295,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/router_planner.py",
+      "line": 700,
+      "end": 705,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/session_store.py",
+      "line": 521,
+      "end": 523,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/subagents.py",
+      "line": 97,
+      "end": 102,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/subagents.py",
+      "line": 282,
+      "end": 290,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/tool_executor.py",
+      "line": 161,
+      "end": 166,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/tool_runtime.py",
+      "line": 1419,
+      "end": 1420,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/tool_runtime.py",
+      "line": 1139,
+      "end": 1140,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/tool_runtime.py",
+      "line": 1455,
+      "end": 1456,
+      "pass_only": true
+    },
+    {
+      "path": "backend/agent_runtime/tool_runtime.py",
+      "line": 321,
+      "end": 323,
+      "pass_only": false
+    },
+    {
+      "path": "backend/agent_runtime/tool_runtime.py",
+      "line": 785,
+      "end": 825,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 849,
+      "end": 852,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 401,
+      "end": 406,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 456,
+      "end": 461,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 372,
+      "end": 384,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 534,
+      "end": 535,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 608,
+      "end": 612,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/app.py",
+      "line": 666,
+      "end": 667,
+      "pass_only": true
+    },
+    {
+      "path": "backend/api/observability.py",
+      "line": 78,
+      "end": 95,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/agent_runtime.py",
+      "line": 1561,
+      "end": 1564,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/agent_runtime.py",
+      "line": 940,
+      "end": 941,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/build.py",
+      "line": 114,
+      "end": 115,
+      "pass_only": true
+    },
+    {
+      "path": "backend/api/routes/execute.py",
+      "line": 181,
+      "end": 199,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/models.py",
+      "line": 180,
+      "end": 193,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/models.py",
+      "line": 281,
+      "end": 282,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/monitor.py",
+      "line": 59,
+      "end": 60,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/monitor.py",
+      "line": 85,
+      "end": 86,
+      "pass_only": false
+    },
+    {
+      "path": "backend/api/routes/websocket.py",
+      "line": 91,
+      "end": 93,
+      "pass_only": false
+    },
+    {
+      "path": "backend/changes/service.py",
+      "line": 224,
+      "end": 226,
+      "pass_only": false
+    },
+    {
+      "path": "backend/hardware/constraints/constraint_engine.py",
+      "line": 549,
+      "end": 550,
+      "pass_only": false
+    },
+    {
+      "path": "backend/main.py",
+      "line": 554,
+      "end": 555,
+      "pass_only": false
+    },
+    {
+      "path": "backend/main.py",
+      "line": 1305,
+      "end": 1306,
+      "pass_only": false
+    },
+    {
+      "path": "backend/main.py",
+      "line": 1257,
+      "end": 1258,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/admission.py",
+      "line": 101,
+      "end": 103,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/circuit.py",
+      "line": 103,
+      "end": 117,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/lmstudio.py",
+      "line": 35,
+      "end": 43,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/lmstudio.py",
+      "line": 54,
+      "end": 55,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/ollama.py",
+      "line": 50,
+      "end": 52,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/ollama.py",
+      "line": 131,
+      "end": 139,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/ollama.py",
+      "line": 150,
+      "end": 151,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/ollama.py",
+      "line": 171,
+      "end": 173,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/openai_provider.py",
+      "line": 38,
+      "end": 40,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/openai_provider.py",
+      "line": 66,
+      "end": 68,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/openai_provider.py",
+      "line": 83,
+      "end": 91,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/openai_provider.py",
+      "line": 147,
+      "end": 149,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/providers/opencode.py",
+      "line": 223,
+      "end": 225,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/router.py",
+      "line": 491,
+      "end": 492,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/router.py",
+      "line": 200,
+      "end": 212,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/router.py",
+      "line": 350,
+      "end": 371,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/run_budget.py",
+      "line": 71,
+      "end": 72,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/run_budget.py",
+      "line": 81,
+      "end": 82,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/run_budget.py",
+      "line": 99,
+      "end": 100,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/runtime.py",
+      "line": 68,
+      "end": 83,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/sqlite_storage.py",
+      "line": 35,
+      "end": 37,
+      "pass_only": false
+    },
+    {
+      "path": "backend/model_router/sqlite_storage.py",
+      "line": 28,
+      "end": 31,
+      "pass_only": false
+    },
+    {
+      "path": "backend/observability/diagnostics.py",
+      "line": 59,
+      "end": 60,
+      "pass_only": true
+    },
+    {
+      "path": "backend/observability/diagnostics.py",
+      "line": 63,
+      "end": 66,
+      "pass_only": true
+    },
+    {
+      "path": "backend/observability/runtime_logs.py",
+      "line": 346,
+      "end": 348,
+      "pass_only": true
+    },
+    {
+      "path": "backend/runtime/serial_runtime.py",
+      "line": 686,
+      "end": 690,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/serial_runtime.py",
+      "line": 400,
+      "end": 403,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/serial_runtime.py",
+      "line": 718,
+      "end": 719,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/serial_runtime.py",
+      "line": 1098,
+      "end": 1099,
+      "pass_only": true
+    },
+    {
+      "path": "backend/runtime/subprocess_mgr.py",
+      "line": 287,
+      "end": 290,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/subprocess_mgr.py",
+      "line": 781,
+      "end": 782,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/subprocess_mgr.py",
+      "line": 790,
+      "end": 791,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/subprocess_mgr.py",
+      "line": 843,
+      "end": 847,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/subprocess_mgr.py",
+      "line": 906,
+      "end": 907,
+      "pass_only": false
+    },
+    {
+      "path": "backend/runtime/subprocess_mgr.py",
+      "line": 977,
+      "end": 978,
+      "pass_only": true
+    },
+    {
+      "path": "backend/services/artifact_service.py",
+      "line": 330,
+      "end": 332,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/build_operations.py",
+      "line": 56,
+      "end": 57,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/code_generation_service.py",
+      "line": 2417,
+      "end": 2418,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/code_generation_service.py",
+      "line": 593,
+      "end": 606,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/firmware_manifest.py",
+      "line": 54,
+      "end": 56,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/flash_service.py",
+      "line": 247,
+      "end": 248,
+      "pass_only": true
+    },
+    {
+      "path": "backend/services/flash_service.py",
+      "line": 254,
+      "end": 255,
+      "pass_only": true
+    },
+    {
+      "path": "backend/services/llm_service.py",
+      "line": 429,
+      "end": 430,
+      "pass_only": true
+    },
+    {
+      "path": "backend/services/platformio_service.py",
+      "line": 648,
+      "end": 652,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/project_service.py",
+      "line": 256,
+      "end": 258,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/project_service.py",
+      "line": 313,
+      "end": 315,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/project_service.py",
+      "line": 376,
+      "end": 377,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/project_service.py",
+      "line": 394,
+      "end": 396,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/project_service.py",
+      "line": 309,
+      "end": 311,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/project_service.py",
+      "line": 361,
+      "end": 362,
+      "pass_only": false
+    },
+    {
+      "path": "backend/services/terminal_service.py",
+      "line": 240,
+      "end": 241,
+      "pass_only": true
+    },
+    {
+      "path": "backend/services/terminal_service.py",
+      "line": 481,
+      "end": 484,
+      "pass_only": false
+    },
+    {
+      "path": "backend/state/persistence.py",
+      "line": 286,
+      "end": 295,
+      "pass_only": false
+    },
+    {
+      "path": "backend/state/persistence.py",
+      "line": 243,
+      "end": 245,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/board_detector.py",
+      "line": 123,
+      "end": 126,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/build_firmware.py",
+      "line": 201,
+      "end": 204,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/build_firmware.py",
+      "line": 251,
+      "end": 261,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/flash_firmware.py",
+      "line": 176,
+      "end": 184,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/flash_firmware.py",
+      "line": 207,
+      "end": 216,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/flash_firmware.py",
+      "line": 248,
+      "end": 259,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/serial_monitor.py",
+      "line": 258,
+      "end": 268,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/serial_monitor.py",
+      "line": 245,
+      "end": 255,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/serial_monitor.py",
+      "line": 276,
+      "end": 279,
+      "pass_only": true
+    },
+    {
+      "path": "backend/tools/wokwi_simulator.py",
+      "line": 136,
+      "end": 145,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/wokwi_simulator.py",
+      "line": 161,
+      "end": 170,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/wokwi_simulator.py",
+      "line": 198,
+      "end": 207,
+      "pass_only": false
+    },
+    {
+      "path": "backend/tools/wokwi_simulator.py",
+      "line": 241,
+      "end": 250,
+      "pass_only": false
+    },
+    {
+      "path": "backend/validation/board_validator.py",
+      "line": 861,
+      "end": 862,
+      "pass_only": false
+    },
+    {
+      "path": "backend/validation/firmware_validator.py",
+      "line": 891,
+      "end": 892,
+      "pass_only": false
+    },
+    {
+      "path": "backend/validation/safety_validator.py",
+      "line": 585,
+      "end": 586,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 236,
+      "end": 244,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 276,
+      "end": 286,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 371,
+      "end": 381,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 501,
+      "end": 511,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 411,
+      "end": 421,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 445,
+      "end": 455,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/generate_code_handler.py",
+      "line": 337,
+      "end": 353,
+      "pass_only": false
+    },
+    {
+      "path": "backend/workflow/workflow_runner.py",
+      "line": 247,
+      "end": 248,
+      "pass_only": false
+    },
+    {
+      "path": "docs/review-evidence-2026-10-04/audit_probes.py",
+      "line": 46,
+      "end": 49,
+      "pass_only": false
+    },
+    {
+      "path": "scripts/esp32_hardware_signoff.py",
+      "line": 108,
+      "end": 114,
+      "pass_only": false
+    },
+    {
+      "path": "scripts/forge_agent_provider_smoke.py",
+      "line": 80,
+      "end": 83,
+      "pass_only": false
+    },
+    {
+      "path": "scripts/smoke-desktop.py",
+      "line": 346,
+      "end": 348,
+      "pass_only": false
+    },
+    {
+      "path": "scripts/smoke-desktop.py",
+      "line": 355,
+      "end": 356,
+      "pass_only": true
+    },
+    {
+      "path": "tests/api/test_websocket.py",
+      "line": 69,
+      "end": 70,
+      "pass_only": true
+    }
+  ],
+  "test_groups": {
+    "python-unit.xml": {
+      "unit": {
+        "passed": 2109,
+        "failed": 1,
+        "skipped": 4
+      }
+    },
+    "python-api-integration.xml": {
+      "api": {
+        "passed": 99
+      },
+      "integration": {
+        "passed": 14
+      },
+      "benchmarks": {
+        "passed": 9
+      }
+    }
+  },
+  "changed_source_hashes": [],
+  "provider_count": 229,
+  "tool_count": 32
+}

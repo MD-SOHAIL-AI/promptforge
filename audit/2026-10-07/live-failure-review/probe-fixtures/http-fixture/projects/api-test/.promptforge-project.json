@@ -1,0 +1,20 @@
+{
+  "created_at": "2026-10-07T00:09:43.468005Z",
+  "files": [
+    {
+      "file_type": "text",
+      "path": "platformio.ini"
+    },
+    {
+      "file_type": "text",
+      "path": "src/main.cpp"
+    }
+  ],
+  "framework": "PlatformIO",
+  "metadata": {},
+  "project_id": "project-api-test",
+  "project_name": "api-test",
+  "schema_version": 1,
+  "target_board": "ESP32",
+  "updated_at": "2026-10-07T00:09:43.468005Z"
+}

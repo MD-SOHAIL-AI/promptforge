@@ -1,0 +1,48 @@
+{
+  "model": "nvidia/nemotron-3-super-120b-a12b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use ForgeX tools to complete the task."
+    },
+    {
+      "role": "user",
+      "content": "Create an ESP32 project."
+    }
+  ],
+  "temperature": 1.0,
+  "max_tokens": 4096,
+  "stream": true,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "Write a staged project file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "top_p": 0.95,
+  "chat_template_kwargs": {
+    "enable_thinking": false,
+    "force_nonempty_content": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-07",
+  "python": {"passed": 284, "failed": 0, "suites": 19, "duration_seconds": 134.27},
+  "engine": {"passed": 46, "failed": 0},
+  "focused_regressions": {"passed": 11, "failed": 0, "included_in_python_total": true},
+  "desktop_build": "passed",
+  "latest_worker_bundle_build": "passed",
+  "isolated_backend_startup": "healthy",
+  "engine_ready": true,
+  "diff_whitespace_check": "passed",
+  "historical_physical_attempts_reviewed": 96,
+  "paid_generation_benchmarks_sent": 0,
+  "production_jobs_resumed": 0,
+  "rate_limit_settings_changed": false,
+  "release_packaged_or_deployed": false
+}

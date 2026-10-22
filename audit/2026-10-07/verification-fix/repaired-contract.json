@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "partition_version": 4,
+  "project_id": "external-simple-esp32-project-ca0c629c32",
+  "session_id": "agent-session-edff447803c24fe680f9e080d050ea04",
+  "workspace_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-07\\verification-fix\\esp32-smart-knock",
+  "intent": "repair",
+  "request": "Build a simple but unusual ESP32 project called:\n\n\"ESP32 Smart Knock Pattern Detector\"\n\nThe goal is to detect knocks on a table, door, or surface using a piezoelectric sensor and recognize simple knock patterns.\n\nThis should be a small embedded project rather than a basic LED-blinking tutorial.\n\nHardware:\n- ESP32 development board\n- Piezoelectric vibration/knock sensor\n- 1 RGB LED, or 3 individual LEDs if RGB is unavailable\n- Active buzzer\n- Push button\n- 10kΩ resistor\n- Required protection resistor/components for the piezo input\n\nMain behavior:\n\nThe ESP32 continuously monitors the piezo sensor for knocks.\n\nA knock should only be counted when the sensor value exceeds a configurable threshold.\n\nExample patterns:\n\nPattern 1:\nKnock → Knock\n\nTwo knocks within about 1 second.\n\nAction:\n- Green LED\n- Short confirmation beep\n\nPattern 2:\nKnock → pause → Knock → Knock\n\nAction:\n- Blue LED\n- Two confirmation beeps\n\nUnknown pattern:\n\nAction:\n- Red LED\n- Error beep\n\nThe system should distinguish between:\n- individual knocks\n- time between knocks\n- end of a knock sequence\n\nDo not use delay() for pattern detection.\n\nUse millis() and a simple non-blocking state machine.\n\nSuggested states:\n\nIDLE\n↓\nKNOCK_DETECTED\n↓\nWAITING_FOR_NEXT_KNOCK\n↓\nPATTERN_COMPLETE\n↓\nANALYZE_PATTERN\n↓\nSUCCESS / UNKNOWN\n↓\nIDLE\n\nRequirements:\n\n1. Read the piezo sensor using an ESP32 ADC pin.\n\n2. Add a configurable knock detection threshold.\n\n3. Add debounce/filtering so one physical knock is not counted multiple times.\n\n4. Record the timestamp of every detected knock.\n\nExample:\n\nKnock 1 = 1500 ms\nKnock 2 = 1900 ms\nKnock 3 = 2700 ms\n\nConvert this into intervals:\n\n400 ms\n800 ms\n\nUse the intervals to identify the knock pattern.\n\n5. Support at least three predefined patterns.\n\nExample:\n\nPattern A:\nKnock - Knock\n\nPattern B:\nKnock - Knock - Knock\n\nPattern C:\nKnock - pause - Knock - Knock\n\n6. Use the RGB LED to show:\n\nGREEN = recognized pattern\nRED = unknown pattern\nBLUE = listening\nYELLOW = learning mode\n\n7. Use the buzzer for audible feedback.\n\n8. Add one push button.\n\nShort press:\nClear the current knock sequence.\n\nLong press:\nEnter learning mode.\n\nLearning mode:\n\nWhen learning mode starts:\n\n- LED turns yellow.\n- User performs a knock pattern.\n- ESP32 records the timing.\n- ESP32 saves the pattern.\n- LED flashes green when saved.\n\nSave the learned pattern using ESP32 Preferences/NVS so it remains available after restart.\n\nThe learned pattern should later be compared with incoming knock patterns.\n\nDo not require the timing to be exactly identical.\n\nImplement a configurable timing tolerance such as ±25%.\n\nFor example:\n\nStored interval:\n500 ms\n\nValid detection range:\n375–625 ms\n\nSerial Monitor:\n\nPrint useful debugging information such as:\n\nSystem started\nPiezo raw value: 123\nKnock detected\nKnock #1\nKnock #2\nInterval: 420 ms\nPattern complete\nComparing pattern...\nPattern A recognized\n\nDo not continuously flood the Serial Monitor with ADC readings.\n\nOnly print meaningful diagnostic information.\n\nCode architecture:\n\nKeep the project simple but modular.\n\nSuggested structure:\n\nsrc/\n├── main.cpp\n├── knock/\n│   ├── knock_detector.h\n│   └── knock_detector.cpp\n├── pattern/\n│   ├── pattern_manager.h\n│   └── pattern_manager.cpp\n├── output/\n│   ├── led_controller.h\n│   ├── led_controller.cpp\n│   ├── buzzer.h\n│   └── buzzer.cpp\n└── storage/\n    ├── pattern_storage.h\n    └── pattern_storage.cpp\n\nDo not over-engineer the project.\n\nFreeRTOS tasks are not required unless there is a genuine reason to use them.\n\nUse a simple millis()-based event loop.\n\nImportant ESP32 considerations:\n\n- Use an ADC1-compatible GPIO for the piezo input where possible.\n- Protect the ESP32 ADC input from excessive piezo voltage.\n- ESP32 GPIO must not receive more than 3.3 V.\n- Explain any resistor/protection circuit required.\n- Configure all GPIO pins safely during startup.\n\nProvide:\n\n1. Project architecture\n2. Component list\n3. Exact GPIO pin mapping\n4. Wiring table\n5. Explanation of the piezo protection circuit\n6. State-machine diagram\n7. Complete PlatformIO project\n8. platformio.ini\n9. Complete C++ source code\n10. NVS/Preferences implementation\n11. Knock detection algorithm\n12. Pattern comparison algorithm\n13. Learning-mode implementation\n14. Serial Monitor example\n15. Testing procedure\n16. Common problems and troubleshooting\n17. README.md\n\nBefore finishing:\n\n- Build the project using PlatformIO.\n- Fix all compilation errors.\n- Verify that every declared function is actually implemented.\n- Review the timing logic for unreachable or contradictory conditions.\n- Check that one physical knock cannot easily generate several knock events.\n- Check NVS save/load behavior.\n- Clearly state anything that cannot be verified without physical ESP32 hardware.\n\nDo not claim that physical knock recognition has been tested unless it has actually been tested on hardware.",
+  "requirements": [
+    {
+      "id": "req-1",
+      "stable_key": "e935a6f4ff5f003581dbcfccf3743dbb231b66585ee6e74e63ac51fd21427104",
+      "text": "Build a simple but unusual ESP32 project called:\n\"ESP32 Smart Knock Pattern Detector\"\nThe goal is to detect knocks on a table, door, or surface using a piezoelectric sensor and recognize simple knock patterns.\nThis should be a small embedded project rather than a basic LED-blinking tutorial."
+    },
+    {
+      "id": "req-2",
+      "stable_key": "1ee92c2b017ad7c6ca964998b26997c160fe97ac2e8e76614028094ff5989256",
+      "text": "Hardware:\nESP32 development board\nPiezoelectric vibration/knock sensor\n1 RGB LED, or 3 individual LEDs if RGB is unavailable\nActive buzzer\nPush button\n10kΩ resistor\nRequired protection resistor/components for the piezo input"
+    },
+    {
+      "id": "req-3",
+      "stable_key": "b847891fa7ac71e5dc5b8847672d5f997a764678d8118aca5566a4dc03a487b0",
+      "text": "Main behavior:\nThe ESP32 continuously monitors the piezo sensor for knocks.\nA knock should only be counted when the sensor value exceeds a configurable threshold."
+    },
+    {
+      "id": "req-4",
+      "stable_key": "8e7f8304e16ce2ed8edf7826a3e3ce1e43f04810dfb7b81acc5a4a83ead9128f",
+      "text": "Example patterns:\nPattern 1:\nKnock → Knock\nTwo knocks within about 1 second.\nAction:\nGreen LED\nShort confirmation beep"
+    },
+    {
+      "id": "req-5",
+      "stable_key": "e17cdad2f169e641a00db2ab291472481f6d7ba48df7c3e9d466f2e9651143b7",
+      "text": "Pattern 2:\nKnock → pause → Knock → Knock\nAction:\nBlue LED\nTwo confirmation beeps"
+    },
+    {
+      "id": "req-6",
+      "stable_key": "e9c8905527f90f5b00b47cb7d1cc6f793f9943ca1e8b43b5ca5d808c8a112018",
+      "text": "Unknown pattern:\nAction:\nRed LED\nError beep"
+    },
+    {
+      "id": "req-7",
+      "stable_key": "a346bda85998a755b3fcfab0026a77ded5a24f95cd4b87dd4f59caea274d6671",
+      "text": "The system should distinguish between:\nindividual knocks\ntime between knocks\nend of a knock sequence"
+    },
+    {
+      "id": "req-8",
+      "stable_key": "0c58bef835f3827de0b0ce46dcbaade24f058759c051af6a6434ab64501a066a",
+      "text": "Use millis() and a simple non-blocking state machine."
+    },
+    {
+      "id": "req-9",
+      "stable_key": "bbd8b96e1a1c36fca9b66936a1b8fb491073f7b2d66ef5625a831c3484993bd9",
+      "text": "Suggested states:\nIDLE\n↓\nKNOCK_DETECTED\n↓\nWAITING_FOR_NEXT_KNOCK\n↓\nPATTERN_COMPLETE\n↓\nANALYZE_PATTERN\n↓\nSUCCESS / UNKNOWN\n↓\nIDLE"
+    },
+    {
+      "id": "req-10",
+      "stable_key": "26a5e818adb5eb08a66d8d21beba428730d65a58c8fda02b2bdbb4eb167e6adf",
+      "text": "Requirements:\n1. Read the piezo sensor using an ESP32 ADC pin."
+    },
+    {
+      "id": "req-11",
+      "stable_key": "4a7aa309b778dba69932b437768fe763fa87fbb6fbf35c11a36dd53897fb8c20",
+      "text": "2. Add a configurable knock detection threshold."
+    },
+    {
+      "id": "req-12",
+      "stable_key": "ae76da629c973c471d2449d794f8a8df13103e39648b99d3ced2b4be1a432386",
+      "text": "3. Add debounce/filtering so one physical knock is not counted multiple times."
+    },
+    {
+      "id": "req-13",
+      "stable_key": "79752422f9aaae78712af1c9b9d50008cac99008edd4c321f085bbb6753e2aac",
+      "text": "4. Record the timestamp of every detected knock.\nExample:\nKnock 1 = 1500 ms\nKnock 2 = 1900 ms\nKnock 3 = 2700 ms\nConvert this into intervals:\n400 ms\n800 ms"
+    },
+    {
+      "id": "req-14",
+      "stable_key": "84633d92b395b4a8ea5c3fcb014b872337e789690e7788a22e72505ca121cbac",
+      "text": "Use the intervals to identify the knock pattern."
+    },
+    {
+      "id": "req-15",
+      "stable_key": "27aa18e1609833a3ecc3bc692c5e9f97b1d9f0b2b786c15be5722b0bd0bff525",
+      "text": "5. Support at least three predefined patterns.\nExample:\nPattern A:\nKnock - Knock\nPattern B:\nKnock - Knock - Knock\nPattern C:\nKnock - pause - Knock - Knock"
+    },
+    {
+      "id": "req-16",
+      "stable_key": "c1815dcaf8676bc954852bbea06a9f5d9e0c4d9329d0872dc0fe80f7b8532b0d",
+      "text": "6. Use the RGB LED to show:\nGREEN = recognized pattern\nRED = unknown pattern\nBLUE = listening\nYELLOW = learning mode"
+    },
+    {
+      "id": "req-17",
+      "stable_key": "0c93eb8a24cf384adc7c7661efadce037195e544f485037c641a24723f44c447",
+      "text": "7. Use the buzzer for audible feedback."
+    },
+    {
+      "id": "req-18",
+      "stable_key": "67fde5c26a9caed9aa39b338fb547249933cf15d72f60d41d08c81587c27f828",
+      "text": "8. Add one push button.\nShort press:\nClear the current knock sequence.\nLong press:\nEnter learning mode."
+    },
+    {
+      "id": "req-19",
+      "stable_key": "5915ab5097b550f99c1a35a4ddf675b0e0161dd142fadbb4deb595727d36f054",
+      "text": "Learning mode:\nWhen learning mode starts:\nLED turns yellow.\nUser performs a knock pattern.\nESP32 records the timing.\nESP32 saves the pattern.\nLED flashes green when saved."
+    },
+    {
+      "id": "req-20",
+      "stable_key": "77061c7f4acb865a8db66e78c26108716bf56d4c9c1d24ebec464218d4fdd82f",
+      "text": "Save the learned pattern using ESP32 Preferences/NVS so it remains available after restart."
+    },
+    {
+      "id": "req-21",
+      "stable_key": "6db7187e9713e758942fa6559cfabf467ea816ac5619f103dac85f6d32372b85",
+      "text": "The learned pattern should later be compared with incoming knock patterns."
+    },
+    {
+      "id": "req-22",
+      "stable_key": "9e255cccd1c397e15e0109ef76050004eb5b81948ef257fa684ccc2cfe53c28d",
+      "text": "Implement a configurable timing tolerance such as ±25%.\nFor example:\nStored interval:\n500 ms\nValid detection range:\n375–625 ms"
+    },
+    {
+      "id": "req-23",
+      "stable_key": "c9250d20b4751f6afc549853850fc7c8d472a339afb30debcceba01a1e4b0743",
+      "text": "Serial Monitor:\nPrint useful debugging information such as:\nSystem started\nPiezo raw value: 123\nKnock detected\nKnock #1\nKnock #2\nInterval: 420 ms\nPattern complete\nComparing pattern...\nPattern A recognized"
+    },
+    {
+      "id": "req-24",
+      "stable_key": "43bf4fe3aa879d8ed0c2a064b561ab3d05113293103861fac79751fa9572e43e",
+      "text": "Only print meaningful diagnostic information."
+    },
+    {
+      "id": "req-25",
+      "stable_key": "906a3fdbe61647a78889f0932380a3e450444ec04a0058ea8a2d91bcf07452db",
+      "text": "Code architecture:\nKeep the project simple but modular.\nSuggested structure:\nsrc/\n├── main.cpp\n├── knock/\n│   ├── knock_detector.h\n│   └── knock_detector.cpp\n├── pattern/\n│   ├── pattern_manager.h\n│   └── pattern_manager.cpp\n├── output/\n│   ├── led_controller.h\n│   ├── led_controller.cpp\n│   ├── buzzer.h\n│   └── buzzer.cpp\n└── storage/\n├── pattern_storage.h\n└── pattern_storage.cpp\nFreeRTOS tasks are not required unless there is a genuine reason to use them."
+    },
+    {
+      "id": "req-26",
+      "stable_key": "c2f550c729423aece8a70de14b4a59f14a39df9e01bacd31ae21ba9c4092e347",
+      "text": "Use a simple millis()-based event loop."
+    },
+    {
+      "id": "req-27",
+      "stable_key": "b60679cbe38c482bd3218cf6bfb8d9f1cdf94f4803484d0f1d67bcd95fd29298",
+      "text": "Important ESP32 considerations:\nUse an ADC1-compatible GPIO for the piezo input where possible."
+    },
+    {
+      "id": "req-28",
+      "stable_key": "dcb9cff5ef58c73dfeff7ff9b41f611e76dd1380bcfd1554c0e0fc181cad14f6",
+      "text": "Protect the ESP32 ADC input from excessive piezo voltage."
+    },
+    {
+      "id": "req-29",
+      "stable_key": "8513c736af093ac9116c79890895eb8975bd865bb22ce9fef0af7243cac758d1",
+      "text": "Explain any resistor/protection circuit required."
+    },
+    {
+      "id": "req-30",
+      "stable_key": "5ecc7ecfdfe7e1a2b9a38eca0635189c1e7dccae704f9706653920861fca0a4a",
+      "text": "Configure all GPIO pins safely during startup."
+    },
+    {
+      "id": "req-31",
+      "stable_key": "12a806dda30fc27bf649710b70fdf620a14a7cda074cb85170d93e40994cd640",
+      "text": "Provide:\n1. Project architecture"
+    },
+    {
+      "id": "req-32",
+      "stable_key": "9d0ad2d6328c8130ff0f8b49c9e629a5423ff15ad4624eda8aeb8f8c415e93e3",
+      "text": "2. Component list"
+    },
+    {
+      "id": "req-33",
+      "stable_key": "7356bc5ea239aa0e3e0cc0ad24816ddb630d5b0e3449379004fc204bf2e2c2e8",
+      "text": "3. Exact GPIO pin mapping"
+    },
+    {
+      "id": "req-34",
+      "stable_key": "b47e4049d9c91f1187fcf054036a1c977ec022307d52010917cd658120a1c3de",
+      "text": "4. Wiring table"
+    },
+    {
+      "id": "req-35",
+      "stable_key": "48155a5179efdebfbf9d0296034713c2b53688d3f304f0fdf162a78eb498ef5e",
+      "text": "5. Explanation of the piezo protection circuit"
+    },
+    {
+      "id": "req-36",
+      "stable_key": "8fbf96311abf97a711390fb875a05c5b7a9047180405d77bd9a1126702bd2390",
+      "text": "6. State-machine diagram"
+    },
+    {
+      "id": "req-37",
+      "stable_key": "2e8c994f4e5b80c2a461c5aec1e65662b4316f036f904d07354b12606dfb6334",
+      "text": "7. Complete PlatformIO project"
+    },
+    {
+      "id": "req-38",
+      "stable_key": "75cbdf7bebca035605cd7d4d3aabbcc363e5f9610b929ecb26177ff8b548988c",
+      "text": "8. platformio.ini"
+    },
+    {
+      "id": "req-39",
+      "stable_key": "0e015f97218b230c0998d501c8d15136c09bb8306d945202a7eff8f7c33c50d5",
+      "text": "9. Complete C++ source code"
+    },
+    {
+      "id": "req-40",
+      "stable_key": "c2aae9a7a42cf6b4967eb0a53ead5d81bc6654c70a2fa26f88eaf1a4378dd005",
+      "text": "10. NVS/Preferences implementation"
+    },
+    {
+      "id": "req-41",
+      "stable_key": "931ae669ca6919455e0e8aedb85617a4c7122a633259419335f53fe8d46d7847",
+      "text": "11. Knock detection algorithm"
+    },
+    {
+      "id": "req-42",
+      "stable_key": "a9f2def8cd75226d1fdb90605b50778177cc66af1ab7274750aa86b1c31efbf5",
+      "text": "12. Pattern comparison algorithm"
+    },
+    {
+      "id": "req-43",
+      "stable_key": "4eea2c11ee1f76c5cbb6a5422572389762918dd5774c6ad9274e9616206adec4",
+      "text": "13. Learning-mode implementation"
+    },
+    {
+      "id": "req-44",
+      "stable_key": "78dcbfc25513b5cd1da2c6a82cc224a4b23f79771e991ee94709f72e64837373",
+      "text": "14. Serial Monitor example"
+    },
+    {
+      "id": "req-45",
+      "stable_key": "2f784cde3d0d23857d38b988bdb13f1eda1f8789da7c62593fbdc98fe986b3a6",
+      "text": "15. Testing procedure"
+    },
+    {
+      "id": "req-46",
+      "stable_key": "e79aae7281d1166cafa715598db60804c9240ff19c8f009fdc01c6f1633f7499",
+      "text": "16. Common problems and troubleshooting"
+    },
+    {
+      "id": "req-47",
+      "stable_key": "e76c40bc1962994a97f3d4a6f9b0902c36d1f76e653530ebfb20c4f0ec1dedc3",
+      "text": "17. README.md"
+    },
+    {
+      "id": "req-48",
+      "stable_key": "66f66638474cac7debec34fb9c3c2cb7f58c84d1cb77017e779646403f8c746e",
+      "text": "Before finishing:\nBuild the project using PlatformIO."
+    },
+    {
+      "id": "req-49",
+      "stable_key": "7c30dc6671267d1d226834cccfd3232fc74fb2803d4fdf99f04e2627debda53c",
+      "text": "Fix all compilation errors."
+    },
+    {
+      "id": "req-50",
+      "stable_key": "fc69dfedc1bb679c44c81d7ddcfc3aa52efe4180930d0b5da733db4fc73a14b7",
+      "text": "Verify that every declared function is actually implemented."
+    },
+    {
+      "id": "req-51",
+      "stable_key": "a797938db4df1ac590b8aaca6cec7de42d893f6cb46e1eb9e5b046984e42f0d0",
+      "text": "Review the timing logic for unreachable or contradictory conditions."
+    },
+    {
+      "id": "req-52",
+      "stable_key": "6a351293b569913cf4135d3000a3f40c626164973a4c27d3bcc26a588f46393c",
+      "text": "Check that one physical knock cannot easily generate several knock events."
+    },
+    {
+      "id": "req-53",
+      "stable_key": "9870f14d2836ca8c56601efb347923b9614303e26775d8594906060fc4421078",
+      "text": "Check NVS save/load behavior."
+    },
+    {
+      "id": "req-54",
+      "stable_key": "0d211d09e5f5f051eda9bb495ff37c0287a7074fd0e606e4a234704f7362aad4",
+      "text": "Clearly state anything that cannot be verified without physical ESP32 hardware."
+    }
+  ],
+  "exclusions": [
+    "Do not use delay() for pattern detection.",
+    "Do not require the timing to be exactly identical.",
+    "Do not continuously flood the Serial Monitor with ADC readings.",
+    "Do not over-engineer the project.",
+    "ESP32 GPIO must not receive more than 3.3 V.",
+    "Do not claim that physical knock recognition has been tested unless it has actually been tested on hardware."
+  ],
+  "superseded_requirements": [],
+  "superseded_exclusions": [],
+  "prohibited_actions": [],
+  "defaults": [
+    "Preserve unrelated user files.",
+    "Do not flash without separate confirmation."
+  ],
+  "accepted_choices": [],
+  "acceptance_checks": [
+    {
+      "id": "source",
+      "kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source."
+    },
+    {
+      "id": "firmware-build",
+      "kind": "build",
+      "criterion": "A firmware build passes for the current source revision."
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "file:platformio.ini",
+      "kind": "file",
+      "path": "platformio.ini"
+    },
+    {
+      "id": "file:README.md",
+      "kind": "file",
+      "path": "README.md"
+    },
+    {
+      "id": "firmware_source",
+      "kind": "firmware_source"
+    },
+    {
+      "id": "project_configuration",
+      "kind": "project_configuration"
+    },
+    {
+      "id": "documentation",
+      "kind": "documentation",
+      "paths": [
+        "README.md"
+      ],
+      "topics": [
+        "wiring",
+        "test_checklist"
+      ],
+      "requirement_ids": [
+        "req-34",
+        "req-47"
+      ]
+    },
+    {
+      "id": "check:source",
+      "kind": "acceptance",
+      "check_kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source."
+    },
+    {
+      "id": "check:firmware-build",
+      "kind": "acceptance",
+      "check_kind": "build",
+      "criterion": "A firmware build passes for the current source revision."
+    }
+  ],
+  "revision": "25b5fe1535dd6e20858be71a8b1c559546503857b17d70089ee9b55271a79f95",
+  "revision_history": [
+    "25b5fe1535dd6e20858be71a8b1c559546503857b17d70089ee9b55271a79f95"
+  ]
+}

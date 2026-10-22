@@ -1,0 +1,122 @@
+"""Serial connection lifecycle routes."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Request
+
+from ...services.serial_service import SerialConfiguration, SerialService
+from ..dependencies import resolve_project_from_request, services
+from ..errors import APIError, error_responses
+from ..schemas.monitor import MonitorStartRequest, MonitorStatusResponse
+
+router = APIRouter(prefix="/monitor", tags=["monitor"])
+logger = logging.getLogger(__name__)
+
+
+@router.post(
+    "/start",
+    response_model=MonitorStatusResponse,
+    responses=error_responses(409, 500, 503),
+    summary="Start the serial monitor connection",
+)
+async def start_monitor(body: MonitorStartRequest, request: Request) -> MonitorStatusResponse:
+    if body.project_id:
+        metadata = await resolve_project_from_request(request, body.project_id)
+        root = Path(metadata.project_path)
+        ini = root / "platformio.ini"
+        logger.info(
+            "Running monitor in workspace root: %s project_id=%s platformio_ini=%s platformio_exists=%s",
+            root,
+            body.project_id,
+            ini,
+            ini.is_file(),
+        )
+    lock: asyncio.Lock = services(request).monitor_lock
+    async with lock:
+        current = services(request).serial_service
+        if current is not None and current.is_connected():
+            configuration = current.configuration
+            if (
+                configuration.port == body.port
+                and configuration.baudrate == body.baudrate
+                and configuration.timeout_s == body.timeout_s
+            ):
+                return _status(current)
+            raise APIError(409, "MONITOR_ALREADY_RUNNING", "Serial monitor is already running")
+        configuration = SerialConfiguration(
+            port=body.port,
+            baudrate=body.baudrate,
+            timeout_s=body.timeout_s,
+        )
+        service = services(request).serial_service_factory(configuration)
+        try:
+            await service.connect()
+        except Exception as exc:
+            raise APIError(503, "SERIAL_CONNECTION_FAILED", "Serial connection could not be opened") from exc
+        services(request).replace_serial_service(service)
+        return _status(service)
+
+
+@router.post(
+    "/stop",
+    response_model=MonitorStatusResponse,
+    responses=error_responses(500),
+    summary="Stop the serial monitor connection",
+)
+async def stop_monitor(request: Request) -> MonitorStatusResponse:
+    lock: asyncio.Lock = services(request).monitor_lock
+    async with lock:
+        service = services(request).serial_service
+        if service is None:
+            return MonitorStatusResponse(
+                state="DISCONNECTED",
+                connected=False,
+                port=None,
+                baudrate=115_200,
+                metrics={},
+            )
+        try:
+            await service.disconnect()
+        except Exception as exc:
+            raise APIError(500, "SERIAL_DISCONNECT_FAILED", "Serial connection could not be closed") from exc
+        return _status(service)
+
+
+@router.get(
+    "/status",
+    response_model=MonitorStatusResponse,
+    summary="Get serial monitor status",
+)
+async def monitor_status(request: Request) -> MonitorStatusResponse:
+    service = services(request).serial_service
+    if service is None:
+        return MonitorStatusResponse(
+            state="DISCONNECTED",
+            connected=False,
+            port=None,
+            baudrate=115_200,
+            metrics={},
+        )
+    return _status(service)
+
+
+def _status(service: SerialService) -> MonitorStatusResponse:
+    state = service.state
+    metrics: Any = service.metrics
+    snapshot = getattr(metrics, "snapshot", None)
+    if callable(snapshot):
+        metrics = snapshot()
+    if not isinstance(metrics, dict):
+        metrics = {}
+    return MonitorStatusResponse(
+        state=getattr(state, "name", str(state)),
+        connected=service.is_connected(),
+        port=service.active_port,
+        baudrate=service.configuration.baudrate,
+        metrics=metrics,
+    )

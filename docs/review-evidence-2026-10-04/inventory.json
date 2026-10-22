@@ -1,0 +1,26 @@
+{
+  "backend": {
+    "files": 217,
+    "lines": 68287
+  },
+  "frontend": {
+    "files": 137,
+    "lines": 19942
+  },
+  "electron": {
+    "files": 21,
+    "lines": 3274
+  },
+  "harness": {
+    "files": 12,
+    "lines": 1185
+  },
+  "scripts": {
+    "files": 38,
+    "lines": 3604
+  },
+  "tests": {
+    "files": 125,
+    "lines": 30443
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "name": "promptforge-frontend",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "predev": "node ../scripts/prepare-frontend-assets.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "prebuild": "node ../scripts/prepare-frontend-assets.mjs",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@radix-ui/react-separator": "^1.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^0.468.0",
+    "monaco-editor": "0.57.0",
+    "next": "15.5.28",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "react-resizable-panels": "^2.1.7",
+    "remark-gfm": "^4.0.1",
+    "sharp": "0.35.5",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "autoprefixer": "^10.4.21",
+    "braces": "file:vendor/braces",
+    "eslint": "^9.28.0",
+    "eslint-config-next": "15.5.26",
+    "postcss": "8.5.28",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "postcss": "$postcss",
+    "dompurify": "3.4.16",
+    "braces": "$braces",
+    "postcss-selector-parser": "7.1.6",
+    "source-map-js": "1.2.2"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "forgex-home-launcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local npm command forwarding to the ForgeX desktop workspace.",
+  "scripts": {
+    "dev:desktop": "npm --prefix D:\\projects\\ForgeX-Phase6-Final run dev:desktop"
+  }
+}

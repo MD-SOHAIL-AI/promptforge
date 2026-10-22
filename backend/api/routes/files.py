@@ -1,0 +1,728 @@
+"""Managed workspace file routes."""
+
+from __future__ import annotations
+
+import posixpath
+import asyncio
+import hashlib
+import tempfile
+import re
+import shutil
+import os
+import stat
+from pathlib import Path, PurePosixPath
+
+from fastapi import APIRouter, Query, Request
+
+from ...agent_runtime.tool_policy import is_sensitive_path
+from ...security.workspace_lock import workspace_lock
+from ...contracts.generated_project import GeneratedFile, GeneratedProject
+from ...services.project_import_service import ExternalProjectRecord
+from ...services.project_service import ProjectService, ProjectServiceError, ProjectConflictError, ProjectNotFoundError
+from ..dependencies import required_state, resolve_project, resolve_project_from_request
+from ..errors import APIError, error_responses
+from ..schemas.files import (
+    FileContentResponse,
+    FileCreateRequest,
+    FileDeleteResponse,
+    FileUpdateRequest,
+    ProjectFilesResponse,
+    WorkspaceSearchResponse,
+    WorkspaceEntryResponse,
+)
+
+router = APIRouter(tags=["files"])
+
+_FOLDER_MARKER = ".promptforge-folder"
+_FILE_EDIT_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _file_revision(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _require_current_revision(expected: str | None, actual_content: str) -> None:
+    if expected is None:
+        raise APIError(428, "FILE_REVISION_REQUIRED", "Reload the file before saving; a baseline revision is required.")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise APIError(422, "FILE_REVISION_INVALID", "Invalid baseline file revision.")
+    if expected != _file_revision(actual_content):
+        raise APIError(409, "FILE_REVISION_CONFLICT", "The file changed on disk. Your unsaved changes were preserved; compare before retrying.")
+
+
+@router.get(
+    "/projects/{project_id}/files",
+    response_model=ProjectFilesResponse,
+    responses=error_responses(404, 500, 503),
+    summary="List project workspace entries",
+)
+async def list_project_files(project_id: str, request: Request) -> ProjectFilesResponse:
+    service = _project_service(request)
+    metadata = await resolve_project_from_request(request, _identifier(project_id))
+    if isinstance(metadata, ExternalProjectRecord):
+        return ProjectFilesResponse(
+            project_id=metadata.project_id,
+            project_name=metadata.project_name,
+            entries=_external_entries(Path(metadata.project_path)),
+        )
+    project = await _load_project_by_metadata(service, metadata)
+    return ProjectFilesResponse(
+        project_id=project.project_id,
+        project_name=project.project_name,
+        entries=_entries(project),
+    )
+
+
+@router.get(
+    "/projects/{project_id}/files/search",
+    response_model=WorkspaceSearchResponse,
+    responses=error_responses(404, 422, 500, 503),
+    summary="Search safe project file contents",
+)
+async def search_project_file_contents(
+    project_id: str,
+    request: Request,
+    query: str = Query(..., min_length=2, max_length=120),
+) -> WorkspaceSearchResponse:
+    """Return matching relative paths only; source text never leaves this endpoint."""
+    metadata = await resolve_project_from_request(request, _identifier(project_id))
+    normalized_query = query.casefold()
+    if isinstance(metadata, ExternalProjectRecord):
+        paths, truncated = _external_content_matches(Path(metadata.project_path), normalized_query)
+        return WorkspaceSearchResponse(
+            project_id=metadata.project_id,
+            query=query,
+            paths=paths,
+            truncated=truncated,
+        )
+    project = await _load_project_by_metadata(_project_service(request), metadata)
+    paths = [
+        item.path
+        for item in project.files
+        if not _is_folder_marker(item.path)
+        and not is_sensitive_path(item.path)
+        and normalized_query in item.content.casefold()
+    ][:_CONTENT_SEARCH_MATCH_LIMIT]
+    return WorkspaceSearchResponse(
+        project_id=project.project_id,
+        query=query,
+        paths=paths,
+        truncated=len(paths) >= _CONTENT_SEARCH_MATCH_LIMIT,
+    )
+
+
+@router.get(
+    "/files/content",
+    response_model=FileContentResponse,
+    responses=error_responses(404, 422, 500, 503),
+    summary="Read project file content",
+)
+async def get_file_content(
+    request: Request,
+    project_id: str = Query(...),
+    path: str = Query(...),
+) -> FileContentResponse:
+    metadata = await resolve_project_from_request(request, _identifier(project_id))
+    normalized = _guard_workspace_path(path)
+    if isinstance(metadata, ExternalProjectRecord):
+        target = _external_target(Path(metadata.project_path), normalized)
+        if not target.is_file() or target.is_symlink():
+            raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": normalized})
+        try:
+            content = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise APIError(422, "FILE_NOT_TEXT", "File is not valid UTF-8 text", {"path": normalized}) from exc
+        return FileContentResponse(
+            project_id=metadata.project_id,
+            path=normalized,
+            content=content,
+            file_type=_file_type(normalized),
+            revision=_file_revision(content),
+        )
+    project = await _load_project_by_metadata(_project_service(request), metadata)
+    file = _find_file(project, normalized)
+    if file is None or _is_folder_marker(file.path):
+        raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": normalized})
+    return FileContentResponse(
+        project_id=project.project_id,
+        path=file.path,
+        content=file.content,
+        file_type=file.file_type,
+        revision=_file_revision(file.content),
+    )
+
+
+@router.post(
+    "/files",
+    response_model=ProjectFilesResponse,
+    responses=error_responses(404, 409, 422, 500, 503),
+    summary="Create a project file or folder",
+)
+async def create_file(body: FileCreateRequest, request: Request) -> ProjectFilesResponse:
+    service = _project_service(request)
+    metadata = await resolve_project_from_request(request, _identifier(body.project_id))
+    path = _guard_workspace_path(body.path)
+    if isinstance(metadata, ExternalProjectRecord):
+        return await asyncio.to_thread(_create_external_entry_locked, body, metadata, path)
+    project = await _load_project_by_metadata(service, metadata)
+    target = _folder_marker(path) if body.kind == "folder" else path
+    if _path_exists(project, target):
+        raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": path})
+    if body.kind == "folder" and _folder_has_entries(project, path):
+        raise APIError(409, "FOLDER_EXISTS", "Workspace folder already exists", {"path": path})
+    files = [
+        *project.files,
+        GeneratedFile(
+            path=target,
+            content=body.content,
+            file_type=body.file_type or _file_type(target),
+        ),
+    ]
+    saved = await _save_project(service, _replace_files(project, files), baseline=project)
+    loaded = await service.load_project(saved.project_name)
+    return ProjectFilesResponse(
+        project_id=loaded.project_id,
+        project_name=loaded.project_name,
+        entries=_entries(loaded),
+    )
+
+
+@router.put(
+    "/files",
+    response_model=FileContentResponse | ProjectFilesResponse,
+    responses=error_responses(404, 409, 422, 500, 503),
+    summary="Update, rename, or move a project file or folder",
+)
+async def update_file(
+    body: FileUpdateRequest,
+    request: Request,
+) -> FileContentResponse | ProjectFilesResponse:
+    lock = _FILE_EDIT_LOCKS.setdefault(body.project_id, asyncio.Lock())
+    async with lock:
+        return await _update_file_serialized(body, request)
+
+
+async def _update_file_serialized(body: FileUpdateRequest, request: Request) -> FileContentResponse | ProjectFilesResponse:
+    service = _project_service(request)
+    metadata = await resolve_project_from_request(request, _identifier(body.project_id))
+    path = _guard_workspace_path(body.path)
+    new_path = _guard_workspace_path(body.new_path) if body.new_path else None
+    if isinstance(metadata, ExternalProjectRecord):
+        return await asyncio.to_thread(_update_external_file_locked, body, metadata, path, new_path)
+    if body.kind == "file" and body.content is not None and new_path is None:
+        # Compare/write under ProjectService's *single* persistence lock.
+        # Reading the file here and saving in a later step would be a TOCTOU race.
+        if body.expected_revision is None:
+            raise APIError(428, "FILE_REVISION_REQUIRED", "Reload the file before saving; a baseline is required")
+        if not re.fullmatch(r"[0-9a-f]{64}", body.expected_revision):
+            raise APIError(422, "FILE_REVISION_INVALID", "Invalid file baseline revision")
+        try:
+            updated = await service.save_file_if_revision_matches(
+                metadata.project_name, metadata.project_id, path,
+                body.content, body.expected_revision, body.file_type,
+            )
+        except ProjectConflictError as exc:
+            raise APIError(409, "FILE_REVISION_CONFLICT", "The file changed; unsaved editor content was preserved") from exc
+        except ProjectNotFoundError as exc:
+            raise APIError(404, "FILE_NOT_FOUND", "File no longer exists") from exc
+        return FileContentResponse(project_id=metadata.project_id, path=path,
+            content=updated.content, file_type=updated.file_type,
+            revision=_file_revision(updated.content))
+    project = await _load_project_by_metadata(service, metadata)
+    if body.kind == "folder":
+        updated = _rename_folder(project, path, new_path) if new_path else project.files
+        saved = await _save_project(service, _replace_files(project, updated), baseline=project)
+        loaded = await service.load_project(saved.project_name)
+        return ProjectFilesResponse(
+            project_id=loaded.project_id,
+            project_name=loaded.project_name,
+            entries=_entries(loaded),
+        )
+
+    current = _find_file(project, path)
+    if current is None or _is_folder_marker(current.path):
+        raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": path})
+    if body.content is not None:
+        _require_current_revision(body.expected_revision, current.content)
+    target_path = new_path or current.path
+    if target_path != current.path and _path_exists(project, target_path):
+        raise APIError(
+            409,
+            "FILE_EXISTS",
+            "Workspace entry already exists",
+            {"path": target_path},
+        )
+    updated_file = GeneratedFile(
+        path=target_path,
+        content=current.content if body.content is None else body.content,
+        file_type=body.file_type or current.file_type,
+    )
+    files = tuple(updated_file if item.path == current.path else item for item in project.files)
+    saved = await _save_project(service, _replace_files(project, files), baseline=project)
+    loaded = await service.load_project(saved.project_name)
+    file = _find_file(loaded, target_path)
+    if file is None:
+        raise APIError(500, "FILE_SAVE_FAILED", "File save could not be verified")
+    return FileContentResponse(
+        project_id=loaded.project_id,
+        path=file.path,
+        content=file.content,
+        file_type=file.file_type,
+        revision=_file_revision(file.content),
+    )
+
+
+@router.delete(
+    "/files",
+    response_model=FileDeleteResponse,
+    responses=error_responses(404, 422, 500, 503),
+    summary="Delete a project file or folder",
+)
+async def delete_file(
+    request: Request,
+    project_id: str = Query(...),
+    path: str = Query(...),
+) -> FileDeleteResponse:
+    service = _project_service(request)
+    metadata = await resolve_project_from_request(request, _identifier(project_id))
+    normalized = _guard_workspace_path(path)
+    if isinstance(metadata, ExternalProjectRecord):
+        return await asyncio.to_thread(_delete_external_entry_locked, metadata, normalized)
+    project = await _load_project_by_metadata(service, metadata)
+    files = [
+        item
+        for item in project.files
+        if item.path != normalized and not item.path.startswith(f"{normalized}/")
+    ]
+    deleted_count = len(project.files) - len(files)
+    if deleted_count == 0:
+        raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": normalized})
+    if not files:
+        raise APIError(422, "PROJECT_EMPTY", "Project must contain at least one file")
+    await _save_project(service, _replace_files(project, files), baseline=project)
+    return FileDeleteResponse(
+        project_id=project.project_id,
+        path=normalized,
+        deleted=True,
+        deleted_count=deleted_count,
+    )
+
+
+def _delete_external_entry_locked(metadata: ExternalProjectRecord, normalized: str) -> FileDeleteResponse:
+    with workspace_lock(metadata.project_path):
+        return _delete_external_entry_under_lock(metadata, normalized)
+
+
+def _delete_external_entry_under_lock(metadata: ExternalProjectRecord, normalized: str) -> FileDeleteResponse:
+    root = Path(metadata.project_path)
+    target = _external_target(root, normalized)
+    if not target.exists() or target.is_symlink():
+        raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": normalized})
+    deleted_count = 1
+    try:
+        if target.is_dir():
+            deleted_count = sum(1 for item in target.rglob("*") if item.is_file() and not item.is_symlink())
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+    except OSError as exc:
+        raise APIError(500, "FILE_DELETE_FAILED", "Workspace entry could not be deleted") from exc
+    return FileDeleteResponse(
+        project_id=metadata.project_id,
+        path=normalized,
+        deleted=True,
+        deleted_count=max(deleted_count, 1),
+    )
+
+
+def _create_external_entry_locked(body: FileCreateRequest, metadata: ExternalProjectRecord, path: str) -> ProjectFilesResponse:
+    with workspace_lock(metadata.project_path):
+        return _create_external_entry_under_lock(body, metadata, path)
+
+
+def _create_external_entry_under_lock(body: FileCreateRequest, metadata: ExternalProjectRecord, path: str) -> ProjectFilesResponse:
+    root = Path(metadata.project_path)
+    target = _external_target(root, path)
+    if target.exists() or target.is_symlink():
+        raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": path})
+    try:
+        if body.kind == "folder":
+            target.mkdir(parents=True, exist_ok=False)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body.content, encoding="utf-8")
+    except OSError as exc:
+        raise APIError(500, "FILE_CREATE_FAILED", "Workspace entry could not be created") from exc
+    return ProjectFilesResponse(
+        project_id=metadata.project_id,
+        project_name=metadata.project_name,
+        entries=_external_entries(root),
+    )
+
+
+def _update_external_file_locked(
+    body: FileUpdateRequest, metadata: ExternalProjectRecord, path: str, new_path: str | None,
+) -> FileContentResponse | ProjectFilesResponse:
+    """One atomic ForgeX edit transaction across backend processes/AI ChangeSets."""
+    with workspace_lock(metadata.project_path):
+        return _update_external_file_under_lock(body, metadata, path, new_path)
+
+
+def _update_external_file_under_lock(
+    body: FileUpdateRequest, metadata: ExternalProjectRecord, path: str, new_path: str | None,
+) -> FileContentResponse | ProjectFilesResponse:
+    root = Path(metadata.project_path)
+    target = _external_target(root, path)
+    if not target.exists() or target.is_symlink():
+        raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": path})
+    if new_path and body.content is not None and body.kind == "file":
+        # Reject conflicting compound rename+write before moving anything.
+        try:
+            _require_current_revision(body.expected_revision, target.read_text(encoding="utf-8"))
+        except UnicodeDecodeError as exc:
+            raise APIError(422, "FILE_NOT_TEXT", "File is not valid UTF-8 text", {"path": path}) from exc
+    if new_path:
+        destination = _external_target(root, new_path)
+        if destination.exists() or destination.is_symlink():
+            raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": new_path})
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            target.replace(destination)
+            target = destination
+            path = new_path
+        except OSError as exc:
+            raise APIError(500, "FILE_RENAME_FAILED", "Workspace entry could not be renamed") from exc
+    if body.kind == "folder":
+        return ProjectFilesResponse(
+            project_id=metadata.project_id,
+            project_name=metadata.project_name,
+            entries=_external_entries(root),
+        )
+    if not target.is_file():
+        raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": path})
+    if body.content is not None:
+        try:
+            current_content = target.read_text(encoding="utf-8")
+            _require_current_revision(body.expected_revision, current_content)
+            # Replace atomically rather than truncating a live source file.
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent, delete=False) as stream:
+                    temp_path = Path(stream.name)
+                    stream.write(body.content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.chmod(temp_path, stat.S_IMODE(target.stat().st_mode))
+                # Best-effort second check for out-of-process editors:
+                # their write could arrive during our fsync. The normal
+                # lock only coordinates requests inside this backend.
+                _require_current_revision(body.expected_revision, target.read_text(encoding="utf-8"))
+                os.replace(temp_path, target)
+            finally:
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise APIError(500, "FILE_SAVE_FAILED", "File could not be saved") from exc
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise APIError(422, "FILE_NOT_TEXT", "File is not valid UTF-8 text", {"path": path}) from exc
+    return FileContentResponse(
+        project_id=metadata.project_id,
+        path=path,
+        content=content,
+        file_type=body.file_type or _file_type(path),
+        revision=_file_revision(content),
+    )
+
+
+def _project_service(request: Request) -> ProjectService:
+    service = required_state(request, "project_service", "project service")
+    assert isinstance(service, ProjectService)
+    return service
+
+
+async def _load_project(service: ProjectService, project_id: str) -> GeneratedProject:
+    metadata = await resolve_project(service, _identifier(project_id))
+    return await _load_project_by_metadata(service, metadata)
+
+
+async def _load_project_by_metadata(service: ProjectService, metadata: object) -> GeneratedProject:
+    if isinstance(metadata, ExternalProjectRecord):
+        raise APIError(422, "EXTERNAL_PROJECT_UNEXPECTED", "External project cannot be loaded as generated project")
+    try:
+        return await service.load_project(getattr(metadata, "project_name"))
+    except ProjectServiceError as exc:
+        raise APIError(500, "PROJECT_SERVICE_ERROR", "Project could not be loaded") from exc
+
+
+async def _save_project(service: ProjectService, project: GeneratedProject, *, baseline: GeneratedProject):
+    try:
+        return await service.save_project_if_current(project, baseline)
+    except ProjectConflictError as exc:
+        raise APIError(409, "PROJECT_REVISION_CONFLICT", "The project changed during this operation; reload and retry") from exc
+    except ProjectServiceError as exc:
+        raise APIError(500, "PROJECT_SERVICE_ERROR", "Project could not be saved") from exc
+
+
+def _replace_files(
+    project: GeneratedProject,
+    files: list[GeneratedFile] | tuple[GeneratedFile, ...],
+) -> GeneratedProject:
+    return GeneratedProject(
+        project_id=project.project_id,
+        project_name=project.project_name,
+        target_board=project.target_board,
+        framework=project.framework,
+        files=tuple(files),
+        created_at=project.created_at,
+        metadata=project.metadata,
+    )
+
+
+def _entries(project: GeneratedProject) -> list[WorkspaceEntryResponse]:
+    folders: set[str] = set()
+    files: list[WorkspaceEntryResponse] = []
+    for generated_file in project.files:
+        parts = PurePosixPath(generated_file.path).parts
+        for index in range(1, len(parts)):
+            folders.add("/".join(parts[:index]))
+        if _is_folder_marker(generated_file.path):
+            folders.add(generated_file.path.rsplit("/", 1)[0])
+            continue
+        files.append(
+            WorkspaceEntryResponse(
+                path=generated_file.path,
+                kind="file",
+                file_type=generated_file.file_type,
+            )
+        )
+    folder_entries = [
+        WorkspaceEntryResponse(path=path, kind="folder", file_type=None)
+        for path in folders
+    ]
+    return sorted(
+        [*folder_entries, *files],
+        key=_workspace_entry_sort_key,
+    )
+
+
+def _rename_folder(
+    project: GeneratedProject,
+    path: str,
+    new_path: str | None,
+) -> tuple[GeneratedFile, ...]:
+    if new_path is None:
+        return project.files
+    if new_path == path:
+        return project.files
+    if _path_exists(project, new_path) or _folder_has_entries(project, new_path):
+        raise APIError(409, "FOLDER_EXISTS", "Workspace folder already exists", {"path": new_path})
+    prefix = f"{path}/"
+    updated: list[GeneratedFile] = []
+    renamed = 0
+    for item in project.files:
+        if item.path == path or item.path.startswith(prefix):
+            suffix = item.path[len(path) :].lstrip("/")
+            updated.append(
+                GeneratedFile(
+                    path=posixpath.join(new_path, suffix) if suffix else new_path,
+                    content=item.content,
+                    file_type=item.file_type,
+                )
+            )
+            renamed += 1
+        else:
+            updated.append(item)
+    if renamed == 0:
+        raise APIError(404, "FOLDER_NOT_FOUND", "Workspace folder was not found", {"path": path})
+    return tuple(updated)
+
+
+def _find_file(project: GeneratedProject, path: str) -> GeneratedFile | None:
+    return next((item for item in project.files if item.path == path), None)
+
+
+def _path_exists(project: GeneratedProject, path: str) -> bool:
+    normalized = path.casefold()
+    return any(item.path.casefold() == normalized for item in project.files)
+
+
+def _folder_has_entries(project: GeneratedProject, path: str) -> bool:
+    prefix = f"{path.casefold()}/"
+    return any(item.path.casefold().startswith(prefix) for item in project.files)
+
+
+def _folder_marker(path: str) -> str:
+    return f"{path}/{_FOLDER_MARKER}"
+
+
+def _is_folder_marker(path: str) -> bool:
+    return path.endswith(f"/{_FOLDER_MARKER}")
+
+
+def _workspace_path(value: str) -> str:
+    try:
+        probe = GeneratedFile(path=value, content="", file_type="text")
+    except ValueError as exc:
+        raise APIError(422, "INVALID_WORKSPACE_PATH", "Workspace path is invalid") from exc
+    return probe.path
+
+
+
+def _guard_workspace_path(value: str) -> str:
+    path = _workspace_path(value)
+    if is_sensitive_path(path):
+        raise APIError(403, "SENSITIVE_PATH_FORBIDDEN", "Sensitive credential/configuration paths are not exposed through the workspace file API.", {"path": path})
+    return path
+
+def _file_type(path: str) -> str:
+    suffix = PurePosixPath(path).suffix.lower().lstrip(".")
+    if suffix:
+        return suffix
+    name = PurePosixPath(path).name.lower()
+    if name == "platformio.ini":
+        return "ini"
+    return "text"
+
+
+def _external_entries(root: Path) -> list[WorkspaceEntryResponse]:
+    folders: set[str] = set()
+    files: list[WorkspaceEntryResponse] = []
+    resolved_root = root.resolve()
+    for current, directories, filenames in os.walk(resolved_root):
+        current_path = Path(current)
+        directories[:] = sorted(
+            directory
+            for directory in directories
+            if directory not in _EXTERNAL_IGNORED_DIRECTORIES
+            and not (current_path / directory).is_symlink()
+        )
+        if current_path != resolved_root:
+            folders.add(_external_relative(resolved_root, current_path))
+        for filename in sorted(filenames):
+            file_path = current_path / filename
+            if filename in _EXTERNAL_IGNORED_FILES or file_path.is_symlink():
+                continue
+            relative = _external_relative(resolved_root, file_path)
+            parent = PurePosixPath(relative).parent
+            while str(parent) not in {"", "."}:
+                folders.add(str(parent))
+                parent = parent.parent
+            files.append(
+                WorkspaceEntryResponse(
+                    path=relative,
+                    kind="file",
+                    file_type=_file_type(relative),
+                )
+            )
+    folder_entries = [
+        WorkspaceEntryResponse(path=path, kind="folder", file_type=None)
+        for path in folders
+    ]
+    return sorted(
+        [*folder_entries, *files],
+        key=_workspace_entry_sort_key,
+    )
+
+
+def _external_content_matches(root: Path, query: str) -> tuple[list[str], bool]:
+    matches: list[str] = []
+    resolved_root = root.resolve()
+    scanned_bytes = 0
+    for current, directories, filenames in os.walk(resolved_root):
+        current_path = Path(current)
+        directories[:] = sorted(
+            directory
+            for directory in directories
+            if directory not in _EXTERNAL_IGNORED_DIRECTORIES
+            and not (current_path / directory).is_symlink()
+        )
+        for filename in sorted(filenames, key=_natural_name_key):
+            file_path = current_path / filename
+            if filename in _EXTERNAL_IGNORED_FILES or file_path.is_symlink():
+                continue
+            relative = _external_relative(resolved_root, file_path)
+            if is_sensitive_path(relative):
+                continue
+            try:
+                size = file_path.stat().st_size
+            except OSError:
+                continue
+            if size > _CONTENT_SEARCH_FILE_LIMIT or scanned_bytes + size > _CONTENT_SEARCH_TOTAL_LIMIT:
+                continue
+            scanned_bytes += size
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if query in content.casefold():
+                matches.append(relative)
+                if len(matches) >= _CONTENT_SEARCH_MATCH_LIMIT:
+                    return matches, True
+    return matches, False
+
+
+def _workspace_entry_sort_key(item: WorkspaceEntryResponse):
+    return (
+        tuple(_natural_name_key(part) for part in item.path.casefold().split("/")),
+        0 if item.kind == "folder" else 1,
+    )
+
+
+def _natural_name_key(value: str):
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in re.split(r"(\\d+)", value.casefold())
+        if part
+    )
+
+
+def _external_target(root: Path, path: str) -> Path:
+    resolved_root = root.resolve()
+    target = resolved_root / Path(*PurePosixPath(path).parts)
+    current = resolved_root
+    try:
+        relative = target.relative_to(resolved_root)
+        for part in relative.parts:
+            current = current / part
+            if current.exists() or current.is_symlink():
+                info = current.lstat()
+                if current.is_symlink() or bool(getattr(info, "st_file_attributes", 0) & _REPARSE_ATTRIBUTE):
+                    raise APIError(422, "INVALID_WORKSPACE_PATH", "Workspace path traverses a link or Windows reparse point", {"path": path})
+        resolved_target = target.resolve(strict=False)
+        resolved_target.relative_to(resolved_root)
+    except APIError:
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise APIError(422, "INVALID_WORKSPACE_PATH", "Workspace path escapes project root") from exc
+    return target
+
+
+def _external_relative(root: Path, path: Path) -> str:
+    return path.resolve(strict=False).relative_to(root).as_posix()
+
+
+def _identifier(value: str) -> str:
+    if not value or len(value) > 128 or not all(
+        character.isalnum() or character in "._-" for character in value
+    ):
+        raise APIError(422, "INVALID_PROJECT_ID", "Project ID is invalid")
+    return value
+
+
+_REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+_EXTERNAL_IGNORED_DIRECTORIES = {
+    ".git",
+    ".pio",
+    ".vs",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+}
+_EXTERNAL_IGNORED_FILES = {".DS_Store", "Thumbs.db"}
+_CONTENT_SEARCH_FILE_LIMIT = 512 * 1024
+_CONTENT_SEARCH_TOTAL_LIMIT = 4 * 1024 * 1024
+_CONTENT_SEARCH_MATCH_LIMIT = 200

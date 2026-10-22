@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "name": "forgex-desktop",
+  "dependencies": {
+    "@jerome-benoit/sap-ai-provider-v2": {
+      "version": "5.0.3",
+      "resolved": "https://registry.npmjs.org/@jerome-benoit/sap-ai-provider-v2/-/sap-ai-provider-v2-5.0.3.tgz",
+      "overridden": false,
+      "dependencies": {
+        "@sap-cloud-sdk/connectivity": {
+          "version": "4.9.1",
+          "resolved": "https://registry.npmjs.org/@sap-cloud-sdk/connectivity/-/connectivity-4.9.1.tgz",
+          "overridden": false,
+          "dependencies": {
+            "jks-js": {
+              "version": "1.1.7",
+              "resolved": "https://registry.npmjs.org/jks-js/-/jks-js-1.1.7.tgz",
+              "overridden": false,
+              "dependencies": {
+                "node-forge": {
+                  "version": "1.4.0",
+                  "resolved": "https://registry.npmjs.org/node-forge/-/node-forge-1.4.0.tgz",
+                  "overridden": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

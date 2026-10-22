@@ -1,0 +1,196 @@
+{
+  "run_id": "agent-run-5fb8fa53ab0c40fe8ec1097e994637c7",
+  "job_id": "job-bf635b714c784bc7a4144484ff2e366c",
+  "created_at": "2026-10-04T05:28:22.712789Z",
+  "updated_at": "2026-10-04T05:29:48.939354Z",
+  "status": "paused_model_unavailable",
+  "classification": "PROVIDER_TIMEOUT",
+  "provider_id": "nvidia_nim",
+  "model_id": "nvidia/nemotron-3-super-120b-a12b",
+  "build_verified": false,
+  "provider_diagnostics": {
+    "budget_failure": null,
+    "completion_received": null,
+    "duration_ms": null,
+    "first_event_ms": null,
+    "http_status": 200,
+    "initial_failure_code": "PROVIDER_TIMEOUT",
+    "last_event_ms": null,
+    "last_failure_code": "PROVIDER_TIMEOUT",
+    "last_failure_origin": "provider_transport",
+    "last_parse_reason": null,
+    "last_repair_outcome": "not_attempted",
+    "last_response_shape": null,
+    "last_response_tool_count": null,
+    "last_turn": 3,
+    "outbound_request_count": 3,
+    "physical_attempt_id": null,
+    "physical_request_count": 3,
+    "provider_request_id": null,
+    "recovery_failure_code": "PROVIDER_TIMEOUT",
+    "request_dispatched": true,
+    "request_reached_provider": true,
+    "response_headers_received": null,
+    "response_mode": "native_tools",
+    "retry_after_ms": null,
+    "stream_event_count": null,
+    "stream_fallback_used": false,
+    "timeout_stage": null
+  },
+  "job": {
+    "status": "paused_model_unavailable",
+    "recovery_policy": "safe_auto",
+    "paused_by": null,
+    "blocking_reason": "AGENT_OUTAGE_WINDOW_EXHAUSTED",
+    "auto_recovery_count": 0,
+    "limits": {
+      "elapsed_seconds": 2700,
+      "input_bytes": 24000000,
+      "output_tokens": 737280,
+      "requests": 360,
+      "tool_calls_used": 300
+    },
+    "consumed": {
+      "elapsed_seconds": 86.20400000002701,
+      "input_bytes": 71107,
+      "output_tokens": 12288,
+      "requests": 3,
+      "tool_calls_used": 2
+    },
+    "outage": {
+      "cycles": 0,
+      "deadline_at": "2026-10-04T05:39:48.963303+00:00",
+      "error_code": "PROVIDER_TIMEOUT",
+      "http_status": 200,
+      "model_id": "nvidia/nemotron-3-super-120b-a12b",
+      "origin": "provider_transport",
+      "provider_id": "nvidia_nim",
+      "request_reached_provider": true,
+      "started_at": "2026-10-04T05:29:48.963303+00:00"
+    },
+    "retry_due_at": "2026-10-04T05:30:20.949693Z"
+  },
+  "deliverables": [
+    {
+      "id": "file:platformio.ini",
+      "kind": "file",
+      "path": "platformio.ini",
+      "status": "present"
+    },
+    {
+      "id": "firmware_source",
+      "kind": "firmware_source",
+      "path": null,
+      "status": "missing"
+    },
+    {
+      "id": "project_configuration",
+      "kind": "project_configuration",
+      "path": null,
+      "status": "present"
+    },
+    {
+      "id": "documentation",
+      "kind": "documentation",
+      "path": null,
+      "status": "missing"
+    },
+    {
+      "id": "check:source",
+      "kind": "acceptance",
+      "path": null,
+      "status": "unverified"
+    },
+    {
+      "id": "check:firmware-build",
+      "kind": "acceptance",
+      "path": null,
+      "status": "unverified"
+    }
+  ],
+  "recovery_events": [],
+  "historical_status_counts": {
+    "cancelled": 1,
+    "completed": 5,
+    "failed": 45,
+    "paused_model_unavailable": 13
+  },
+  "transport_events": [
+    {
+      "completion_received": false,
+      "duration_ms": 0,
+      "event": "provider.attempt.started",
+      "model_id": "nvidia/nemotron-3-super-120b-a12b",
+      "physical_attempt_id": "3e3bbbef0d9c4cbdb1ec7ead53154509",
+      "provider_id": "nvidia_nim",
+      "request_reached_provider": false,
+      "response_headers_received": false,
+      "run_id": "v3:workflow-agent-run-5fb8fa53ab0c40fe8ec1097e994637c7",
+      "stream_event_count": 0,
+      "timestamp": "2026-10-04T05:28:45.947352Z"
+    },
+    {
+      "completion_received": false,
+      "duration_ms": 592,
+      "event": "provider.attempt.headers",
+      "http_status": 200,
+      "model_id": "nvidia/nemotron-3-super-120b-a12b",
+      "physical_attempt_id": "3e3bbbef0d9c4cbdb1ec7ead53154509",
+      "provider_id": "nvidia_nim",
+      "request_reached_provider": true,
+      "response_headers_received": true,
+      "run_id": "v3:workflow-agent-run-5fb8fa53ab0c40fe8ec1097e994637c7",
+      "stream_event_count": 0,
+      "timestamp": "2026-10-04T05:28:46.541070Z"
+    },
+    {
+      "completion_received": false,
+      "duration_ms": 2311,
+      "event": "provider.attempt.first_event",
+      "first_event_ms": 2311,
+      "http_status": 200,
+      "last_event_ms": 2311,
+      "model_id": "nvidia/nemotron-3-super-120b-a12b",
+      "physical_attempt_id": "3e3bbbef0d9c4cbdb1ec7ead53154509",
+      "provider_id": "nvidia_nim",
+      "request_reached_provider": true,
+      "response_headers_received": true,
+      "run_id": "v3:workflow-agent-run-5fb8fa53ab0c40fe8ec1097e994637c7",
+      "stream_event_count": 1,
+      "timestamp": "2026-10-04T05:28:48.260890Z"
+    },
+    {
+      "completion_received": false,
+      "duration_ms": 2311,
+      "event": "provider.attempt.progress",
+      "first_event_ms": 2311,
+      "http_status": 200,
+      "last_event_ms": 2311,
+      "model_id": "nvidia/nemotron-3-super-120b-a12b",
+      "physical_attempt_id": "3e3bbbef0d9c4cbdb1ec7ead53154509",
+      "provider_id": "nvidia_nim",
+      "request_reached_provider": true,
+      "response_headers_received": true,
+      "run_id": "v3:workflow-agent-run-5fb8fa53ab0c40fe8ec1097e994637c7",
+      "stream_event_count": 1,
+      "timestamp": "2026-10-04T05:28:48.262870Z"
+    },
+    {
+      "completion_received": false,
+      "duration_ms": 62390,
+      "event": "provider.attempt.failed",
+      "first_event_ms": 2311,
+      "http_status": 200,
+      "last_event_ms": 2390,
+      "model_id": "nvidia/nemotron-3-super-120b-a12b",
+      "physical_attempt_id": "3e3bbbef0d9c4cbdb1ec7ead53154509",
+      "provider_id": "nvidia_nim",
+      "request_reached_provider": true,
+      "response_headers_received": true,
+      "run_id": "v3:workflow-agent-run-5fb8fa53ab0c40fe8ec1097e994637c7",
+      "stream_event_count": 6,
+      "timeout_stage": "stream_idle",
+      "timestamp": "2026-10-04T05:29:48.338667Z"
+    }
+  ]
+}

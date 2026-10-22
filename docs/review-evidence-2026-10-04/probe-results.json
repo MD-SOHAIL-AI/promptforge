@@ -1,0 +1,65 @@
+{
+  "diagnostic_filter": {
+    "supplied": {
+      "http_status": 200,
+      "physical_attempt_id": "physical-review",
+      "response_headers_received": true,
+      "first_event_ms": 2311,
+      "last_event_ms": 2390,
+      "stream_event_count": 6,
+      "timeout_stage": "stream_idle",
+      "duration_ms": 62390,
+      "completion_received": false
+    },
+    "returned": {
+      "http_status": 200
+    },
+    "dropped_fields": [
+      "completion_received",
+      "duration_ms",
+      "first_event_ms",
+      "last_event_ms",
+      "physical_attempt_id",
+      "response_headers_received",
+      "stream_event_count",
+      "timeout_stage"
+    ]
+  },
+  "local_deadline": {
+    "exception_type": "ApiPlannerError",
+    "error": "PROVIDER_TIMEOUT",
+    "metadata": {
+      "http_status": null,
+      "provider_request_id": null,
+      "retry_after_ms": null,
+      "request_reached_provider": false,
+      "timeout_stage": "turn_deadline",
+      "duration_ms": 32,
+      "last_failure_code": "PROVIDER_TIMEOUT",
+      "last_failure_origin": "provider_transport"
+    },
+    "provider_requests_in_probe": 0
+  },
+  "recovery_permissions": {
+    "actions_before_trust": {
+      "inspect": {
+        "allowed": true,
+        "blocking_reason": null
+      },
+      "continue_generation": {
+        "allowed": true,
+        "blocking_reason": null
+      },
+      "verify_locally": {
+        "allowed": false,
+        "blocking_reason": "AGENT_PROJECT_TRUST_REQUIRED"
+      }
+    },
+    "automatic_recovery_blocker": "AGENT_PROJECT_TRUST_REQUIRED",
+    "automatic_recovery_cycles": 0,
+    "blocker_after_trust": null,
+    "replacement_started_after_trust": false,
+    "scheduled_retry_tasks_after_trust": 0,
+    "note": "Permission-change handler intentionally refreshes eligibility without starting work; safe_auto behavior needs an explicit product contract."
+  }
+}

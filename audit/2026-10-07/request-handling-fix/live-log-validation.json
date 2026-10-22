@@ -1,0 +1,22 @@
+{
+  "backend_log": ".forgex\\logs\\live-runtime.backend-e315d8df8e6e4ec0848871efbf89e5d9.jsonl",
+  "desktop_log": ".forgex\\logs\\live-runtime.desktop-4f883f11-4779-4450-8362-602ab54f473c.jsonl",
+  "source_fingerprint": "38307256e22e865598ad26083a1c353340b78de8bb29cb8fcf2588f294b8c4e2",
+  "renderer_deadlines": 0,
+  "backend_errors": [],
+  "inference_requests": 0,
+  "renderer_http_failures": [
+    {
+      "event": "renderer.http.failed",
+      "path": "/projects/external-simple-esp32-project-ca0c629c32/readiness?",
+      "error": {
+        "name": "AbortError",
+        "message": "Request cancelled",
+        "error_code": 20
+      },
+      "error_name": null,
+      "error_code": null,
+      "duration_ms": 74
+    }
+  ]
+}

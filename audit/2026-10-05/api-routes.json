@@ -1,0 +1,994 @@
+[
+  {
+    "method": "GET",
+    "path": "/jobs",
+    "function": "agent_jobs",
+    "line": 155,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/tools",
+    "function": "agent_tool_catalog",
+    "line": 163,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/jobs/{job_id}",
+    "function": "agent_job",
+    "line": 170,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/jobs/{job_id}/pause",
+    "function": "pause_agent_job",
+    "line": 176,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/jobs/{job_id}/resume",
+    "function": "resume_agent_job",
+    "line": 185,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/jobs/{job_id}/budget",
+    "function": "extend_agent_job",
+    "line": 194,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/jobs/{job_id}/recovery-policy",
+    "function": "agent_job_policy",
+    "line": 204,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/projects/{project_id}/trust",
+    "function": "project_agent_trust",
+    "line": 211,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/projects/{project_id}/trust",
+    "function": "trust_agent_project",
+    "line": 218,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/tool-catalog",
+    "function": "agent_tool_catalog",
+    "line": 227,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/projects/{project_id}/memory",
+    "function": "project_memory",
+    "line": 240,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/projects/{project_id}/memory/invalidate",
+    "function": "invalidate_project_memory",
+    "line": 253,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "PATCH",
+    "path": "/sessions/{session_id}",
+    "function": "configure_session",
+    "line": 263,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "DELETE",
+    "path": "/sessions/{session_id}",
+    "function": "delete_session",
+    "line": 277,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/providers",
+    "function": "agent_runtime_providers",
+    "line": 319,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions",
+    "function": "list_agent_sessions",
+    "line": 328,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions",
+    "function": "create_agent_session",
+    "line": 341,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}",
+    "function": "get_agent_session",
+    "line": 373,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}/activity",
+    "function": "agent_session_activity_events",
+    "line": 384,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/messages",
+    "function": "append_agent_session_message",
+    "line": 438,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/steer",
+    "function": "steer_agent_runtime_run",
+    "line": 1039,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/queue",
+    "function": "list_agent_runtime_queue",
+    "line": 1057,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "PATCH",
+    "path": "/runs/{run_id}/queue/{item_id}",
+    "function": "edit_agent_runtime_queue",
+    "line": 1067,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "DELETE",
+    "path": "/runs/{run_id}/queue/{item_id}",
+    "function": "remove_agent_runtime_queue",
+    "line": 1081,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/cancel",
+    "function": "cancel_agent_session",
+    "line": 1093,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs",
+    "function": "start_agent_runtime_run",
+    "line": 1139,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/confirm-flash",
+    "function": "confirm_agent_runtime_flash",
+    "line": 1355,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}",
+    "function": "get_agent_runtime_run",
+    "line": 1382,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/build-evidence",
+    "function": "agent_build_evidence",
+    "line": 1393,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/cancel",
+    "function": "cancel_agent_runtime_run",
+    "line": 1425,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/retry",
+    "function": "retry_agent_runtime_run",
+    "line": 1436,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/verify-draft",
+    "function": "verify_agent_runtime_draft",
+    "line": 1467,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/discard-draft",
+    "function": "discard_agent_runtime_draft",
+    "line": 1487,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/resume",
+    "function": "resume_agent_runtime_run",
+    "line": 1499,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{run_id}/apply-changes",
+    "function": "apply_agent_runtime_changes",
+    "line": 1516,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/changes",
+    "function": "get_agent_runtime_changes",
+    "line": 1545,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/events",
+    "function": "agent_runtime_events",
+    "line": 1569,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/graph",
+    "function": "agent_runtime_graph",
+    "line": 1640,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/context-artifacts/{artifact_id}",
+    "function": "agent_runtime_context_artifact",
+    "line": 1652,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}/projection",
+    "function": "agent_session_projection",
+    "line": 1683,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}/events",
+    "function": "agent_session_events",
+    "line": 1693,
+    "file": "backend/api/routes/agent_runtime.py",
+    "router_prefix": "/agent-runtime"
+  },
+  {
+    "method": "POST",
+    "path": "/build/operations",
+    "function": "accept_build",
+    "line": 20,
+    "file": "backend/api/routes/build.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/build/operations/{operation_id}",
+    "function": "observe_build",
+    "line": 40,
+    "file": "backend/api/routes/build.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "POST",
+    "path": "/build",
+    "function": "build_project",
+    "line": 60,
+    "file": "backend/api/routes/build.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "",
+    "function": "list_change_sets",
+    "line": 22,
+    "file": "backend/api/routes/changes.py",
+    "router_prefix": "/changes"
+  },
+  {
+    "method": "GET",
+    "path": "/{change_set_id}",
+    "function": "get_change_set",
+    "line": 27,
+    "file": "backend/api/routes/changes.py",
+    "router_prefix": "/changes"
+  },
+  {
+    "method": "POST",
+    "path": "/{change_set_id}/apply",
+    "function": "apply_change_set",
+    "line": 36,
+    "file": "backend/api/routes/changes.py",
+    "router_prefix": "/changes"
+  },
+  {
+    "method": "POST",
+    "path": "/{change_set_id}/discard",
+    "function": "discard_change_set",
+    "line": 46,
+    "file": "backend/api/routes/changes.py",
+    "router_prefix": "/changes"
+  },
+  {
+    "method": "POST",
+    "path": "/{change_set_id}/undo",
+    "function": "undo_change_set",
+    "line": 56,
+    "file": "backend/api/routes/changes.py",
+    "router_prefix": "/changes"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions",
+    "function": "list_sessions",
+    "line": 50,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions",
+    "function": "create_session",
+    "line": 57,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}",
+    "function": "get_session",
+    "line": 66,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "PATCH",
+    "path": "/sessions/{session_id}",
+    "function": "configure_session",
+    "line": 71,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "DELETE",
+    "path": "/sessions/{session_id}",
+    "function": "delete_session",
+    "line": 78,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/cancel",
+    "function": "cancel_session",
+    "line": 87,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/messages",
+    "function": "send_message",
+    "line": 95,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}/events",
+    "function": "session_events",
+    "line": 131,
+    "file": "backend/api/routes/chat.py",
+    "router_prefix": "/v1/chat"
+  },
+  {
+    "method": "GET",
+    "path": "/boards",
+    "function": "detected_boards",
+    "line": 23,
+    "file": "backend/api/routes/devices.py",
+    "router_prefix": "/devices"
+  },
+  {
+    "method": "POST",
+    "path": "/events",
+    "function": "ingest_diagnostic_event",
+    "line": 25,
+    "file": "backend/api/routes/diagnostics.py",
+    "router_prefix": "/diagnostics"
+  },
+  {
+    "method": "GET",
+    "path": "/runs/{run_id}/export",
+    "function": "export_run_diagnostics",
+    "line": 38,
+    "file": "backend/api/routes/diagnostics.py",
+    "router_prefix": "/diagnostics"
+  },
+  {
+    "method": "GET",
+    "path": "/runtime",
+    "function": "diagnostic_runtime",
+    "line": 65,
+    "file": "backend/api/routes/diagnostics.py",
+    "router_prefix": "/diagnostics"
+  },
+  {
+    "method": "POST",
+    "path": "/execute",
+    "function": "execute_workflow",
+    "line": 50,
+    "file": "backend/api/routes/execute.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "POST",
+    "path": "/execute/{task_id}/cancel",
+    "function": "cancel_workflow",
+    "line": 240,
+    "file": "backend/api/routes/execute.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/projects/{project_id}/files",
+    "function": "list_project_files",
+    "line": 41,
+    "file": "backend/api/routes/files.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/projects/{project_id}/files/search",
+    "function": "search_project_file_contents",
+    "line": 64,
+    "file": "backend/api/routes/files.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/files/content",
+    "function": "get_file_content",
+    "line": 102,
+    "file": "backend/api/routes/files.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "POST",
+    "path": "/files",
+    "function": "create_file",
+    "line": 141,
+    "file": "backend/api/routes/files.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "PUT",
+    "path": "/files",
+    "function": "update_file",
+    "line": 192,
+    "file": "backend/api/routes/files.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "DELETE",
+    "path": "/files",
+    "function": "delete_file",
+    "line": 286,
+    "file": "backend/api/routes/files.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "POST",
+    "path": "/flash",
+    "function": "flash_project",
+    "line": 18,
+    "file": "backend/api/routes/flash.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/status",
+    "function": "status",
+    "line": 17,
+    "file": "backend/api/routes/harness.py",
+    "router_prefix": "/harness"
+  },
+  {
+    "method": "GET",
+    "path": "/providers",
+    "function": "providers",
+    "line": 35,
+    "file": "backend/api/routes/harness.py",
+    "router_prefix": "/harness"
+  },
+  {
+    "method": "GET",
+    "path": "/health",
+    "function": "health",
+    "line": 17,
+    "file": "backend/api/routes/health.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/catalog",
+    "function": "catalog",
+    "line": 35,
+    "file": "backend/api/routes/model_gateway.py",
+    "router_prefix": "/v2/models"
+  },
+  {
+    "method": "PUT",
+    "path": "/session-selection",
+    "function": "select_session",
+    "line": 101,
+    "file": "backend/api/routes/model_gateway.py",
+    "router_prefix": "/v2/models"
+  },
+  {
+    "method": "PUT",
+    "path": "/role-bindings",
+    "function": "select_role",
+    "line": 106,
+    "file": "backend/api/routes/model_gateway.py",
+    "router_prefix": "/v2/models"
+  },
+  {
+    "method": "GET",
+    "path": "/role-bindings",
+    "function": "role_bindings",
+    "line": 111,
+    "file": "backend/api/routes/model_gateway.py",
+    "router_prefix": "/v2/models"
+  },
+  {
+    "method": "GET",
+    "path": "/session-selection",
+    "function": "session_selection",
+    "line": 122,
+    "file": "backend/api/routes/model_gateway.py",
+    "router_prefix": "/v2/models"
+  },
+  {
+    "method": "DELETE",
+    "path": "/role-bindings/{role}",
+    "function": "clear_binding",
+    "line": 129,
+    "file": "backend/api/routes/model_gateway.py",
+    "router_prefix": "/v2/models"
+  },
+  {
+    "method": "GET",
+    "path": "/providers/{provider_id}/endpoint-health",
+    "function": "endpoint_health",
+    "line": 24,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/providers",
+    "function": "list_providers",
+    "line": 80,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/providers",
+    "function": "create_custom_provider",
+    "line": 86,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "DELETE",
+    "path": "/providers/{provider_id}",
+    "function": "delete_custom_provider",
+    "line": 111,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/providers/{provider_id}/configure",
+    "function": "configure_provider",
+    "line": 131,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/providers/{provider_id}/health",
+    "function": "provider_health",
+    "line": 152,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/providers/{provider_id}/models",
+    "function": "list_provider_models",
+    "line": 170,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/selection",
+    "function": "get_selection",
+    "line": 197,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "PUT",
+    "path": "/selection",
+    "function": "save_selection",
+    "line": 206,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/routes",
+    "function": "list_routes",
+    "line": 230,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/routes",
+    "function": "save_route",
+    "line": 239,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/test",
+    "function": "test_model",
+    "line": 261,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/usage",
+    "function": "usage",
+    "line": 295,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/generation-attempts",
+    "function": "generation_attempts",
+    "line": 302,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "GET",
+    "path": "/chunked-generation-runs",
+    "function": "chunked_generation_runs",
+    "line": 310,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/generation-diagnostics/clear",
+    "function": "clear_generation_diagnostics",
+    "line": 318,
+    "file": "backend/api/routes/models.py",
+    "router_prefix": "/models"
+  },
+  {
+    "method": "POST",
+    "path": "/start",
+    "function": "start_monitor",
+    "line": 27,
+    "file": "backend/api/routes/monitor.py",
+    "router_prefix": "/monitor"
+  },
+  {
+    "method": "POST",
+    "path": "/stop",
+    "function": "stop_monitor",
+    "line": 71,
+    "file": "backend/api/routes/monitor.py",
+    "router_prefix": "/monitor"
+  },
+  {
+    "method": "GET",
+    "path": "/status",
+    "function": "monitor_status",
+    "line": 95,
+    "file": "backend/api/routes/monitor.py",
+    "router_prefix": "/monitor"
+  },
+  {
+    "method": "GET",
+    "path": "/{project_id}/readiness",
+    "function": "project_readiness",
+    "line": 24,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "GET",
+    "path": "/{project_id}/profile",
+    "function": "project_profile",
+    "line": 62,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "GET",
+    "path": "",
+    "function": "list_projects",
+    "line": 78,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "POST",
+    "path": "/import",
+    "function": "import_project",
+    "line": 103,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "POST",
+    "path": "/{project_id}/refresh",
+    "function": "refresh_project",
+    "line": 119,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "GET",
+    "path": "/{project_id}",
+    "function": "get_project",
+    "line": 137,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "DELETE",
+    "path": "/{project_id}/recent",
+    "function": "forget_recent_project",
+    "line": 151,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "POST",
+    "path": "/{project_id}/locate",
+    "function": "locate_recent_project",
+    "line": 160,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "DELETE",
+    "path": "/{project_id}",
+    "function": "delete_project",
+    "line": 175,
+    "file": "backend/api/routes/projects.py",
+    "router_prefix": "/projects"
+  },
+  {
+    "method": "GET",
+    "path": "/settings",
+    "function": "get_settings",
+    "line": 28,
+    "file": "backend/api/routes/settings.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/settings/schema",
+    "function": "get_settings_schema",
+    "line": 33,
+    "file": "backend/api/routes/settings.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "PATCH",
+    "path": "/settings",
+    "function": "patch_settings",
+    "line": 38,
+    "file": "backend/api/routes/settings.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "POST",
+    "path": "/settings/reset",
+    "function": "reset_settings",
+    "line": 47,
+    "file": "backend/api/routes/settings.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "POST",
+    "path": "/settings/export",
+    "function": "export_settings",
+    "line": 52,
+    "file": "backend/api/routes/settings.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/profiles",
+    "function": "terminal_profiles",
+    "line": 47,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions",
+    "function": "start_terminal",
+    "line": 67,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/{session_id}/output",
+    "function": "terminal_output",
+    "line": 88,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/input",
+    "function": "terminal_input",
+    "line": 106,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/clear",
+    "function": "clear_terminal",
+    "line": 121,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "POST",
+    "path": "/sessions/{session_id}/resize",
+    "function": "resize_terminal",
+    "line": 134,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "PATCH",
+    "path": "/sessions/{session_id}",
+    "function": "rename_terminal",
+    "line": 147,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "DELETE",
+    "path": "/sessions/{session_id}",
+    "function": "stop_terminal",
+    "line": 166,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "WEBSOCKET",
+    "path": "/sessions/{session_id}/stream",
+    "function": "terminal_stream",
+    "line": 176,
+    "file": "backend/api/routes/terminal.py",
+    "router_prefix": "/terminal"
+  },
+  {
+    "method": "WEBSOCKET",
+    "path": "/ws/execution/{task_id}",
+    "function": "execution_progress",
+    "line": 19,
+    "file": "backend/api/routes/websocket.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/build-history",
+    "function": "build_history",
+    "line": 29,
+    "file": "backend/api/routes/workspace.py",
+    "router_prefix": ""
+  },
+  {
+    "method": "GET",
+    "path": "/logs",
+    "function": "logs",
+    "line": 54,
+    "file": "backend/api/routes/workspace.py",
+    "router_prefix": ""
+  }
+]

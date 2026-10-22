@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-10-10T10:26:51.837990+00:00",
+  "backend": {
+    "tests": 281,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend_tests_passed": 97,
+  "electron_tests_passed": 44,
+  "production_proxy_checks": 5,
+  "production_proxy_passed": true,
+  "full_live_model_request_rerun": false
+}

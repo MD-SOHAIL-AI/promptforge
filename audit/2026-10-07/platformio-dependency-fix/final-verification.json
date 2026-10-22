@@ -1,0 +1,27 @@
+{
+  "backend_status": "healthy",
+  "engine_ready": true,
+  "local_auth_required": true,
+  "source_fingerprint": "61df867006fcf04e379d746230778b27a1be2ebb80bbb419bd05fb222391f04e",
+  "updated_source_loaded": true,
+  "platformio": {
+    "available": true,
+    "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+    "version": "6.2.0",
+    "reason": "available",
+    "message": "PlatformIO is available at D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe (6.2.0)"
+  },
+  "frontend_status": 200,
+  "desktop_provider_list_status": 200,
+  "desktop_provider_list_duration_ms": 2670,
+  "active_project": "D:\\projects\\ESP32-Room-Monitor",
+  "firmware_path": "D:\\projects\\ESP32-Room-Monitor\\.pio\\build\\esp32dev\\firmware.bin",
+  "firmware_build_success": true,
+  "firmware_build_duration_ms": 127000,
+  "warnings_count": 0,
+  "sealed_upload_images": 4,
+  "manifest_sha256": "252e6396002520dc9b63e23c013f7f35b1061d74f58eaa92e30184e361ec0704",
+  "original_draft_preserved": true,
+  "original_run_status": "failed",
+  "hardware_flashed": false
+}

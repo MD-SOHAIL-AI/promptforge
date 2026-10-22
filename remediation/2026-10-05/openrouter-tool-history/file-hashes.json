@@ -1,0 +1,7 @@
+{
+  "model-router/src/engine.mjs": "f0ad5bc3285e405b8a5d8c53f662f1ae808e037379e8e5c56baa684814d111c9",
+  "model-router/tests/tool-history.test.mjs": "5b7f754699044f6e98a0e895b5f8145cc4b9213135f2fe79062e7630bae110f1",
+  "tests/unit/test_live_tool_history.py": "d286bc692d7855a1c9a7dd8b63fec1edda5464f36f089d4480a55d0ab4c05cb1",
+  "dist/model-router/worker.cjs": "d0ce7ca2ad459c75bd470244b922aab1d29b07eecb64202583dea6fb1c9924e5",
+  "dist/model-router/engine.cjs": "5b39a25c1253a3e64ace514d9513db6e7aa144df9a64e024e6ae26837f93b44f"
+}

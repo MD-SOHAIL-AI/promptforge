@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="15.843" timestamp="2026-10-05T19:42:15.858802+05:30" hostname="SOHAIL"><testcase classname="tests.unit.test_live_tool_history" name="test_real_planner_and_worker_continue_after_multiple_tool_batches[openrouter]" time="7.146"><failure message="AssertionError: assert [{'path': '.'}] == [{}]&#10;  &#10;  At index 0 diff: {'path': '.'} != {}&#10;  Use -v to get more diff">tests\unit\test_live_tool_history.py:91: in test_real_planner_and_worker_continue_after_multiple_tool_batches
+    assert [json.loads(call["function"]["arguments"]) for call in assistant_calls] == [item[2] for item in expected]
+E   AssertionError: assert [{'path': '.'}] == [{}]
+E     
+E     At index 0 diff: {'path': '.'} != {}
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.unit.test_live_tool_history" name="test_real_planner_and_worker_continue_after_multiple_tool_batches[mistral]" time="6.492"><failure message="AssertionError: assert [{'path': '.'}] == [{}]&#10;  &#10;  At index 0 diff: {'path': '.'} != {}&#10;  Use -v to get more diff">tests\unit\test_live_tool_history.py:91: in test_real_planner_and_worker_continue_after_multiple_tool_batches
+    assert [json.loads(call["function"]["arguments"]) for call in assistant_calls] == [item[2] for item in expected]
+E   AssertionError: assert [{'path': '.'}] == [{}]
+E     
+E     At index 0 diff: {'path': '.'} != {}
+E     Use -v to get more diff</failure></testcase></testsuite></testsuites>

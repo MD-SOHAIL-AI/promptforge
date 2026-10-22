@@ -1,0 +1,7 @@
+{
+  "category": "provider",
+  "message": "This model is unavailable for free. The paid version is available now - use this slug instead: openai/gpt-oss-20b",
+  "status_code": 404,
+  "retryable": false,
+  "code": "PROVIDER_REQUEST_FAILED"
+}

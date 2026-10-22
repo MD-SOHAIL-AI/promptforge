@@ -1,0 +1,43 @@
+{
+  "model": "{{model_id}}",
+  "messages": [
+    {
+      "role": "system",
+      "content": "{{system_prompt}}"
+    },
+    {
+      "role": "user",
+      "content": "{{user_prompt}}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 4096,
+  "stream": true,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "Write UTF-8 text inside the active ForgeX workspace.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}

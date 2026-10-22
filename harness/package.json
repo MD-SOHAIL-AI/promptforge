@@ -1,0 +1,11 @@
+{
+  "name": "@forgex/harness-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "../dist/harness/server.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

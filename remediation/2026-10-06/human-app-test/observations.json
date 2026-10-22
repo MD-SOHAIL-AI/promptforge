@@ -1,0 +1,159 @@
+{
+  "started_at": "2026-10-06",
+  "driver": "Actual Electron renderer via Playwright; native Computer Use pipe unavailable",
+  "checks": [
+    {
+      "name": "Refresh saved draft build",
+      "result": "passed",
+      "observed": "Build remains passed for esp32dev, saved draft, 265.7 KB."
+    },
+    {
+      "name": "Build Raw output",
+      "result": "failed",
+      "observed": "Opens Terminal rather than Output; PowerShell terminal is starting."
+    },
+    {
+      "name": "Console Output for saved build",
+      "result": "failed",
+      "observed": "Only ForgeX output ready is shown."
+    },
+    {
+      "name": "Staged change review",
+      "result": "passed",
+      "observed": "README.md, platformio.ini, src/main.cpp load. Selecting src/main.cpp shows its complete diff; files remain staged."
+    },
+    {
+      "name": "Active workspace isolation",
+      "result": "passed",
+      "observed": "File explorer shows 0 files; staged changes remain separate and were not applied."
+    },
+    {
+      "name": "Verification evidence separation",
+      "result": "passed",
+      "observed": "Firmware compilation is Built; requirements, logic tests and simulation remain Unverified; device behavior Unqualified."
+    },
+    {
+      "name": "Device detection UI",
+      "result": "partial",
+      "observed": "Five UNKNOWN Bluetooth serial ports are listed, default COM3. No identified ESP32. Monitor/Flash execution not tested."
+    },
+    {
+      "name": "Project navigation and task restore",
+      "result": "failed",
+      "observed": "Reopening the selected project shows its path in the header but says No conversations yet and Open a workspace to enable task submission; original saved task list does not restore within 8 seconds."
+    },
+    {
+      "name": "Settings navigation",
+      "result": "passed",
+      "observed": "General and Models & Agents pages render. No preferences, credentials or routes changed."
+    },
+    {
+      "name": "Backend continuity during UI navigation",
+      "result": "failed",
+      "observed": "Backend exited/restarted while selecting the chat model, before sending a prompt. Local health/device/chat endpoints returned HTTP 500 with proxy ECONNREFUSED. Electron restarted its owned backend and the UI recovered to Connected. Exit cause not verified."
+    },
+    {
+      "name": "Live OpenRouter Nemotron chat",
+      "result": "passed",
+      "observed": "Received exact synthetic marker FORGEX_UI_TEST_OK through the UI."
+    },
+    {
+      "name": "Chat connection indicator after backend recovery",
+      "result": "failed",
+      "observed": "Global status is Connected and the live Nemotron reply is displayed, but Chat still says Connection interrupted. Reconnecting…"
+    },
+    {
+      "name": "Chat persistence across reload",
+      "result": "passed",
+      "observed": "After reload and opening Chat, the synthetic prompt, exact Nemotron reply and chosen model are preserved."
+    },
+    {
+      "name": "Agent task persistence after reload",
+      "result": "passed",
+      "observed": "Opening Agent after reload restores the task list and compiled draft. Reload is a workaround for the project-card reopening failure."
+    },
+    {
+      "name": "Generated source View file",
+      "result": "passed",
+      "observed": "View file routes to staged review and displays src/main.cpp rather than mutating the empty active workspace."
+    },
+    {
+      "name": "Task search and clear",
+      "result": "passed",
+      "observed": "A nonmatching query hides tasks; clearing restores saved task entries without changing the active conversation."
+    },
+    {
+      "name": "Repeat reopening saved project",
+      "result": "failed",
+      "observed": "Second attempt: project header populated but no conversations and task composer says open a workspace; persists after 8 seconds."
+    },
+    {
+      "name": "Restore after repeated project reopen failure",
+      "result": "passed",
+      "observed": "Full renderer reload, wait for startup, Agent navigation restores saved temperature conversation and Build results shows BUILD PASSED."
+    }
+  ],
+  "page_errors": [],
+  "http_errors": [
+    {
+      "path": "/api/forgex/health",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/v1/chat/sessions/agent-session-1f941e4897434acfac81df660e7635e4/events",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/v1/chat/sessions/agent-session-1f941e4897434acfac81df660e7635e4",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/health",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    },
+    {
+      "path": "/api/forgex/devices/boards",
+      "status": 500
+    }
+  ],
+  "request_failures": [
+    {
+      "path": "/api/forgex/diagnostics/runtime",
+      "reason": "net::ERR_ABORTED"
+    },
+    {
+      "path": "/api/forgex/agent-runtime/sessions/agent-session-a9e137bb2fdb4c058f8c2f85575df6a8/events",
+      "reason": "net::ERR_ABORTED"
+    },
+    {
+      "path": "/api/forgex/agent-runtime/runs/agent-run-b9c0ec32c9034cc2b242efada2ba67fd/build-evidence",
+      "reason": "net::ERR_ABORTED"
+    }
+  ],
+  "finished_at": "2026-10-06T02:14:04.080Z",
+  "final_state": "Electron remains open on Agent > Build: BUILD PASSED for saved esp32dev draft; source unapplied; hardware actions not performed."
+}

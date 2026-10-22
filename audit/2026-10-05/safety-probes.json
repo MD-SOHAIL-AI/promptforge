@@ -1,0 +1,33 @@
+{
+  "skill_junction": {
+    "python": "3.10.6",
+    "isjunction_available": false,
+    "path_is_symlink": false,
+    "resolved_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\probe-fixtures\\external-skills",
+    "discovered": [
+      "external-probe",
+      "firmware-review",
+      "platformio-repair",
+      "serial-debug"
+    ],
+    "loaded": "# External audit marker\r\n"
+  },
+  "index_junction": {
+    "files": [
+      "external-junction/outside.txt"
+    ],
+    "external_candidate": [
+      "external-junction/outside.txt"
+    ]
+  },
+  "changeset_crash": {
+    "exit_code": 73,
+    "persisted_status": "pending",
+    "files": {
+      "a.txt": "after\n",
+      "b.txt": "before\n"
+    },
+    "undo": "CHANGE_SET_NOT_APPLIED",
+    "apply": "CHANGE_CONFLICT"
+  }
+}

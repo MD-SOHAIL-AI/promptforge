@@ -1,0 +1,7382 @@
+{
+  "catalog_zero_token_price_text_entries": 607,
+  "provider_count": 76,
+  "failures": [],
+  "entries_by_provider": {
+    "agnes": 2,
+    "aihubmix": 5,
+    "alibaba-cn": 2,
+    "alibaba-coding-plan": 10,
+    "alibaba-coding-plan-cn": 10,
+    "alibaba-token-plan": 21,
+    "alibaba-token-plan-cn": 21,
+    "amd": 1,
+    "atomic-chat": 5,
+    "bothub": 2,
+    "cohere": 2,
+    "cortecs": 2,
+    "empiriolabs": 4,
+    "gitlab": 30,
+    "google": 2,
+    "groq": 1,
+    "hetzner": 2,
+    "huggingface": 1,
+    "iflowcn": 14,
+    "inferx": 11,
+    "infomaniak": 1,
+    "jiekou": 1,
+    "kenari": 57,
+    "kilo": 24,
+    "kimi-code-plan-cn": 4,
+    "kimi-code-plan-global": 4,
+    "kuae-cloud-coding-plan": 1,
+    "llama": 7,
+    "llmgateway": 3,
+    "llmgateway-providers": 1,
+    "llmtr": 1,
+    "lmstudio": 3,
+    "lynkr": 1,
+    "meganova": 1,
+    "merge-gateway": 1,
+    "minimax-cn-coding-plan": 8,
+    "minimax-coding-plan": 8,
+    "mistral": 1,
+    "modelscope": 7,
+    "nan": 7,
+    "nano-gpt": 2,
+    "nova": 2,
+    "nvidia": 92,
+    "opencode": 36,
+    "opencode-go": 2,
+    "openrouter": 22,
+    "orcarouter": 5,
+    "ovhcloud": 2,
+    "pendra": 6,
+    "poe": 3,
+    "poolside": 3,
+    "qvac": 9,
+    "regolo-ai": 3,
+    "requesty": 12,
+    "scnet-token-plan": 19,
+    "sensenova": 5,
+    "siliconflow-cn": 3,
+    "standardcompute": 1,
+    "tempr": 4,
+    "tencent-coding-plan": 8,
+    "tencent-token-plan": 1,
+    "tencent-tokenhub": 2,
+    "tokenrouter": 1,
+    "umans-ai-coding-plan": 8,
+    "unorouter": 11,
+    "vercel": 8,
+    "volcengine-coding-plan": 10,
+    "xiaomi-token-plan-ams": 5,
+    "xiaomi-token-plan-cn": 5,
+    "xiaomi-token-plan-sgp": 5,
+    "zai": 3,
+    "zai-coding-plan": 7,
+    "zeldoc": 1,
+    "zenmux": 6,
+    "zhipuai": 3,
+    "zhipuai-coding-plan": 3
+  },
+  "account_free_or_trial_provider_families": [
+    "cerebras",
+    "cloudflare-workers-ai",
+    "cohere",
+    "gemini",
+    "google",
+    "groq",
+    "mistral"
+  ],
+  "classification_note": "Zero token prices are transport hints, not proof of free account access; subscriptions and credits can still apply.",
+  "external_generation_requests": 0,
+  "credentials_read": false,
+  "production_state_used": false,
+  "entries": [
+    {
+      "provider": "poe",
+      "model": "google/gemma-4-31b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "poe",
+      "model": "fireworks-ai/kimi-k2.5-fw",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "poe",
+      "model": "openai/gpt-5.3-codex-spark",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "groq",
+      "model": "allam-2-7b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai",
+      "model": "glm-4.6v-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai",
+      "model": "glm-4.7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai",
+      "model": "glm-4.5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "empiriolabs",
+      "model": "glm-4-7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "empiriolabs",
+      "model": "glm-4-6v-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "empiriolabs",
+      "model": "gemma-3-27b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "empiriolabs",
+      "model": "glm-4-5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "sensenova",
+      "model": "kimi-k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "sensenova",
+      "model": "sensenova-6.8-flash-lite",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "sensenova",
+      "model": "glm-5.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "sensenova",
+      "model": "deepseek-v4-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "sensenova",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.7-max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "deepseek-v4-flash-0731",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.8-max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "glm-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "deepseek-v4.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.8-max-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "kimi-k2.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "kimi-k2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "deepseek-v4-pro-0813",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.8-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "glm-5.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "glm-5.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "deepseek-v4-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.6-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "deepseek-v3.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "kimi-k2.7-code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "qwen3.7-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "poolside",
+      "model": "poolside/laguna-s-2.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "poolside",
+      "model": "poolside/laguna-xs-2.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "poolside",
+      "model": "poolside/laguna-m.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nano-gpt",
+      "model": "nano-gpt-help",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nano-gpt",
+      "model": "auto-model",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "standardcompute",
+      "model": "standardcompute",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "llama-4-maverick-17b-128e-instruct-fp8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "groq-llama-4-maverick-17b-128e-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "llama-4-scout-17b-16e-instruct-fp8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "cerebras-llama-4-maverick-17b-128e-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "llama-3.3-70b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "llama-3.3-8b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llama",
+      "model": "cerebras-llama-4-scout-17b-16e-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "cohere",
+      "model": "north-mini-code-1-0",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "cohere",
+      "model": "north-small-translate-09-2026",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "glm5.3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "gemma4",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "qwen3.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "mimo-v2.6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "qwen3.8-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "glm5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nan",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zeldoc",
+      "model": "zdev",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-deepseek-v4.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-glm-5.3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-deepseek-v4-flash-0731",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-kimi-k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-qwen3.6-35b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "umans-ai-coding-plan",
+      "model": "umans-coder",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kuae-cloud-coding-plan",
+      "model": "GLM-4.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M2.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M2.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M2.7-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-coding-plan",
+      "model": "MiniMax-M2.5-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "qwen3-coder-next",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "qwen3.5-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "glm-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "kimi-k2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "qwen3-max-2026-01-23",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "qwen3-coder-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "glm-4.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "qwen3.6-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan",
+      "model": "qwen3.7-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "bothub",
+      "model": "gemma-4-31b-it:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "bothub",
+      "model": "nemotron-3-ultra-550b-a55b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-cn",
+      "model": "mimo-v2.6-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-cn",
+      "model": "mimo-v2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-cn",
+      "model": "mimo-v2-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-cn",
+      "model": "mimo-v2.5-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-cn",
+      "model": "mimo-v2.6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llmgateway-providers",
+      "model": "atria/atria-dawn-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "stealth/space-bunny-alpha",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "poolside/laguna-s-2.1:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "poolside/laguna-xs-2.1:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "cohere/north-mini-code:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "thinkingmachines/inkling-small:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "openrouter/bodybuilder",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "openrouter/free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "openrouter/pareto-code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "openrouter/auto",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "liquid/lfm-2.5-2.6b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "google/lyria-3-pro-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "google/lyria-3-clip-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "inclusionai/ling-3.0-flash-sante:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "inclusionai/ling-3.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "kilo-auto/free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "apodex/apodex-1.1-mini:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "nvidia/nemotron-3.5-content-safety:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "nvidia/nemotron-3.5-lightning:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "stepfun/step-3.7-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "dots-studio/dots-3-note-preview:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kilo",
+      "model": "qwen/qwen3.8-27b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.7-max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "deepseek-v4-flash-0731",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.8-max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "glm-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "deepseek-v4.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.8-max-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "kimi-k2.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "kimi-k2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "deepseek-v4-pro-0813",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.8-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "glm-5.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "glm-5.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "deepseek-v4-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.6-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "deepseek-v3.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "kimi-k2.7-code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "qwen3.7-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-vl-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "glm-4.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-32b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "deepseek-v3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-235b-a22b-thinking-2507",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-max-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-coder-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-235b-a22b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "kimi-k2-0905",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "kimi-k2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "qwen3-235b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "deepseek-r1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "iflowcn",
+      "model": "deepseek-v3.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M2.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M3.1-Flash-Preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M2.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M2.7-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "minimax-cn-coding-plan",
+      "model": "MiniMax-M2.5-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nova",
+      "model": "nova-2-pro-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nova",
+      "model": "nova-2-lite-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "stealth/space-bunny-alpha",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "poolside/laguna-s-2.1:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "poolside/laguna-xs-2.1:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "cohere/north-mini-code:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "thinkingmachines/inkling-small:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "thinkingmachines/inkling:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "openrouter/free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "liquid/lfm-2.5-2.6b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/lyria-3-pro-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-31b-it:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/lyria-3-clip-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-3.0-flash-sante:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "inclusionai/ling-3.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "apodex/apodex-1.1-mini:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-content-safety:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-lightning:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "dots-studio/dots-3-note-preview:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "qwen/qwen3.8-27b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-4-nano",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-opus-5-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-6-1-sol",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-sonnet-5-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-6-astra",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-opus-4-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-mini",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-6-luna",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-sonnet-4-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-6-sol",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-sonnet-4-6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-4-mini",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-haiku-4-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-fable-5-1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-fable-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-3-codex",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-6-sol",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-opus-4-7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-opus-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-opus-4-6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-6-luna",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-codex",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-sonnet-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-opus-4-8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-2-codex",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-4",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "gitlab",
+      "model": "duo-chat-gpt-5-6-terra",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "pendra",
+      "model": "llama3.3:70b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "pendra",
+      "model": "qwen3-coder:30b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "pendra",
+      "model": "gpt-oss:120b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "pendra",
+      "model": "qwen3.6:27b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "pendra",
+      "model": "glm-4.7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "pendra",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "atomic-chat",
+      "model": "gemma-4-E4B-it-MLX-4bit",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "atomic-chat",
+      "model": "Meta-Llama-3_1-8B-Instruct-GGUF",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "atomic-chat",
+      "model": "Qwen3_5-9B-Q4_K_M",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "atomic-chat",
+      "model": "gemma-4-E4B-it-IQ4_XS",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "atomic-chat",
+      "model": "Qwen3_5-9B-MLX-4bit",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llmtr",
+      "model": "poolside/laguna-xs-2.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zenmux",
+      "model": "anthropic/claude-sonnet-5-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zenmux",
+      "model": "z-ai/glm-4.7-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zenmux",
+      "model": "z-ai/glm-4.6v-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zenmux",
+      "model": "moonshotai/kimi-k3-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zenmux",
+      "model": "moonshotai/kimi-k2.7-code-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zenmux",
+      "model": "stepfun/step-3.7-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "gpt-5.5:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "glm-4.5-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "gemma-4-31b-it:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "nemotron-3-ultra-550b-a55b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "gpt-5.4:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "step-3.7-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "deepseek-v4-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "deepseek-v4-pro:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "glm-5.2:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "qwen3.5-397b-a17b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "unorouter",
+      "model": "minimax-m2.7:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "siliconflow-cn",
+      "model": "Qwen/Qwen3.5-4B",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "siliconflow-cn",
+      "model": "deepseek-ai/DeepSeek-OCR",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "siliconflow-cn",
+      "model": "PaddlePaddle/PaddleOCR-VL-1.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "regolo-ai",
+      "model": "brick-v1-beta",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "regolo-ai",
+      "model": "deepseek-ocr-2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "regolo-ai",
+      "model": "faster-whisper-large-v3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-ams",
+      "model": "mimo-v2.6-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-ams",
+      "model": "mimo-v2.6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-ams",
+      "model": "mimo-v2.5-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-ams",
+      "model": "mimo-v2-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-ams",
+      "model": "mimo-v2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "huggingface",
+      "model": "zai-org/GLM-4.7-Flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "ZhipuAI/GLM-4.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "ZhipuAI/GLM-4.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "Qwen/Qwen3-30B-A3B-Thinking-2507",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "modelscope",
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "google",
+      "model": "lyria-3-pro-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "google",
+      "model": "lyria-3-clip-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zhipuai-coding-plan",
+      "model": "glm-5.3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zhipuai-coding-plan",
+      "model": "glm-5.3-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zhipuai-coding-plan",
+      "model": "glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "doubao-seed-2.0-lite",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "glm-5.3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "kimi-k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "doubao-seed-2.1-turbo",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "minimax-m3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "doubao-seed-evolving",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "deepseek-v4-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "kimi-k2.7-code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "volcengine-coding-plan",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "jiekou",
+      "model": "xiaomimimo/mimo-v2-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-tokenhub",
+      "model": "hy3-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-tokenhub",
+      "model": "hy3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "poolside/laguna-s-2.1-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "meta/llama-3.3-70b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "meta/llama-4-maverick",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "meta/llama-4-scout",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "inclusionai/ling-3.1-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "inclusionai/ling-3.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "inclusionai/ling-3.0-flash-sante",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "vercel",
+      "model": "inclusionai/ling-3.0-flash-sante-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-5.3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-5.3-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-5.2-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-4.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-5.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-5-turbo",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zai-coding-plan",
+      "model": "glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "orcarouter",
+      "model": "deepseek/deepseek-v4-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "orcarouter",
+      "model": "tencent/hy3-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "orcarouter",
+      "model": "z-ai/glm-5.3-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "orcarouter",
+      "model": "orcarouter/free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "orcarouter",
+      "model": "orcarouter/auto",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-cn",
+      "model": "kimi-for-coding-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-cn",
+      "model": "kimi-for-coding",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-cn",
+      "model": "k3-256k",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-cn",
+      "model": "k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tokenrouter",
+      "model": "z-ai/glm-5.3-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "DeepSeek-V4-Flash-0731",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "Kimi-K2.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "MiniMax-M3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "GLM-5.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "GLM-5.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "Qwen3.8-Max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "Kimi-K3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "DeepSeek-V4-Pro-0813",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "DeepSeek-V4.1-Flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "DeepSeek-V4-Flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "GLM-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "GLM-5.3-Flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "DeepSeek-V4-Pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "Qwen3.8-Flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "MiniMax-M2.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "GLM-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "Kimi-K2.7-Code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "scnet-token-plan",
+      "model": "Kimi-K2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "aihubmix",
+      "model": "coding-minimax-m2.7-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "aihubmix",
+      "model": "xiaomi-mimo-v2.5-pro-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "aihubmix",
+      "model": "xiaomi-mimo-v2.5-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "aihubmix",
+      "model": "ox-alpha",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "aihubmix",
+      "model": "coding-glm-5.1-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "merge-gateway",
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "baai/bge-m3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "poolside/laguna-xs-2.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "abacusai/dracarys-llama-3.1-70b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "z-ai/glm-5.3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "z-ai/glm-5.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "z-ai/glm-5.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "thinkingmachines/inkling",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-guard-4-12b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/muse-glimmer-30b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/esmfold",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.3-70b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.2-90b-vision-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-4-maverick-17b-128e-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.1-8b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.2-11b-vision-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.2-1b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.2-3b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/llama-3.1-70b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "meta/esm2-650m",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "upstage/solar-10.7b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "bytedance/seed-oss-36b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/diffusiongemma-26b-a4b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/gemma-4-31b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/gemma-2-2b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/gemma-3-12b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/gemma-3n-e2b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/google-paligemma",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/gemma-3n-e4b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "google/gemma-3-4b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "minimaxai/minimax-m2.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "minimaxai/minimax-m3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "deepseek-ai/deepseek-v4-flash-0731",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "deepseek-ai/deepseek-v4.1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "deepseek-ai/deepseek-v4-pro-0813",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "stepfun-ai/step-3.5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "stepfun-ai/step-3.7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-nemotron",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-7b-instruct-v0.3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-large-3-675b-instruct-2512",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/magistral-small-2506",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-small-4-119b-2603",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mixtral-8x7b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-medium-3.5-128b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/ministral-14b-instruct-2512",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mixtral-8x22b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-medium-3-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "moonshotai/kimi-k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "moonshotai/kimi-k2.6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "sarvamai/sarvam-m",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nvidia-nemotron-nano-9b-v2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/sparsedrive",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-nano-30b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-nemotron-embed-vl-1b-v2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nv-embedcode-7b-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-voicechat",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/bevformer",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/studiovoice",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-content-safety-reasoning-4b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nv-embed-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/synthetic-video-detector",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemotron-nano-8b-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/active-speaker-detection",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/streampetr",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-nemotron-rerank-vl-1b-v2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-mini-4b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/cosmos-reason2-8b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-content-safety",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/riva-translate-4b-instruct-v1.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-nano-12b-v2-vl",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-content-safety",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3_2-nemoretriever-300m-embed-v1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/gliner-pii",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/usdcode",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/usdvalidate",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/rerank-qa-mistral-4b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "qwen/qwen3-coder-480b-a35b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "qwen/qwen3.5-122b-a10b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "qwen/qwen3-next-80b-a3b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "qwen/qwen3.5-397b-a17b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "qwen/qwen2.5-coder-32b-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "openai/whisper-large-v3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "openai/gpt-oss-20b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "microsoft/phi-4-mini-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "nvidia",
+      "model": "microsoft/phi-4-multimodal-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-sgp",
+      "model": "mimo-v2.6-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-sgp",
+      "model": "mimo-v2.6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-sgp",
+      "model": "mimo-v2.5-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-sgp",
+      "model": "mimo-v2-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "xiaomi-token-plan-sgp",
+      "model": "mimo-v2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "gemma-4-31B-it-fp8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Qwen3.6-35B-A3B-fp8-no-thinking",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Devstral-2-123B-Instruct-2512-int4-AutoRound",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Qwen3.6-27B-FP8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Qwen3-Coder-Next-FP8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Qwen3-Coder-Next-FP8-no-thinking",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "mimo-v25",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Qwen3.6-35B-A3B-FP8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Ornith-1.0-35B-FP8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "Agents-A1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "inferx",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "longcat-2.5-preview-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "space-bunny-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "lmstudio",
+      "model": "qwen/qwen3-30b-a3b-2507",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "lmstudio",
+      "model": "qwen/qwen3-coder-30b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "lmstudio",
+      "model": "openai/gpt-oss-20b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "hunyuan-2.0-thinking",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "glm-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "minimax-m2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "hunyuan-2.0-instruct",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "kimi-k2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "tc-code-latest",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "hunyuan-turbos",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-coding-plan",
+      "model": "hunyuan-t1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tempr",
+      "model": "groq/allam-2-7b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tempr",
+      "model": "zai/glm-4.6v-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tempr",
+      "model": "zai/glm-4.7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tempr",
+      "model": "zai/glm-4.5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "ling-3.0-flash-fin-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "fledge-alpha-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "qwen3.6-plus-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "mimo-v2-pro-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "muse-spark-1.2-contributor-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "ling-3.1-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "glm-5-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "trinity-large-preview-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "longcat-2.5-preview-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "ling-3.0-tiny-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "kimi-k2.5-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "glm-4.7-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "laguna-s-2.1-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "minimax-m3-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "minimax-m2.5-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "ring-2.6-1t-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "longcat-2.0-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "hy3-preview-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "space-bunny-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "nemotron-3-super-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "minimax-m2.1-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "mimo-v2.6-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "nemotron-3-ultra-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "mimo-v2.5-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "grok-code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "ling-2.6-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "deepseek-v4-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "hy3-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "nemotron-3.5-lightning-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "mimo-v2-omni-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "ling-3.0-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "north-mini-code-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "big-pickle",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "mimo-v2-flash-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "x-preview-f-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "opencode",
+      "model": "muse-spark-1.3-contributor-free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-5-4-mini",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-5-6-luna",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemma-4-31b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "grok-4-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-2-5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "nemotron-3-nano-30b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "glm-5-3-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "kimi-k2-7-code",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-5-6-terra",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-2-5-flash-lite",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "mimo-v2-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "grok-build-0-1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "kimi-k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "glm-4-7-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "qwen3-8-max",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "minimax-m2-7-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "mimo-v2-5-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "nemotron-3-super-120b-a12b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-3-7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "step-3-7-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "kimi-k2-6:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-5-6-sol",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "nemotron-3-ultra-550b-a55b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-3-1-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "glm-5-2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "mistral-large:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "mimo-v2-5:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "claude-opus-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-oss-20b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "minimax-m2-7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "claude-fable-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "hy3:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "kimi-k2-6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "mistral-medium-3-5:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "minimax-m3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "claude-opus-4-8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "glm-5-3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "claude-sonnet-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "deepseek-v4-1-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "qwen3-7-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-3-1-flash-lite",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "hy3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "glm-5-1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "nemotron-3-super-120b-a12b:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-5-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "deepseek-v4-flash:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "grok-4-6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "whisper-large-v3-turbo",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-3-6-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "deepseek-v4-pro",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "claude-sonnet-4-6",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "kimi-k2-7-code:free",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gemini-3-5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "gpt-oss-120b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "claude-opus-4-7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "step-3-7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kenari",
+      "model": "deepseek-v4-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-global",
+      "model": "kimi-for-coding-highspeed",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-global",
+      "model": "kimi-for-coding",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-global",
+      "model": "k3-256k",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "kimi-code-plan-global",
+      "model": "k3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zhipuai",
+      "model": "glm-4.5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zhipuai",
+      "model": "glm-4.7-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "zhipuai",
+      "model": "glm-4.6v-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "lynkr",
+      "model": "lynkr-auto",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "meganova",
+      "model": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "ovhcloud",
+      "model": "qwen3guard-gen-8b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "ovhcloud",
+      "model": "qwen3guard-gen-0.6b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "gemma-4-31b-it",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "nemotron-3.5-lightning-30b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "muse-glimmer-30b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "laguna-xs.2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "leanstral-1-5@eu",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "nemotron-3-super-120b-a12b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "ling-3.0-tiny",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "nemotron-3-ultra-550b-a55b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "nemotron-3-nano-omni-30b-a3b-reasoning",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "nemotron-3.5-content-safety",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "leanstral-1-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "requesty",
+      "model": "laguna-m.1",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "mistral",
+      "model": "labs-devstral-small-2512",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llmgateway",
+      "model": "atria-dawn-preview",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llmgateway",
+      "model": "auto",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "llmgateway",
+      "model": "custom",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "tencent-token-plan",
+      "model": "hy3",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "cortecs",
+      "model": "qwen3guard-gen-8b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "cortecs",
+      "model": "qwen3guard-gen-0.6b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "agnes",
+      "model": "agnes-2.0-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "qwen3-coder-next",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "qwen3.5-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "glm-5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "kimi-k2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "qwen3-max-2026-01-23",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "qwen3-coder-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "MiniMax-M2.5",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "glm-4.7",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "qwen3.6-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-coding-plan-cn",
+      "model": "qwen3.7-plus",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "infomaniak",
+      "model": "mini_lm_l12_v2",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "amd",
+      "model": "Qwen3.8-27B",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "qwen3.5-0.8b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "gemma4-31b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "qwen3.6-35b-a3b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "qwen3.5-2b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "gpt-oss-20b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "qwen3.5-9b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "qwen3.5-4b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 120.0,
+        "idle_seconds": 120,
+        "total_seconds": 300.0,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "qwen3.6-27b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "qvac",
+      "model": "gpt-oss-120b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "hetzner",
+      "model": "Qwen3.8-27B",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "hetzner",
+      "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-cn",
+      "model": "deepseek-r1-distill-llama-8b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    },
+    {
+      "provider": "alibaba-cn",
+      "model": "deepseek-r1-distill-qwen-1-5b",
+      "policy": {
+        "connect_seconds": 10.0,
+        "first_event_seconds": 180,
+        "idle_seconds": 120,
+        "total_seconds": 600,
+        "write_seconds": 30.0,
+        "pool_seconds": 5.0
+      }
+    }
+  ]
+}

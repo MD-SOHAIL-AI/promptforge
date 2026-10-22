@@ -1,0 +1,7 @@
+{
+  "status": "healthy",
+  "engine_ready": true,
+  "service": "forgex-backend",
+  "source_fingerprint": "38307256e22e865598ad26083a1c353340b78de8bb29cb8fcf2588f294b8c4e2",
+  "local_auth_required": true
+}

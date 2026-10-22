@@ -1,0 +1,102 @@
+{
+  "saved_run_contracts": [
+    {
+      "run_id": "agent-run-78fbff6da0114b668679f119259af679",
+      "before_requirements": 0,
+      "after_requirements": 11,
+      "acceptance_checks": [
+        "source_review",
+        "build"
+      ],
+      "deliverables": [
+        "file",
+        "file",
+        "firmware_source",
+        "project_configuration",
+        "documentation",
+        "acceptance",
+        "acceptance"
+      ],
+      "historical_revision_retained": true
+    },
+    {
+      "run_id": "agent-run-6de77ed9df1841e2898fe23029c6de2c",
+      "before_requirements": 0,
+      "after_requirements": 14,
+      "acceptance_checks": [
+        "source_review",
+        "build"
+      ],
+      "deliverables": [
+        "file",
+        "file",
+        "firmware_source",
+        "project_configuration",
+        "documentation",
+        "acceptance",
+        "acceptance"
+      ],
+      "historical_revision_retained": true
+    },
+    {
+      "run_id": "agent-run-5c59b09c59b44ffeb43a3d033a9ee16c",
+      "before_requirements": 0,
+      "after_requirements": 14,
+      "acceptance_checks": [
+        "source_review",
+        "build"
+      ],
+      "deliverables": [
+        "file",
+        "file",
+        "firmware_source",
+        "project_configuration",
+        "documentation",
+        "acceptance",
+        "acceptance"
+      ],
+      "historical_revision_retained": true
+    },
+    {
+      "run_id": "agent-run-91875dbc199d4b39a69c231765f78ab1",
+      "before_requirements": 2,
+      "after_requirements": 16,
+      "acceptance_checks": [
+        "source_review",
+        "build"
+      ],
+      "deliverables": [
+        "file",
+        "file",
+        "firmware_source",
+        "project_configuration",
+        "documentation",
+        "acceptance",
+        "acceptance"
+      ],
+      "historical_revision_retained": true
+    },
+    {
+      "run_id": "agent-run-7011b9939bca41728a6f7eb54566314c",
+      "before_requirements": 2,
+      "after_requirements": 16,
+      "acceptance_checks": [
+        "source_review",
+        "build"
+      ],
+      "deliverables": [
+        "file",
+        "file",
+        "firmware_source",
+        "project_configuration",
+        "documentation",
+        "acceptance",
+        "acceptance"
+      ],
+      "historical_revision_retained": true
+    }
+  ],
+  "api_rate_limit_behavior_unchanged": true,
+  "production_database_mode": "read-only",
+  "production_runs_resumed": false
+}

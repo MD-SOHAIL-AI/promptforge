@@ -1,0 +1,20 @@
+{
+  "agent_build_passed": true,
+  "verification_refresh": true,
+  "build": {
+    "success": true,
+    "status": "SUCCESS",
+    "message": "PlatformIO build succeeded: firmware.bin",
+    "exit_code": 0,
+    "board": "esp32dev",
+    "environment": "esp32dev",
+    "build_size_bytes": 270624,
+    "firmware_path": "D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\.cache\\fixes-2026-10-21\\real-build\\artifacts\\compiled-images\\10eedb1267b96b43fa685d90ce0fb22edc19c8e83c16e1f9f737a652e38a28d8\\firmware.bin",
+    "firmware_hash": "10eedb1267b96b43fa685d90ce0fb22edc19c8e83c16e1f9f737a652e38a28d8",
+    "elf_path": "D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\.cache\\fixes-2026-10-21\\real-build\\artifacts\\compiled-images\\ebabefa31cf40057147bd3155c6a4259c16695e4854c91c1422a15ded79cab09\\firmware.elf",
+    "elf_sha256": "ebabefa31cf40057147bd3155c6a4259c16695e4854c91c1422a15ded79cab09",
+    "source_snapshot_sha256": "fdbd39107b7b6e14b3e6a44e716583258b2432fc4342e515addc32a609086513",
+    "flash_ready": true,
+    "error_code": null
+  }
+}

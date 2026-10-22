@@ -1,0 +1,350 @@
+ M .github/workflows/production-beta.yml
+ M .gitignore
+ M FORGEX_HARNESS_ARCHITECTURE.md
+ M README.md
+ M backend/agent_runtime/activity.py
+ M backend/agent_runtime/api_planner_provider.py
+ M backend/agent_runtime/autonomous_loop.py
+ M backend/agent_runtime/canonical_runtime.py
+ M backend/agent_runtime/capabilities.py
+ M backend/agent_runtime/capability_profiles.py
+ M backend/agent_runtime/context_assembler.py
+ M backend/agent_runtime/embedded_context.py
+ M backend/agent_runtime/firmware_repair.py
+ M backend/agent_runtime/memory.py
+ M backend/agent_runtime/orchestration_store.py
+ M backend/agent_runtime/orchestrator.py
+ M backend/agent_runtime/product_agent_service.py
+ M backend/agent_runtime/product_provider_registry.py
+ M backend/agent_runtime/projection.py
+ M backend/agent_runtime/router_planner.py
+ M backend/agent_runtime/run_models.py
+ M backend/agent_runtime/run_reporting.py
+ M backend/agent_runtime/session_run_projector.py
+ M backend/agent_runtime/session_store.py
+ M backend/agent_runtime/tool_contracts.py
+ M backend/agent_runtime/tool_executor.py
+ M backend/agent_runtime/tool_policy.py
+ M backend/agent_runtime/tool_runtime.py
+ M backend/agent_runtime/workspace_index.py
+ M backend/api/app.py
+ M backend/api/routes/agent_runtime.py
+ M backend/api/routes/build.py
+ M backend/api/routes/diagnostics.py
+ M backend/api/routes/health.py
+ M backend/api/routes/models.py
+ M backend/api/routes/projects.py
+ M backend/api/schemas/health.py
+ M backend/changes/service.py
+ M backend/model_router/admission.py
+ M backend/model_router/credentials.py
+ M backend/model_router/models.py
+ M backend/model_router/normalization.py
+ M backend/model_router/providers/nvidia_nim.py
+ M backend/model_router/providers/ollama.py
+ M backend/model_router/providers/openai_provider.py
+ M backend/model_router/providers/openrouter.py
+ M backend/model_router/registry.py
+ M backend/model_router/retry.py
+ M backend/model_router/router.py
+ M backend/model_router/runtime.py
+ M backend/model_router/sqlite_storage.py
+ M backend/model_router/storage.py
+ M backend/observability/diagnostics.py
+ M backend/runtime/serial_runtime.py
+ M backend/runtime/subprocess_mgr.py
+ M backend/security/build_policy.py
+ M backend/services/flash_service.py
+ M backend/services/llm_service.py
+ M backend/services/platformio_service.py
+ M backend/services/project_import_service.py
+ M backend/services/serial_service.py
+ M backend/settings/defaults.py
+ M backend/settings/service.py
+ M backend/tools/build_firmware.py
+ M backend/tools/flash_firmware.py
+ M backend/tools/serial_monitor.py
+ M backend/utils/paths.py
+ M backend/workflow/adapters/build_adapter.py
+ M electron/backend-manager.test.mjs
+ M electron/backend-manager.ts
+ M electron/background-assets.test.mjs
+ M electron/background-assets.ts
+ M electron/diagnostics.ts
+ M electron/frontend-manager.test.mjs
+ M electron/frontend-manager.ts
+ M electron/harness-manager.ts
+ M electron/main.ts
+ M electron/paths.ts
+ M electron/python-resolver.ts
+ M electron/window-manager.ts
+ M frontend/app/globals.css
+ M frontend/app/layout.tsx
+ M frontend/components/agent-activity/activity-card.tsx
+ M frontend/components/agent-activity/agent-activity-feed.tsx
+ M frontend/components/agent-activity/agent-activity-item.tsx
+ M frontend/components/code/code-viewer.tsx
+ M frontend/components/ide/bottom-panel.tsx
+ M frontend/components/ide/editor-workbench.tsx
+ M frontend/components/ide/model-settings-panel.tsx
+ M frontend/components/nexus/conversation.tsx
+ M frontend/components/nexus/nexus-shell.tsx
+ M frontend/components/nexus/task-canvas.tsx
+ M frontend/components/nexus/work-canvases.tsx
+ M frontend/components/settings/about-settings.tsx
+ M frontend/components/settings/appearance-settings.tsx
+ M frontend/components/settings/general-settings.tsx
+ M frontend/components/settings/hardware-settings.tsx
+ M frontend/components/settings/security-settings.tsx
+ M frontend/components/settings/setting-controls.tsx
+ M frontend/components/settings/settings-page.tsx
+ M frontend/components/settings/settings-sidebar.tsx
+ M frontend/components/settings/types.ts
+ M frontend/components/terminal/forgex-terminal.tsx
+ M frontend/e2e/conversations.spec.ts
+ M frontend/eslint.config.mjs
+ M frontend/hooks/use-chat-session.ts
+ M frontend/hooks/use-forge-agent-session.ts
+ M frontend/hooks/use-forgex-settings.ts
+ M frontend/hooks/use-promptforge-workspace.ts
+ M frontend/lib/activity-stream.test.mts
+ M frontend/lib/activity-stream.ts
+ M frontend/lib/agent-recovery.test.mts
+ M frontend/lib/agent-recovery.ts
+ M frontend/lib/agent-stream-policy.test.mts
+ M frontend/lib/agent-stream-policy.ts
+ M frontend/lib/api.ts
+ M frontend/lib/code-viewer.test.mts
+ M frontend/lib/errors.ts
+ M frontend/lib/model-provider-status.ts
+ M frontend/lib/theme.ts
+ M frontend/next-env.d.ts
+ M frontend/next.config.ts
+ M frontend/package-lock.json
+ M frontend/package.json
+ M frontend/playwright.config.ts
+ M frontend/tsconfig.json
+ M frontend/types/index.ts
+ M harness/src/contracts.ts
+ M harness/src/event-store.ts
+ M harness/src/idempotency.ts
+ M harness/src/providers.ts
+ M harness/src/runtime.ts
+ M harness/src/server.ts
+ M harness/tests/runtime.test.mjs
+ M package-lock.json
+ M package.json
+ M requirements.in
+ M requirements.txt
+ M scripts/build_source_release.py
+ M scripts/esp32_hardware_signoff.py
+ M scripts/home-launcher.package.json
+ M scripts/logs-live.mjs
+ M scripts/setup-platformio.mjs
+ M scripts/setup-platformio.test.mjs
+ M scripts/source-release-manifest.json
+ M scripts/verify-beta.mjs
+ M scripts/verify-beta.test.mjs
+ M tests/api/test_api_routes.py
+ M tests/api/test_model_routes.py
+ M tests/api/test_product_agent_runtime_api.py
+ M tests/conftest.py
+ M tests/unit/test_agent_orchestrator_v2.py
+ M tests/unit/test_agent_redesign_regressions.py
+ M tests/unit/test_agent_verification_freshness.py
+ M tests/unit/test_api_planner_provider.py
+ M tests/unit/test_build_firmware.py
+ M tests/unit/test_cerebras_provider.py
+ M tests/unit/test_firmware_repair.py
+ M tests/unit/test_flash_firmware.py
+ M tests/unit/test_harness_client.py
+ M tests/unit/test_live_diagnostics.py
+ M tests/unit/test_model_router.py
+ M tests/unit/test_model_runtime_v2.py
+ M tests/unit/test_model_sqlite_storage.py
+ M tests/unit/test_native_agent_tools.py
+ M tests/unit/test_nvidia_nim_provider.py
+ M tests/unit/test_openrouter_provider.py
+ M tests/unit/test_platformio_service.py
+ M tests/unit/test_product_agent_runtime.py
+ M tests/unit/test_provider_admission.py
+ M tests/unit/test_router_product_planner.py
+ M tests/unit/test_settings_service.py
+ M tests/unit/test_tool_registry.py
+ M tests/unit/test_tool_runtime.py
+ M tests/unit/test_unified_agent_runtime.py
+?? ForgeX-ChatGPT-Review-2026-10-01.zip
+?? ForgeX-ChatGPT-Review-2026-10-05.zip
+?? WindowsTerminal_E237IyDTh7.png
+?? assets/
+?? audit/
+?? backend/agent_runtime/checkpoint_files.py
+?? backend/agent_runtime/context_memory.py
+?? backend/agent_runtime/deliverables.py
+?? backend/agent_runtime/diagnostic_progress.py
+?? backend/agent_runtime/engine.py
+?? backend/agent_runtime/engine_tools.py
+?? backend/agent_runtime/esp32_tools.py
+?? backend/agent_runtime/failure_contract.py
+?? backend/agent_runtime/intake.py
+?? backend/agent_runtime/jobs.py
+?? backend/agent_runtime/lifecycle.py
+?? backend/agent_runtime/progress_state.py
+?? backend/agent_runtime/recovery_draft.py
+?? backend/agent_runtime/retention.py
+?? backend/agent_runtime/task_contract.py
+?? backend/agent_runtime/task_state.py
+?? backend/agent_runtime/task_understanding.py
+?? backend/agent_runtime/tool_registry.py
+?? backend/agent_runtime/verification.py
+?? backend/cli.py
+?? backend/contracts/diagnostics.py
+?? backend/contracts/engine.py
+?? backend/contracts/recovery.py
+?? backend/contracts/runtime_policy.py
+?? backend/contracts/transport.py
+?? backend/model_router/circuit.py
+?? backend/model_router/data/
+?? backend/model_router/opencode_catalog.py
+?? backend/model_router/providers/opencode.py
+?? backend/model_router/request_recovery.py
+?? backend/model_router/run_budget.py
+?? backend/observability/log_reader.py
+?? backend/runtime/windows_job.py
+?? backend/services/build_operations.py
+?? backend/services/esp_idf_adapter.py
+?? backend/services/firmware_manifest.py
+?? backend/services/partition_preflight.py
+?? backend/services/project_profile.py
+?? backend/utils/data_migration.py
+?? docs/agent-durability-implementation.md
+?? docs/agent-durability-references.json
+?? docs/agent-outage-redesign-implementation.md
+?? docs/agent-production-hardening-2026-09-29.md
+?? docs/agent-quality-implementation.md
+?? docs/agent-quality-verification.md
+?? docs/agent-repair-incident-2026-09-28.md
+?? docs/agent-repair-reliability-plan.md
+?? docs/agent-upgrade-followup-2026-09-30.md
+?? docs/complete-app-review-and-redesign-plan-2026-10-04.md
+?? docs/complete-redesign-implementation-2026-10-04.md
+?? docs/embedded-agent-implementation-2026-10-02.md
+?? docs/engine-contracts.schema.json
+?? docs/live-log-fixes-2026-10-01.md
+?? docs/live-log-reliability-implementation-2026-10-02.md
+?? docs/live-log-review-2026-10-02.md
+?? docs/opencode-model-router-implementation-2026-10-04.md
+?? docs/production-beta-hardening.md
+?? docs/production-beta-verification.md
+?? docs/provider-outage-recovery-plan.md
+?? docs/provider-timeout-permanent-fix-plan-2026-10-04.md
+?? docs/provider-timeout-recovery-implementation-2026-10-04.md
+?? docs/redesign-evidence-2026-10-04/
+?? docs/redesign-qualification-2026-10-04.md
+?? docs/redesign-regression-ledger-2026-10-04.md
+?? docs/release-clean-machine-template.json
+?? docs/reliability-fixes-2026-10-01.md
+?? docs/reliability-review-and-fix-plan-2026-10-01.md
+?? docs/review-evidence-2026-10-04/
+?? docs/runtime-policy.generated.json
+?? docs/runtime-policy.generated.md
+?? docs/ui-redesign-implementation-2026-10-03.md
+?? electron-builder.config.cjs
+?? electron/backend-recovery.test.mjs
+?? electron/backend-recovery.ts
+?? electron/desktop-logging.test.mjs
+?? electron/desktop-logging.ts
+?? electron/diagnostics.test.mjs
+?? electron/renderer-recovery.test.mjs
+?? electron/renderer-recovery.ts
+?? frontend/app/design-system.css
+?? frontend/components/nexus/agent-job-controls.tsx
+?? frontend/components/nexus/evidence-canvas.tsx
+?? frontend/components/nexus/workspace-background.tsx
+?? frontend/e2e/build-evidence.spec.ts
+?? frontend/e2e/fixtures/
+?? frontend/e2e/recovery-controls.spec.ts
+?? frontend/e2e/redesign.spec.ts
+?? frontend/hooks/workspace-preferences.tsx
+?? frontend/lib/backend-proxy.test.mts
+?? frontend/lib/backend-proxy.ts
+?? frontend/lib/background-image.ts
+?? frontend/lib/build-observation.ts
+?? frontend/lib/download-json.ts
+?? frontend/lib/request-deadline.test.mts
+?? frontend/lib/request-deadline.ts
+?? frontend/lib/runtime-policy.generated.ts
+?? frontend/lib/settings-write-queue.test.mts
+?? frontend/lib/settings-write-queue.ts
+?? frontend/lib/single-flight.test.mts
+?? frontend/lib/single-flight.ts
+?? frontend/middleware.ts
+?? frontend/public/
+?? frontend/types/engine-contracts.ts
+?? frontend/vendor/
+?? harness/src/opencode-providers.generated.ts
+?? model-router/
+?? requirements-runtime.in
+?? requirements-runtime.lock
+?? scripts/agent_qualification.py
+?? scripts/benchmark-agent-observation.py
+?? scripts/build-agent-quality-suite.py
+?? scripts/build-dependency-security.test.mjs
+?? scripts/build-desktop-icon.mjs
+?? scripts/build-maintenance-suite.py
+?? scripts/build-model-router.mjs
+?? scripts/capture-agent-regressions.py
+?? scripts/generate-engine-contracts.py
+?? scripts/logs-live.test.mjs
+?? scripts/prepare-frontend-assets.mjs
+?? scripts/prepare-release.py
+?? scripts/qualify-agent-prompts.py
+?? scripts/qualify-agent-quality.py
+?? scripts/refresh-model-catalog.py
+?? scripts/release-desktop.mjs
+?? scripts/release-shell.mjs
+?? scripts/release-shell.test.mjs
+?? scripts/scan-packaged-content.mjs
+?? scripts/scan-packaged-content.test.mjs
+?? scripts/smoke-desktop.py
+?? scripts/smoke-esp32-build.py
+?? scripts/smoke-live-log-reliability.py
+?? scripts/smoke-packaged.py
+?? scripts/verify-agent-quality.mjs
+?? scripts/verify-agent-quality.test.mjs
+?? scripts/verify-installer-signature.ps1
+?? scripts/verify-release-evidence.mjs
+?? scripts/verify-release-evidence.test.mjs
+?? tests/api/test_agent_jobs_api.py
+?? tests/api/test_missing_workspace_recovery_api.py
+?? tests/api/test_outage_recovery_api.py
+?? tests/api/test_redesign_build_operations.py
+?? tests/fixtures/agent-maintenance-suite.json
+?? tests/fixtures/agent-quality-suite.json
+?? tests/fixtures/beta-agent-prompts.json
+?? tests/fixtures/durability-incidents.json
+?? tests/fixtures/repair-budget-incident.json
+?? tests/unit/test_agent_jobs_and_tools.py
+?? tests/unit/test_beta_agent_reliability.py
+?? tests/unit/test_compiler_context.py
+?? tests/unit/test_complete_redesign.py
+?? tests/unit/test_durability_admission.py
+?? tests/unit/test_durable_continuation.py
+?? tests/unit/test_durable_provider_boundary.py
+?? tests/unit/test_durable_qualification.py
+?? tests/unit/test_engine_redesign.py
+?? tests/unit/test_live_log_reliability.py
+?? tests/unit/test_missing_workspace_recovery.py
+?? tests/unit/test_opencode_engine.py
+?? tests/unit/test_outage_redesign.py
+?? tests/unit/test_progress_continuation.py
+?? tests/unit/test_provider_circuit.py
+?? tests/unit/test_provider_transport_policy.py
+?? tests/unit/test_recovery_actions.py
+?? tests/unit/test_release_data_and_budgets.py
+?? tests/unit/test_release_hardening.py
+?? tests/unit/test_repair_reliability.py
+?? tests/unit/test_request_recovery.py
+?? tests/unit/test_task_state.py
+?? tests/unit/test_workspace_index_cache.py
+?? third_party/opencode/

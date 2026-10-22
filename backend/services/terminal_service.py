@@ -1,0 +1,664 @@
+"""Interactive shell sessions for the ForgeX integrated terminal.
+
+Windows sessions are backed by ConPTY through pywinpty. A process-pipe
+driver remains available for non-Windows hosts and lightweight test installs.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import signal
+import shutil
+import sys
+import threading
+import time
+import uuid
+from collections import deque
+from collections.abc import Coroutine
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Literal, Protocol, cast
+from backend.runtime.async_cleanup import settle_bounded
+
+TerminalStream = Literal["stdout", "stderr", "system"]
+TerminalLifecycle = Literal["running", "stopping", "exited", "closed"]
+TerminalCapability = Literal["conpty", "pipe"]
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalProfile:
+    profile_id: str
+    name: str
+    shell: str
+    command: tuple[str, ...]
+    available: bool = True
+
+    def to_dict(self, *, default: bool, capability: TerminalCapability) -> dict[str, object]:
+        return {
+            "profile_id": self.profile_id,
+            "name": self.name,
+            "shell": self.shell,
+            "available": self.available,
+            "default": default,
+            "process_capability": capability,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalOutputEvent:
+    sequence: int
+    stream: TerminalStream
+    data: str
+    timestamp: float
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "sequence": self.sequence,
+            "stream": self.stream,
+            "data": self.data,
+            "timestamp": self.timestamp,
+        }
+
+
+class TerminalDriver(Protocol):
+    """Small async interface shared by ConPTY and pipe processes."""
+
+    process: object
+    capability: TerminalCapability
+    output_streams: tuple[TerminalStream, ...]
+
+    @property
+    def returncode(self) -> int | None: ...
+
+    async def read(self, stream: TerminalStream, size: int = 4096) -> str: ...
+
+    async def write(self, data: str) -> None: ...
+
+    async def resize(self, cols: int, rows: int) -> None: ...
+
+    async def wait(self) -> int: ...
+
+    async def terminate(self) -> None: ...
+
+    async def kill(self) -> None: ...
+
+
+@dataclass(slots=True)
+class TerminalSession:
+    session_id: str
+    shell: str
+    cwd: str
+    process: object
+    events: deque[TerminalOutputEvent]
+    cols: int = 80
+    rows: int = 24
+    sequence: int = 0
+    closed: bool = False
+    profile_id: str = "default"
+    title: str = "Terminal"
+    process_capability: TerminalCapability = "pipe"
+    lifecycle_status: TerminalLifecycle = "running"
+    exit_code: int | None = None
+    driver: TerminalDriver | None = field(default=None, repr=False)
+    subscribers: set[asyncio.Queue[TerminalOutputEvent]] = field(default_factory=set, repr=False)
+    tasks: set[asyncio.Task[object]] = field(default_factory=set, repr=False)
+    exit_notified: bool = field(default=False, repr=False)
+
+
+class _PipeTerminalDriver:
+    capability: TerminalCapability = "pipe"
+    output_streams: tuple[TerminalStream, ...] = ("stdout", "stderr")
+
+    def __init__(self, process: object, *, job=None, owns_group=False) -> None:
+        self.process = process
+        self._job = job
+        self._owns_group = owns_group
+
+    @classmethod
+    async def spawn(cls, command: tuple[str, ...], *, cwd: Path) -> _PipeTerminalDriver:
+        job = None
+        if sys.platform == "win32":
+            from backend.runtime.windows_job import WindowsJob
+            job = WindowsJob()
+            command = tuple(job.wrap(command))
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                cwd=str(cwd),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ.copy(),
+                **_creation_kwargs(),
+            )
+        except BaseException:
+            if job is not None:
+                job.close()
+            raise
+        return cls(process, job=job, owns_group=sys.platform != "win32")
+
+    @property
+    def returncode(self) -> int | None:
+        return cast(int | None, getattr(self.process, "returncode", None))
+
+    async def read(self, stream: TerminalStream, size: int = 4096) -> str:
+        reader = getattr(self.process, stream, None)
+        if reader is None:
+            return ""
+        chunk = await reader.read(size)
+        if isinstance(chunk, bytes):
+            return chunk.decode("utf-8", errors="replace")
+        return str(chunk or "")
+
+    async def write(self, data: str) -> None:
+        stdin = getattr(self.process, "stdin", None)
+        if stdin is None:
+            raise ValueError("terminal stdin is unavailable")
+        stdin.write(data.encode("utf-8", errors="replace"))
+        drain = getattr(stdin, "drain", None)
+        if drain is not None:
+            await drain()
+
+    async def resize(self, cols: int, rows: int) -> None:
+        del cols, rows
+        # Ordinary subprocess pipes do not expose a terminal to resize.
+
+    async def wait(self) -> int:
+        result = int(await getattr(self.process, "wait")())
+        if self._job is not None:
+            self._job.close()
+        return result
+
+    async def terminate(self) -> None:
+        self._signal_tree(signal.SIGTERM)
+
+    async def kill(self) -> None:
+        self._signal_tree(getattr(signal, "SIGKILL", signal.SIGTERM))
+
+    def _signal_tree(self, sig) -> None:
+        try:
+            if self._job is not None:
+                try:
+                    self._job.terminate()
+                finally:
+                    self._job.close()
+            elif self._owns_group:
+                os.killpg(getattr(self.process, "pid"), sig)
+            else:
+                getattr(self.process, "terminate" if sig == signal.SIGTERM else "kill")()
+        except ProcessLookupError:
+            pass
+
+
+class _ConPtyTerminalDriver:
+    capability: TerminalCapability = "conpty"
+    output_streams: tuple[TerminalStream, ...] = ("stdout",)
+
+    def __init__(self, process: object, *, job=None) -> None:
+        self.process = process
+        self._job = job
+        # Prime pywinpty's process status once before the dedicated reader
+        # takes ownership of the native output handle.
+        getattr(process, "isalive")()
+        self._loop = asyncio.get_running_loop()
+        self._output: asyncio.Queue[str | None] = asyncio.Queue(maxsize=256)
+        self._publish_slots = threading.BoundedSemaphore(256)
+        self._exited = asyncio.Event()
+        self._exit_code: int | None = None
+        self._reader = threading.Thread(
+            target=self._read_forever,
+            name=f"forgex-conpty-{getattr(process, 'pid', 'shell')}",
+            daemon=True,
+        )
+        self._reader.start()
+
+    @classmethod
+    async def spawn(
+        cls,
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        cols: int,
+        rows: int,
+    ) -> _ConPtyTerminalDriver:
+        from winpty import PtyProcess
+
+        from backend.runtime.windows_job import WindowsJob
+        job = WindowsJob()
+        process = None
+        try:
+            process = PtyProcess.spawn(list(command), cwd=str(cwd),
+                env=os.environ.copy(), dimensions=(rows, cols))
+            job.assign_pid(process.pid)
+            return cls(process, job=job)
+        except BaseException:
+            job.close()
+            if process is not None:
+                process.close(True)
+            raise
+
+    @property
+    def returncode(self) -> int | None:
+        return self._exit_code
+
+    async def read(self, stream: TerminalStream, size: int = 4096) -> str:
+        del stream, size
+        data = await self._output.get()
+        return data or ""
+
+    def _read_forever(self) -> None:
+        while True:
+            try:
+                data = str(getattr(self.process, "read")(4096))
+            except EOFError:
+                self._publish_exit()
+                return
+            except OSError:
+                self._publish_exit()
+                return
+            if data:
+                self._publish(data)
+                continue
+            # pywinpty can emit an internal keepalive marker that its wrapper
+            # translates to an empty string. Empty is not EOF while alive.
+            time.sleep(0.01)
+
+    def _publish(self, data: str | None) -> None:
+        # Bound both buffered output and callbacks waiting on a busy event loop.
+        while not self._publish_slots.acquire(timeout=0.1):
+            if self._loop.is_closed():
+                return
+        def enqueue():
+            try:
+                if self._output.full():
+                    self._output.get_nowait()
+                self._output.put_nowait(data)
+            finally:
+                self._publish_slots.release()
+        try:
+            self._loop.call_soon_threadsafe(enqueue)
+        except RuntimeError:
+            self._publish_slots.release()
+
+    def _publish_exit(self) -> None:
+        try:
+            getattr(self.process, "isalive")()
+        except Exception:
+            pass
+        value = getattr(self.process, "exitstatus", None)
+        self._exit_code = int(value) if isinstance(value, int) else 0
+        try:
+            self._loop.call_soon_threadsafe(self._exited.set)
+        except RuntimeError:
+            pass
+        self._publish(None)
+
+    async def write(self, data: str) -> None:
+        try:
+            getattr(self.process, "write")(data)
+        except (EOFError, OSError) as exc:
+            raise ValueError("terminal session is closed") from exc
+
+    async def resize(self, cols: int, rows: int) -> None:
+        # pywinpty follows the POSIX order: rows, then columns.
+        getattr(self.process, "setwinsize")(rows, cols)
+
+    async def wait(self) -> int:
+        # read() receives EOF when the pseudoterminal exits. Avoid periodic
+        # PtyProcess.isalive() probes: they contend with the native read path
+        # and make interactive input visibly stall under pywinpty.
+        await self._exited.wait()
+        if self._job is not None:
+            self._job.close()
+        return self._exit_code or 0
+
+    async def terminate(self) -> None:
+        await asyncio.to_thread(getattr(self.process, "terminate"), False)
+
+    async def kill(self) -> None:
+        if self._job is not None:
+            try:
+                self._job.terminate()
+            finally:
+                self._job.close()
+        close = getattr(self.process, "close", None)
+        if close is not None:
+            await asyncio.to_thread(close, True)
+            return
+        await asyncio.to_thread(getattr(self.process, "terminate"), True)
+
+
+class TerminalService:
+    """Manage bounded, interactive shell sessions."""
+
+    def __init__(self, *, max_events: int = 2000) -> None:
+        self._max_events = max_events
+        self._sessions: dict[str, TerminalSession] = {}
+        self._lock = asyncio.Lock()
+
+    def profiles(self) -> tuple[list[TerminalProfile], str]:
+        profiles = _terminal_profiles()
+        available = [profile for profile in profiles if profile.available]
+        if not available:
+            available = profiles
+        return available, _default_profile_id(available)
+
+    @property
+    def default_process_capability(self) -> TerminalCapability:
+        return "conpty" if _conpty_available() else "pipe"
+
+    async def start(
+        self,
+        cwd: str | Path,
+        *,
+        cols: int = 80,
+        rows: int = 24,
+        profile_id: str | None = None,
+        title: str | None = None,
+    ) -> TerminalSession:
+        root = _validated_cwd(cwd)
+        safe_cols = _clamp(cols, 20, 300)
+        safe_rows = _clamp(rows, 5, 120)
+        profiles, default_profile_id = self.profiles()
+        selected_id = profile_id or default_profile_id
+        profile = next((item for item in profiles if item.profile_id == selected_id), None)
+        if profile is None or not profile.available:
+            raise ValueError(f"terminal profile is unavailable: {selected_id}")
+
+        driver = await self._spawn_driver(profile, root, safe_cols, safe_rows)
+        session = TerminalSession(
+            session_id=f"term-{uuid.uuid4().hex}",
+            shell=profile.shell,
+            cwd=str(root),
+            process=driver.process,
+            events=deque(maxlen=self._max_events),
+            cols=safe_cols,
+            rows=safe_rows,
+            profile_id=profile.profile_id,
+            title=_validated_title(title or profile.name),
+            process_capability=driver.capability,
+            lifecycle_status="running",
+            driver=driver,
+        )
+        async with self._lock:
+            self._sessions[session.session_id] = session
+
+        for stream in driver.output_streams:
+            self._track(session, self._pump(session, stream), f"{session.session_id}-{stream}")
+        self._track(session, self._watch(session), f"{session.session_id}-watch")
+        return session
+
+    async def _spawn_driver(
+        self,
+        profile: TerminalProfile,
+        cwd: Path,
+        cols: int,
+        rows: int,
+    ) -> TerminalDriver:
+        if sys.platform == "win32":
+            try:
+                return await _ConPtyTerminalDriver.spawn(
+                    profile.command,
+                    cwd=cwd,
+                    cols=cols,
+                    rows=rows,
+                )
+            except ImportError:
+                # Minimal source installs can intentionally omit the wheel.
+                pass
+        return await _PipeTerminalDriver.spawn(profile.command, cwd=cwd)
+
+    async def get(self, session_id: str) -> TerminalSession | None:
+        async with self._lock:
+            return self._sessions.get(session_id)
+
+    async def write(self, session_id: str, data: str) -> TerminalSession:
+        session = await self._required(session_id)
+        driver = self._driver(session)
+        if session.closed or driver.returncode is not None:
+            raise ValueError("terminal session is closed")
+        if "\x00" in data:
+            raise ValueError("terminal input cannot contain NUL characters")
+        if len(data) > 20_000:
+            raise ValueError("terminal input cannot exceed 20000 characters")
+        await driver.write(data)
+        return session
+
+    async def clear(self, session_id: str) -> TerminalSession:
+        session = await self._required(session_id)
+        session.events.clear()
+        # Sequence numbers stay monotonic, so reconnect cursors remain valid.
+        return session
+
+    async def rename(self, session_id: str, title: str) -> TerminalSession:
+        session = await self._required(session_id)
+        session.title = _validated_title(title)
+        return session
+
+    async def resize(self, session_id: str, cols: int, rows: int) -> TerminalSession:
+        session = await self._required(session_id)
+        safe_cols = _clamp(cols, 20, 300)
+        safe_rows = _clamp(rows, 5, 120)
+        await self._driver(session).resize(safe_cols, safe_rows)
+        session.cols = safe_cols
+        session.rows = safe_rows
+        return session
+
+    async def stop(self, session_id: str) -> None:
+        session = await self._required(session_id)
+        await self._stop_session(session)
+        async with self._lock:
+            self._sessions.pop(session_id, None)
+
+    async def stop_all(self) -> None:
+        async with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        await asyncio.gather(*(self._stop_session(session) for session in sessions), return_exceptions=True)
+
+    async def output(
+        self,
+        session_id: str,
+        after: int = 0,
+    ) -> tuple[TerminalSession, list[TerminalOutputEvent]]:
+        session = await self._required(session_id)
+        return session, [event for event in session.events if event.sequence > after]
+
+    async def subscribe(
+        self,
+        session_id: str,
+        after: int = 0,
+    ) -> tuple[TerminalSession, list[TerminalOutputEvent], asyncio.Queue[TerminalOutputEvent]]:
+        session = await self._required(session_id)
+        queue: asyncio.Queue[TerminalOutputEvent] = asyncio.Queue(maxsize=500)
+        replay = [event for event in session.events if event.sequence > after]
+        session.subscribers.add(queue)
+        return session, replay, queue
+
+    async def unsubscribe(self, session_id: str, queue: asyncio.Queue[TerminalOutputEvent]) -> None:
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if session is not None:
+                session.subscribers.discard(queue)
+
+    async def _required(self, session_id: str) -> TerminalSession:
+        async with self._lock:
+            session = self._sessions.get(session_id)
+        if session is None:
+            raise KeyError(session_id)
+        return session
+
+    def _driver(self, session: TerminalSession) -> TerminalDriver:
+        if session.driver is None:
+            # Compatibility for tests/callers that construct a session around
+            # an asyncio-like process directly.
+            session.driver = _PipeTerminalDriver(session.process)
+        return session.driver
+
+    def _track(
+        self,
+        session: TerminalSession,
+        awaitable: Coroutine[Any, Any, object],
+        name: str,
+    ) -> None:
+        task = asyncio.create_task(awaitable, name=name)
+        session.tasks.add(task)
+        task.add_done_callback(session.tasks.discard)
+
+    async def _pump(self, session: TerminalSession, stream: TerminalStream) -> None:
+        driver = self._driver(session)
+        while True:
+            chunk = await driver.read(stream)
+            if not chunk:
+                return
+            self._append(session, stream, chunk)
+
+    async def _watch(self, session: TerminalSession) -> None:
+        returncode = await self._driver(session).wait()
+        session.exit_code = returncode
+        session.closed = True
+        if session.lifecycle_status != "closed":
+            session.lifecycle_status = "exited"
+        self._notify_exit(session, returncode)
+
+    async def _stop_session(self, session: TerminalSession) -> None:
+        driver = self._driver(session)
+        session.lifecycle_status = "stopping"
+        returncode = driver.returncode
+        try:
+            if returncode is None:
+                completed, _ = await settle_bounded(driver.terminate(), 0.5)
+                completed, returncode = await settle_bounded(driver.wait(), 1.0) if completed else (False, None)
+                if not completed:
+                    try:
+                        await settle_bounded(driver.kill(), 0.5)
+                    finally:
+                        _, returncode = await settle_bounded(driver.wait(), 0.5)
+            else:
+                # An exited root can still have descendants or blocked pumps.
+                await settle_bounded(driver.kill(), 0.5)
+        except (OSError, RuntimeError):
+            try:
+                await settle_bounded(driver.kill(), 0.5)
+            except (OSError, RuntimeError):
+                pass
+        finally:
+            session.exit_code = int(returncode) if isinstance(returncode, int) else driver.returncode
+            session.closed = True
+            session.lifecycle_status = "closed"
+            self._notify_exit(session, session.exit_code)
+            pending = [task for task in tuple(session.tasks)
+                if task is not asyncio.current_task() and not task.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                await settle_bounded(asyncio.gather(*pending, return_exceptions=True), 0.25)
+
+    def _notify_exit(self, session: TerminalSession, returncode: int | None) -> None:
+        if session.exit_notified:
+            return
+        session.exit_notified = True
+        message = f"Shell exited with code {returncode}" if returncode is not None else "Terminal closed; process exit status is unavailable"
+        self._append(session, "system", f"\r\n{message}\r\n")
+
+    def _append(self, session: TerminalSession, stream: TerminalStream, data: str) -> None:
+        session.sequence += 1
+        event = TerminalOutputEvent(
+            sequence=session.sequence,
+            stream=stream,
+            data=data,
+            timestamp=time.time(),
+        )
+        session.events.append(event)
+        for queue in tuple(session.subscribers):
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    pass
+
+
+def _validated_cwd(cwd: str | Path) -> Path:
+    path = Path(cwd).expanduser().resolve()
+    if not path.exists():
+        raise ValueError(f"terminal cwd does not exist: {path}")
+    if not path.is_dir():
+        raise ValueError(f"terminal cwd is not a directory: {path}")
+    return path
+
+
+def _validated_title(title: str) -> str:
+    value = title.strip()
+    if not value:
+        raise ValueError("terminal title cannot be empty")
+    if len(value) > 80:
+        raise ValueError("terminal title cannot exceed 80 characters")
+    if any(ord(character) < 32 for character in value):
+        raise ValueError("terminal title cannot contain control characters")
+    return value
+
+
+def _clamp(value: int, minimum: int, maximum: int) -> int:
+    return min(maximum, max(minimum, int(value)))
+
+
+def _terminal_profiles() -> list[TerminalProfile]:
+    if sys.platform == "win32":
+        return [
+            TerminalProfile(
+                profile_id="powershell",
+                name="PowerShell",
+                shell="PowerShell",
+                command=("powershell.exe", "-NoLogo"),
+                available=shutil.which("powershell.exe") is not None,
+            ),
+            TerminalProfile(
+                profile_id="command-prompt",
+                name="Command Prompt",
+                shell="Command Prompt",
+                command=("cmd.exe", "/Q"),
+                available=shutil.which("cmd.exe") is not None,
+            ),
+        ]
+    shell = os.environ.get("SHELL") or "/bin/sh"
+    return [
+        TerminalProfile(
+            profile_id="shell",
+            name=Path(shell).name,
+            shell=Path(shell).name,
+            command=(shell, "-i"),
+            available=shutil.which(shell) is not None or Path(shell).is_file(),
+        )
+    ]
+
+
+def _default_profile_id(profiles: list[TerminalProfile]) -> str:
+    preferred = "powershell" if sys.platform == "win32" else "shell"
+    if any(profile.profile_id == preferred and profile.available for profile in profiles):
+        return preferred
+    return profiles[0].profile_id
+
+
+def _conpty_available() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import winpty  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _creation_kwargs() -> dict[str, object]:
+    if sys.platform == "win32":
+        import subprocess
+
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    return {"start_new_session": True}

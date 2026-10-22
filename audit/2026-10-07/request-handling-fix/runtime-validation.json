@@ -1,0 +1,60 @@
+{
+  "status": "healthy",
+  "engine_ready": true,
+  "source_fingerprint": "38307256e22e865598ad26083a1c353340b78de8bb29cb8fcf2588f294b8c4e2",
+  "production_state_access": "read-only catalog copy",
+  "generated_project_files_edited": false,
+  "inference_requests_sent": 0,
+  "catalog_median_seconds": 1.4184,
+  "measurements": [
+    {
+      "path": "/models/providers/openrouter/models",
+      "seconds": 1.1083,
+      "count": 466,
+      "source": "cache",
+      "status": 200
+    },
+    {
+      "path": "/health",
+      "seconds": 0.3503,
+      "count": null,
+      "source": null,
+      "status": 200
+    },
+    {
+      "path": "/models/providers/openrouter/models",
+      "seconds": 1.4184,
+      "count": 466,
+      "source": "cache",
+      "status": 200
+    },
+    {
+      "path": "/health",
+      "seconds": 0.3927,
+      "count": null,
+      "source": null,
+      "status": 200
+    },
+    {
+      "path": "/models/providers/openrouter/models",
+      "seconds": 1.5025,
+      "count": 466,
+      "source": "cache",
+      "status": 200
+    },
+    {
+      "path": "/health",
+      "seconds": 0.4193,
+      "count": null,
+      "source": null,
+      "status": 200
+    },
+    {
+      "path": "/v2/models/catalog",
+      "seconds": 2.2621,
+      "count": null,
+      "source": null,
+      "status": 200
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "scope": "14 reproduced audit defects and related safety/lifecycle fixes",
+  "python": {
+    "unique_test_outcomes": {
+      "passed": 2258,
+      "skipped": 4
+    },
+    "junit_evidence": [
+      "python-unit.xml",
+      "python-other-final.xml",
+      "regressions-complete.xml",
+      "provider-final.xml",
+      "context-final.xml"
+    ],
+    "syntax_checked_files": 390,
+    "syntax_errors": []
+  },
+  "javascript": {
+    "node_tests": 109,
+    "frontend_state_tests": 79,
+    "browser_tests": 52,
+    "browser_lifecycle_after_metadata_fix": "passed; exact metadata hashes restored"
+  },
+  "builds": {
+    "electron_harness_model_router": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_lint": "passed",
+    "frontend_production": "completed",
+    "source_release_scan": "passed",
+    "pip_check": "passed"
+  },
+  "root_npm_audit": {
+    "vulnerabilities": 0,
+    "network_verified": true
+  },
+  "changed_inventory_sources": [
+    "backend/agent_runtime/capability_profiles.py",
+    "backend/agent_runtime/context_assembler.py",
+    "backend/agent_runtime/embedded_context.py",
+    "backend/agent_runtime/orchestrator.py",
+    "backend/agent_runtime/skills.py",
+    "backend/agent_runtime/tool_registry.py",
+    "backend/agent_runtime/workspace_index.py",
+    "backend/api/app.py",
+    "backend/api/routes/changes.py",
+    "backend/api/routes/execute.py",
+    "backend/api/routes/terminal.py",
+    "backend/changes/service.py",
+    "backend/model_router/circuit.py",
+    "backend/model_router/opencode_catalog.py",
+    "backend/model_router/providers/opencode.py",
+    "backend/model_router/registry.py",
+    "backend/model_router/router.py",
+    "backend/runtime/windows_job.py",
+    "backend/services/platformio_service.py",
+    "backend/services/project_import_service.py",
+    "backend/services/terminal_service.py",
+    "backend/workspace/workspace_manager.py",
+    "electron/main.ts",
+    "electron/paths.ts",
+    "frontend/playwright.config.ts",
+    "harness/src/event-store.ts",
+    "harness/tests/runtime.test.mjs",
+    "model-router/src/engine.mjs",
+    "model-router/tests/engine.test.mjs",
+    "tests/api/test_api_routes.py",
+    "tests/unit/test_agent_jobs_and_tools.py",
+    "tests/unit/test_agent_orchestrator_v2.py"
+  ],
+  "added_inventory_sources": [
+    "backend/runtime/async_cleanup.py",
+    "backend/security/workspace_io.py",
+    "electron/port-validation.test.mjs",
+    "harness/tests/crash-recovery.test.mjs",
+    "scripts/test-conversations.mjs",
+    "scripts/test-conversations.py",
+    "tests/api/test_audit_remediation_api.py",
+    "tests/unit/test_audit_remediation.py",
+    "tests/unit/test_audit_remediation_durability.py",
+    "tests/unit/test_audit_remediation_provider.py",
+    "tests/unit/test_terminal_process_ownership.py"
+  ],
+  "other_changed_files": [
+    ".env.example",
+    "README.md",
+    "package.json",
+    "package-lock.json",
+    "backend/model_router/data/provider-quarantine.json"
+  ],
+  "unqualified": [
+    "native test sandbox implementation",
+    "quarantined SAP provider",
+    "MCP",
+    "Codex OAuth",
+    "Google consumer subscription OAuth",
+    "semantic agent loop consolidation",
+    "live external provider accounts",
+    "physical flash and serial cycles",
+    "Linux/macOS process and installer behavior",
+    "signed installer upgrade/uninstall",
+    "power-loss recovery"
+  ],
+  "environment": {
+    "platform": "Windows",
+    "python": "3.10.6",
+    "node": "24.14.0",
+    "npm": "11.9.0",
+    "node_dependency_engine_caveat": "ini@7.0.0 declares ^22.22.2 || ^24.15.0 || >=26.0.0; current Node is outside that range"
+  }
+}

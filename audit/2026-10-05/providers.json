@@ -1,0 +1,4484 @@
+[
+  {
+    "provider_id": "deepseek",
+    "display_name": "DeepSeek API",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek-chat",
+    "env_key": "DEEPSEEK_API_KEY",
+    "base_url": "https://api.deepseek.com",
+    "env_model": "DEEPSEEK_MODEL",
+    "models": [
+      "deepseek-chat",
+      "deepseek-reasoner"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "DEEPSEEK_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "anthropic",
+    "display_name": "Anthropic API",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "claude-sonnet-4-5",
+    "env_key": "ANTHROPIC_API_KEY",
+    "base_url": "https://api.anthropic.com/v1",
+    "env_model": "ANTHROPIC_MODEL",
+    "models": [
+      "claude-sonnet-4-5",
+      "claude-haiku-4-5"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 16,
+    "catalog_env": [
+      "ANTHROPIC_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "openrouter",
+    "display_name": "OpenRouter API",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "cohere/north-mini-code:free",
+    "env_key": "OPENROUTER_API_KEY",
+    "base_url": "https://openrouter.ai/api/v1",
+    "env_model": "OPENROUTER_MODEL",
+    "models": [
+      "cohere/north-mini-code:free",
+      "cohere/north-mini-code:free",
+      "opencode/union-alpha",
+      "openai/gpt-4o-mini",
+      "anthropic/claude-3.5-sonnet"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@openrouter/ai-sdk-provider",
+    "catalog_models": 390,
+    "catalog_env": [
+      "OPENROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "openai",
+    "display_name": "OpenAI API",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-4o-mini",
+    "env_key": "OPENAI_API_KEY",
+    "base_url": "https://api.openai.com/v1",
+    "env_model": "OPENAI_MODEL",
+    "models": [
+      "gpt-4o-mini",
+      "gpt-4.1-mini",
+      "gpt-4.1"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-responses",
+    "catalog_sdk": "@ai-sdk/openai",
+    "catalog_models": 53,
+    "catalog_env": [
+      "OPENAI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "groq",
+    "display_name": "Groq API",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "llama-3.3-70b-versatile",
+    "env_key": "GROQ_API_KEY",
+    "base_url": "https://api.groq.com/openai/v1",
+    "env_model": "GROQ_MODEL",
+    "models": [
+      "llama-3.3-70b-versatile",
+      "llama-3.1-8b-instant"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/groq",
+    "catalog_models": 16,
+    "catalog_env": [
+      "GROQ_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cerebras",
+    "display_name": "Cerebras",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-oss-120b",
+    "env_key": "CEREBRAS_API_KEY",
+    "base_url": "https://api.cerebras.ai/v1",
+    "env_model": "CEREBRAS_MODEL",
+    "models": [
+      "gpt-oss-120b"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/cerebras",
+    "catalog_models": 2,
+    "catalog_env": [
+      "CEREBRAS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nvidia_nim",
+    "display_name": "NVIDIA NIM",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "nvidia/nemotron-3-super-120b-a12b",
+    "env_key": "NVIDIA_API_KEY",
+    "base_url": "https://integrate.api.nvidia.com/v1",
+    "env_model": "NVIDIA_MODEL",
+    "models": [
+      "01-ai/yi-large",
+      "adept/fuyu-8b",
+      "ai21labs/jamba-1.5-large-instruct",
+      "aisingapore/sea-lion-7b-instruct",
+      "bigcode/starcoder2-15b",
+      "databricks/dbrx-instruct",
+      "deepseek-ai/deepseek-coder-6.7b-instruct",
+      "deepseek-ai/deepseek-v4-flash-0731",
+      "deepseek-ai/deepseek-v4-pro-0813",
+      "google/codegemma-1.1-7b",
+      "google/codegemma-7b",
+      "google/deplot",
+      "google/diffusiongemma-26b-a4b-it",
+      "google/gemma-2b",
+      "google/gemma-3-12b-it",
+      "google/gemma-3-4b-it",
+      "google/gemma-4-31b-it",
+      "google/recurrentgemma-2b",
+      "ibm/granite-3.0-3b-a800m-instruct",
+      "ibm/granite-3.0-8b-instruct",
+      "ibm/granite-34b-code-instruct",
+      "ibm/granite-8b-code-instruct",
+      "meta/codellama-70b",
+      "meta/llama2-70b",
+      "meta/llama-3.2-11b-vision-instruct",
+      "meta/llama-3.2-90b-vision-instruct",
+      "meta/llama-guard-4-12b",
+      "meta/muse-glimmer-30b",
+      "microsoft/kosmos-2",
+      "microsoft/phi-3.5-moe-instruct",
+      "microsoft/phi-3-vision-128k-instruct",
+      "mistralai/codestral-22b-instruct-v0.1",
+      "mistralai/mistral-7b-instruct-v0.3",
+      "mistralai/mistral-large",
+      "mistralai/mistral-large-2-instruct",
+      "mistralai/mistral-nemotron",
+      "mistralai/mixtral-8x22b-v0.1",
+      "moonshotai/kimi-k2.6",
+      "moonshotai/kimi-k3",
+      "nvidia/ai-synthetic-video-detector",
+      "nvidia/cosmos-reason2-8b",
+      "nvidia/embed-qa-4",
+      "nvidia/ising-calibration-1.5-31b",
+      "nvidia/llama-3.1-nemoguard-8b-content-safety",
+      "nvidia/llama-3.1-nemoguard-8b-topic-control",
+      "nvidia/llama-3.1-nemotron-51b-instruct",
+      "nvidia/llama-3.1-nemotron-70b-instruct",
+      "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+      "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+      "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+      "nvidia/llama-3.2-nv-embedqa-1b-v1",
+      "nvidia/llama3-chatqa-1.5-70b",
+      "nvidia/llama-nemotron-embed-vl-1b-v2",
+      "nvidia/mistral-nemo-minitron-8b-8k-instruct",
+      "nvidia/nemotron-3.5-content-safety",
+      "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "nvidia/nemotron-3-embed-1b",
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "nvidia/nemotron-3-super-120b-a12b",
+      "nvidia/nemotron-3-ultra-550b-a55b",
+      "nvidia/nemotron-4-340b-instruct",
+      "nvidia/nemotron-4-340b-reward",
+      "nvidia/nemotron-nano-3-30b-a3b",
+      "nvidia/nemotron-parse",
+      "nvidia/neva-22b",
+      "nvidia/nvclip",
+      "nvidia/nv-embedqa-mistral-7b-v2",
+      "nvidia/riva-translate-4b-instruct",
+      "nvidia/riva-translate-4b-instruct-v1.1",
+      "nvidia/riva-translate-4b-instruct-v2",
+      "nvidia/vila",
+      "nv-mistralai/mistral-nemo-12b-instruct",
+      "openai/gpt-oss-20b",
+      "poolside/laguna-xs-2.1",
+      "snowflake/arctic-embed-l",
+      "writer/palmyra-creative-122b",
+      "writer/palmyra-fin-70b-32k",
+      "writer/palmyra-med-70b",
+      "writer/palmyra-med-70b-32k",
+      "zyphra/zamba2-7b-instruct"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 106,
+    "catalog_env": [
+      "NVIDIA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "gemini",
+    "display_name": "Gemini API",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemini-2.5-flash",
+    "env_key": "GEMINI_API_KEY",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "env_model": "GEMINI_MODEL",
+    "models": [
+      "gemini-2.5-flash",
+      "gemini-2.5-pro"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "google-generate-content",
+    "catalog_sdk": "@ai-sdk/google",
+    "catalog_models": 39,
+    "catalog_env": [
+      "GOOGLE_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "GEMINI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "lmstudio",
+    "display_name": "LM Studio",
+    "auth_type": "none",
+    "local": true,
+    "default_model": "local-model",
+    "env_key": null,
+    "base_url": "http://localhost:1234/v1",
+    "env_model": "LMSTUDIO_MODEL",
+    "models": [
+      "local-model"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "LMSTUDIO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ollama",
+    "display_name": "Ollama",
+    "auth_type": "none",
+    "local": true,
+    "default_model": "llama3.1",
+    "env_key": null,
+    "base_url": "http://localhost:11434",
+    "env_model": "OLLAMA_MODEL",
+    "models": [
+      "llama3.1",
+      "codellama",
+      "mistral"
+    ],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": null,
+    "catalog_models": 0,
+    "catalog_env": []
+  },
+  {
+    "provider_id": "deepinfra",
+    "display_name": "Deep Infra",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "tencent/Hy3",
+    "env_key": "DEEPINFRA_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/deepinfra",
+    "catalog_models": 71,
+    "catalog_env": [
+      "DEEPINFRA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "perplexity-agent",
+    "display_name": "Perplexity Agent",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-haiku-4-5",
+    "env_key": "PERPLEXITY_API_KEY",
+    "base_url": "https://api.perplexity.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-responses",
+    "catalog_sdk": "@ai-sdk/openai",
+    "catalog_models": 22,
+    "catalog_env": [
+      "PERPLEXITY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "bailing",
+    "display_name": "Bailing",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Ring-1T",
+    "env_key": "BAILING_API_TOKEN",
+    "base_url": "https://api.tbox.cn/api/llm/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "BAILING_API_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "poe",
+    "display_name": "Poe",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "empiriolabs/deepseek-v4-pro-el",
+    "env_key": "POE_API_KEY",
+    "base_url": "https://api.poe.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 137,
+    "catalog_env": [
+      "POE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "blueclaw",
+    "display_name": "Blue Claw",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Qwen3.6-27B",
+    "env_key": "BLUECLAW_API_KEY",
+    "base_url": "https://openai.blueclaw.network/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "BLUECLAW_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zai",
+    "display_name": "Z.AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-4.6v",
+    "env_key": "ZHIPU_API_KEY",
+    "base_url": "https://api.z.ai/api/paas/v4",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 18,
+    "catalog_env": [
+      "ZHIPU_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "empiriolabs",
+    "display_name": "EmpirioLabs AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3-8-max-0902",
+    "env_key": "EMPIRIOLABS_API_KEY",
+    "base_url": "https://api.empiriolabs.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 66,
+    "catalog_env": [
+      "EMPIRIOLABS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "sensenova",
+    "display_name": "SenseNova (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kimi-k3",
+    "env_key": "SENSENOVA_API_KEY",
+    "base_url": "https://token.sensenova.cn/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "SENSENOVA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "alibaba-token-plan",
+    "display_name": "Alibaba Token Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.7-max",
+    "env_key": "ALIBABA_TOKEN_PLAN_API_KEY",
+    "base_url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 28,
+    "catalog_env": [
+      "ALIBABA_TOKEN_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cloudflare-workers-ai",
+    "display_name": "Cloudflare Workers AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "env_key": "CLOUDFLARE_API_KEY",
+    "base_url": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 27,
+    "catalog_env": [
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "engy",
+    "display_name": "engy",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.8-27b",
+    "env_key": "ENGY_API_KEY",
+    "base_url": "https://api.engy.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "ENGY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "poolside",
+    "display_name": "Poolside",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "poolside/laguna-s-2.1",
+    "env_key": "POOLSIDE_API_KEY",
+    "base_url": "https://inference.poolside.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "POOLSIDE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nano-gpt",
+    "display_name": "NanoGPT",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek-reasoner-cheaper",
+    "env_key": "NANO_GPT_API_KEY",
+    "base_url": "https://nano-gpt.com/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 600,
+    "catalog_env": [
+      "NANO_GPT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "abliteration-ai",
+    "display_name": "abliteration.ai",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "abliterated-model-large-v2",
+    "env_key": "ABLIT_KEY",
+    "base_url": "https://api.abliteration.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "ABLIT_KEY"
+    ]
+  },
+  {
+    "provider_id": "crof",
+    "display_name": "CrofAI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemma-4-31b-it",
+    "env_key": "CROF_API_KEY",
+    "base_url": "https://crof.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 24,
+    "catalog_env": [
+      "CROF_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "standardcompute",
+    "display_name": "Standard Compute",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "standardcompute",
+    "env_key": "STANDARDCOMPUTE_API_KEY",
+    "base_url": "https://api.stdcmpt.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@openrouter/ai-sdk-provider",
+    "catalog_models": 1,
+    "catalog_env": [
+      "STANDARDCOMPUTE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cloudferro-sherlock",
+    "display_name": "CloudFerro Sherlock",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "meta-llama/Llama-3.3-70B-Instruct",
+    "env_key": "CLOUDFERRO_SHERLOCK_API_KEY",
+    "base_url": "https://api-sherlock.cloudferro.com/openai/v1/",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "CLOUDFERRO_SHERLOCK_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tinfoil",
+    "display_name": "Tinfoil",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-oss-safeguard-120b",
+    "env_key": "TINFOIL_API_KEY",
+    "base_url": "https://inference.tinfoil.sh/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "TINFOIL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "llama",
+    "display_name": "Llama",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "llama-4-maverick-17b-128e-instruct-fp8",
+    "env_key": "LLAMA_API_KEY",
+    "base_url": "https://api.llama.com/compat/v1/",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "LLAMA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cohere",
+    "display_name": "Cohere",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "command-r-08-2024",
+    "env_key": "COHERE_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/cohere",
+    "catalog_models": 17,
+    "catalog_env": [
+      "COHERE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "baseten",
+    "display_name": "Baseten",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "thinkingmachines/inkling-small",
+    "env_key": "BASETEN_API_KEY",
+    "base_url": "https://inference.baseten.co/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 24,
+    "catalog_env": [
+      "BASETEN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nan",
+    "display_name": "NaN",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm5.3-flash",
+    "env_key": "NAN_API_KEY",
+    "base_url": "https://api.nan.builders/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "NAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "stepfun-ai-step-plan",
+    "display_name": "StepFun Step Plan (Global)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "step-5-preview",
+    "env_key": "STEPFUN_API_KEY",
+    "base_url": "https://api.stepfun.ai/step_plan/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "STEPFUN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nearai",
+    "display_name": "NEAR AI Cloud",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-haiku-4-5",
+    "env_key": "NEARAI_API_KEY",
+    "base_url": "https://cloud-api.near.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 32,
+    "catalog_env": [
+      "NEARAI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "wandb",
+    "display_name": "CoreWeave",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "JetBrains/Mellum2-12B-A2.5B-Instruct",
+    "env_key": "WANDB_API_KEY",
+    "base_url": "https://api.inference.wandb.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 29,
+    "catalog_env": [
+      "WANDB_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "subconscious",
+    "display_name": "Subconscious",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "subconscious/tim-qwen3.6-27b",
+    "env_key": "SUBCONSCIOUS_API_KEY",
+    "base_url": "https://api.subconscious.dev/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 2,
+    "catalog_env": [
+      "SUBCONSCIOUS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zeldoc",
+    "display_name": "Zeldoc",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "zdev",
+    "env_key": "ZELDOC_API_KEY",
+    "base_url": "https://api.zeldoc.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "ZELDOC_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "databricks",
+    "display_name": "Databricks",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "databricks-claude-opus-4-5",
+    "env_key": "DATABRICKS_TOKEN",
+    "base_url": "https://${DATABRICKS_HOST}/ai-gateway/mlflow/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 30,
+    "catalog_env": [
+      "DATABRICKS_HOST",
+      "DATABRICKS_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "umans-ai-coding-plan",
+    "display_name": "Umans AI Coding Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "umans-deepseek-v4.1-flash",
+    "env_key": "UMANS_AI_CODING_PLAN_API_KEY",
+    "base_url": "https://api.code.umans.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "UMANS_AI_CODING_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "kuae-cloud-coding-plan",
+    "display_name": "KUAE Cloud Coding Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "GLM-4.7",
+    "env_key": "KUAE_API_KEY",
+    "base_url": "https://coding-plan-endpoint.kuaecloud.net/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "KUAE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "umans-ai",
+    "display_name": "Umans AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "umans-deepseek-v4.1-flash",
+    "env_key": "UMANS_AI_API_KEY",
+    "base_url": "https://api.code.umans.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "UMANS_AI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "siliconflow",
+    "display_name": "SiliconFlow",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "ByteDance-Seed/Seed-OSS-36B-Instruct",
+    "env_key": "SILICONFLOW_API_KEY",
+    "base_url": "https://api.siliconflow.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 57,
+    "catalog_env": [
+      "SILICONFLOW_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "minimax-coding-plan",
+    "display_name": "MiniMax Token Plan (minimax.io)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "MiniMax-M3",
+    "env_key": "MINIMAX_API_KEY",
+    "base_url": "https://api.minimax.io/anthropic/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 8,
+    "catalog_env": [
+      "MINIMAX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "alibaba-coding-plan",
+    "display_name": "Alibaba Coding Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3-coder-next",
+    "env_key": "ALIBABA_CODING_PLAN_API_KEY",
+    "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 10,
+    "catalog_env": [
+      "ALIBABA_CODING_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "lilac",
+    "display_name": "Lilac",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google/gemma-4-31b-it",
+    "env_key": "LILAC_API_KEY",
+    "base_url": "https://api.getlilac.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "LILAC_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "moonshotai-cn",
+    "display_name": "Moonshot AI (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kimi-k2.7-code",
+    "env_key": "MOONSHOT_API_KEY",
+    "base_url": "https://api.moonshot.cn/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "MOONSHOT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "bothub",
+    "display_name": "Bothub",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemma-4-31b-it:free",
+    "env_key": "BOTHUB_API_KEY",
+    "base_url": "https://openai.bothub.ru/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "BOTHUB_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "xiaomi-token-plan-cn",
+    "display_name": "Xiaomi Token Plan (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro",
+    "env_key": "XIAOMI_API_KEY",
+    "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "XIAOMI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "privatemode-ai",
+    "display_name": "Privatemode AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-flash-latest",
+    "env_key": "PRIVATEMODE_API_KEY",
+    "base_url": "http://localhost:8080/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 11,
+    "catalog_env": [
+      "PRIVATEMODE_API_KEY",
+      "PRIVATEMODE_ENDPOINT"
+    ]
+  },
+  {
+    "provider_id": "llmgateway-providers",
+    "display_name": "LLM Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "consensusprotocol/gemma-4-31b-it",
+    "env_key": "LLMGATEWAY_API_KEY",
+    "base_url": "https://api.llmgateway.io/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 438,
+    "catalog_env": [
+      "LLMGATEWAY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "above",
+    "display_name": "above.dev",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro",
+    "env_key": "ABOVE_API_KEY",
+    "base_url": "https://api.above.dev/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 10,
+    "catalog_env": [
+      "ABOVE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "kilo",
+    "display_name": "Kilo Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "sao10k/l3-lunaris-8b",
+    "env_key": "KILO_API_KEY",
+    "base_url": "https://api.kilo.ai/api/gateway",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 397,
+    "catalog_env": [
+      "KILO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "venice",
+    "display_name": "Venice AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen-3-8-2-4t-a95b",
+    "env_key": "VENICE_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "venice-ai-sdk-provider",
+    "catalog_models": 116,
+    "catalog_env": [
+      "VENICE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "alibaba-token-plan-cn",
+    "display_name": "Alibaba Token Plan (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.7-max",
+    "env_key": "ALIBABA_TOKEN_PLAN_API_KEY",
+    "base_url": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 28,
+    "catalog_env": [
+      "ALIBABA_TOKEN_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ai21",
+    "display_name": "AI21 Labs",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "jamba-large",
+    "env_key": "AI21_API_KEY",
+    "base_url": "https://api.ai21.com/studio/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "AI21_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "inference",
+    "display_name": "Inference",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "meta/llama-3.1-8b-instruct",
+    "env_key": "INFERENCE_API_KEY",
+    "base_url": "https://inference.net/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "INFERENCE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "iflowcn",
+    "display_name": "iFlow",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3-vl-plus",
+    "env_key": "IFLOW_API_KEY",
+    "base_url": "https://apis.iflow.cn/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 14,
+    "catalog_env": [
+      "IFLOW_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "minimax-cn-coding-plan",
+    "display_name": "MiniMax Token Plan (minimax.cn)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "MiniMax-M3",
+    "env_key": "MINIMAX_API_KEY",
+    "base_url": "https://api.minimax.cn/anthropic/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 8,
+    "catalog_env": [
+      "MINIMAX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "thinkingmachines",
+    "display_name": "Thinking Machines",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "thinkingmachines/Inkling:peft:262144",
+    "env_key": "TINKER_API_KEY",
+    "base_url": "https://tinker.thinkingmachines.dev/services/tinker-prod/anthropic/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 2,
+    "catalog_env": [
+      "TINKER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "stepfun-step-plan",
+    "display_name": "StepFun Step Plan (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "step-5-preview",
+    "env_key": "STEPFUN_API_KEY",
+    "base_url": "https://api.stepfun.com/step_plan/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "STEPFUN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "melious",
+    "display_name": "Melious",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.3-flash",
+    "env_key": "MELIOUS_API_KEY",
+    "base_url": "https://api.melious.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 12,
+    "catalog_env": [
+      "MELIOUS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "berget",
+    "display_name": "Berget.AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google/gemma-4-31B-it",
+    "env_key": "BERGET_API_KEY",
+    "base_url": "https://api.berget.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 6,
+    "catalog_env": [
+      "BERGET_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "snowflake-cortex",
+    "display_name": "Snowflake Cortex",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "claude-haiku-4-5",
+    "env_key": "SNOWFLAKE_CORTEX_PAT",
+    "base_url": "https://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/api/v2/cortex/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 25,
+    "catalog_env": [
+      "SNOWFLAKE_ACCOUNT",
+      "SNOWFLAKE_CORTEX_PAT"
+    ]
+  },
+  {
+    "provider_id": "sarvam",
+    "display_name": "Sarvam AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "sarvam-30b",
+    "env_key": "SARVAM_API_KEY",
+    "base_url": "https://api.sarvam.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "SARVAM_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nova",
+    "display_name": "Nova",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "nova-2-pro-v1",
+    "env_key": "NOVA_API_KEY",
+    "base_url": "https://api.nova.amazon.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "NOVA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "abacus",
+    "display_name": "Abacus",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "ABACUS_API_KEY",
+    "base_url": "https://routellm.abacus.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 108,
+    "catalog_env": [
+      "ABACUS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "novita-ai",
+    "display_name": "NovitaAI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kwaipilot/kat-coder-pro",
+    "env_key": "NOVITA_API_KEY",
+    "base_url": "https://api.novita.ai/openai",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 107,
+    "catalog_env": [
+      "NOVITA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "302ai",
+    "display_name": "302.AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4-1-fast-reasoning",
+    "env_key": "302AI_API_KEY",
+    "base_url": "https://api.302.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 122,
+    "catalog_env": [
+      "302AI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "perplexity",
+    "display_name": "Perplexity",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "sonar-pro",
+    "env_key": "PERPLEXITY_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/perplexity",
+    "catalog_models": 4,
+    "catalog_env": [
+      "PERPLEXITY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "iteracompute",
+    "display_name": "IteraCompute",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek/deepseek-v4-flash-0731",
+    "env_key": "ITERACOMPUTE_API_KEY",
+    "base_url": "https://api.iteracompute.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "ITERACOMPUTE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "the-grid-ai",
+    "display_name": "The Grid AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "agent-prime",
+    "env_key": "THEGRID_API_KEY",
+    "base_url": "https://api.thegrid.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "THEGRID_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "meta",
+    "display_name": "Meta",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "muse-spark-1.3",
+    "env_key": "META_MODEL_API_KEY",
+    "base_url": "https://api.meta.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-responses",
+    "catalog_sdk": "@ai-sdk/openai",
+    "catalog_models": 5,
+    "catalog_env": [
+      "META_MODEL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cline-pass",
+    "display_name": "ClinePass",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "cline-pass/mimo-v2.6-pro",
+    "env_key": "CLINE_API_KEY",
+    "base_url": "https://api.cline.bot/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 18,
+    "catalog_env": [
+      "CLINE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "modal",
+    "display_name": "Modal",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "thinkingmachines/Inkling-NVFP4",
+    "env_key": "MODAL_PROXY_TOKEN",
+    "base_url": "https://inference.us-west.modal.direct/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "MODAL_PROXY_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "coralbricks",
+    "display_name": "CoralBricks",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.3-fp4",
+    "env_key": "CORAL_API_KEY",
+    "base_url": "https://inference.coralbricks.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "CORAL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "routing-run",
+    "display_name": "routing.run",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "nemotron-3-ultra",
+    "env_key": "ROUTING_RUN_API_KEY",
+    "base_url": "https://api.routing.run/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 15,
+    "catalog_env": [
+      "ROUTING_RUN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "echo",
+    "display_name": "Echo",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "echo",
+    "env_key": "ECHO_API_KEY",
+    "base_url": "https://echo.tracerml.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "ECHO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "neuralwatt",
+    "display_name": "Neuralwatt",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.2-short-fast",
+    "env_key": "NEURALWATT_API_KEY",
+    "base_url": "https://api.neuralwatt.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 29,
+    "catalog_env": [
+      "NEURALWATT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "gitlab",
+    "display_name": "GitLab Duo",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "duo-chat-gpt-5-4-nano",
+    "env_key": "GITLAB_TOKEN",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "gitlab-ai-provider",
+    "catalog_models": 30,
+    "catalog_env": [
+      "GITLAB_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "infer",
+    "display_name": "Infer by Flow7",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "infer/gpt-6-astra:official",
+    "env_key": "INFER_API_KEY",
+    "base_url": "https://infer.flow7.org/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-responses",
+    "catalog_sdk": "@ai-sdk/openai",
+    "catalog_models": 2,
+    "catalog_env": [
+      "INFER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "azure",
+    "display_name": "Azure",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4-1-fast-reasoning",
+    "env_key": "AZURE_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "azure",
+    "catalog_sdk": "@ai-sdk/azure",
+    "catalog_models": 94,
+    "catalog_env": [
+      "AZURE_RESOURCE_NAME",
+      "AZURE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "freemodel",
+    "display_name": "FreeModel",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "FREEMODEL_API_KEY",
+    "base_url": "https://cc.freemodel.dev/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 10,
+    "catalog_env": [
+      "FREEMODEL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "azure-cognitive-services",
+    "display_name": "Azure Cognitive Services",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "AZURE_COGNITIVE_SERVICES_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "azure",
+    "catalog_sdk": "@ai-sdk/azure",
+    "catalog_models": 86,
+    "catalog_env": [
+      "AZURE_COGNITIVE_SERVICES_RESOURCE_NAME",
+      "AZURE_COGNITIVE_SERVICES_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "pendra",
+    "display_name": "Pendra",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "llama3.3:70b",
+    "env_key": "PENDRA_API_KEY",
+    "base_url": "https://api.pendra.ai/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 6,
+    "catalog_env": [
+      "PENDRA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "moark",
+    "display_name": "Moark",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "GLM-4.7",
+    "env_key": "MOARK_API_KEY",
+    "base_url": "https://moark.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "MOARK_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "atomic-chat",
+    "display_name": "Atomic Chat",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemma-4-E4B-it-MLX-4bit",
+    "env_key": "ATOMIC_CHAT_API_KEY",
+    "base_url": "http://127.0.0.1:1337/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "ATOMIC_CHAT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "qihang-ai",
+    "display_name": "QiHang",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.2-codex",
+    "env_key": "QIHANG_API_KEY",
+    "base_url": "https://api.qhaigc.net/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "QIHANG_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ai-router",
+    "display_name": "AI-ROUTER",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "AI_ROUTER_API_KEY",
+    "base_url": "https://api.ai-router.dev/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "AI_ROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "llmtr",
+    "display_name": "LLMTR",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "muse-glimmer-30b-tr",
+    "env_key": "LLMTR_API_KEY",
+    "base_url": "https://llmtr.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 32,
+    "catalog_env": [
+      "LLMTR_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "alibaba",
+    "display_name": "Alibaba",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen-flash",
+    "env_key": "DASHSCOPE_API_KEY",
+    "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 59,
+    "catalog_env": [
+      "DASHSCOPE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "auriko",
+    "display_name": "Auriko",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen-3.6-plus",
+    "env_key": "AURIKO_API_KEY",
+    "base_url": "https://api.auriko.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 15,
+    "catalog_env": [
+      "AURIKO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zenmux",
+    "display_name": "ZenMux",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-opus-4.1",
+    "env_key": "ZENMUX_API_KEY",
+    "base_url": "https://zenmux.ai/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 129,
+    "catalog_env": [
+      "ZENMUX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "unorouter",
+    "display_name": "UnoRouter",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.5:free",
+    "env_key": "UNOROUTER_API_KEY",
+    "base_url": "https://api.unorouter.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 23,
+    "catalog_env": [
+      "UNOROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "salad-cloud",
+    "display_name": "SaladCloud AI Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.6-35b-a3b",
+    "env_key": "SALAD_CLOUD_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@saladtechnologies-oss/ai-sdk-provider",
+    "catalog_models": 1,
+    "catalog_env": [
+      "SALAD_CLOUD_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "vispark",
+    "display_name": "Vispark",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "vispark/vision-large",
+    "env_key": "VISPARK_LAB_API_KEY",
+    "base_url": "https://api.lab.vispark.in/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "VISPARK_LAB_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "siliconflow-cn",
+    "display_name": "SiliconFlow (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "ByteDance-Seed/Seed-OSS-36B-Instruct",
+    "env_key": "SILICONFLOW_CN_API_KEY",
+    "base_url": "https://api.siliconflow.cn/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 44,
+    "catalog_env": [
+      "SILICONFLOW_CN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "regolo-ai",
+    "display_name": "Regolo AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.8-27b",
+    "env_key": "REGOLO_API_KEY",
+    "base_url": "https://api.regolo.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 18,
+    "catalog_env": [
+      "REGOLO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "xiaomi-token-plan-ams",
+    "display_name": "Xiaomi Token Plan (Europe)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro",
+    "env_key": "XIAOMI_API_KEY",
+    "base_url": "https://token-plan-ams.xiaomimimo.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "XIAOMI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "inceptron",
+    "display_name": "Inceptron",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "env_key": "INCEPTRON_API_KEY",
+    "base_url": "https://api.inceptron.io/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "INCEPTRON_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "upstage",
+    "display_name": "Upstage",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "solar-pro4",
+    "env_key": "UPSTAGE_API_KEY",
+    "base_url": "https://api.upstage.ai/v1/solar",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "UPSTAGE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "vultr",
+    "display_name": "Vultr",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro-rl",
+    "env_key": "VULTR_API_KEY",
+    "base_url": "https://api.vultrinference.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 15,
+    "catalog_env": [
+      "VULTR_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "huggingface",
+    "display_name": "Hugging Face",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "tencent/Hy3",
+    "env_key": "HF_TOKEN",
+    "base_url": "https://router.huggingface.co/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 78,
+    "catalog_env": [
+      "HF_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "volcengine",
+    "display_name": "Volcengine Ark",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5-3-flash-260828",
+    "env_key": "ARK_API_KEY",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 16,
+    "catalog_env": [
+      "ARK_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "impossibl",
+    "display_name": "Impossibl",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "cerebras/gpt-oss-120b",
+    "env_key": "IMPOSSIBL_API_KEY",
+    "base_url": "https://api.impossibl.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 76,
+    "catalog_env": [
+      "IMPOSSIBL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "xpersona",
+    "display_name": "Xpersona",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "XPERSONA_API_KEY",
+    "base_url": "https://www.xpersona.co/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 13,
+    "catalog_env": [
+      "XPERSONA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "qiniu-ai",
+    "display_name": "Qiniu",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-4.5",
+    "env_key": "QINIU_API_KEY",
+    "base_url": "https://api.qnaigc.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 91,
+    "catalog_env": [
+      "QINIU_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "modelscope",
+    "display_name": "ModelScope",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "ZhipuAI/GLM-4.6",
+    "env_key": "MODELSCOPE_API_KEY",
+    "base_url": "https://api-inference.modelscope.cn/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "MODELSCOPE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "google",
+    "display_name": "Google",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemini-flash-latest",
+    "env_key": "GOOGLE_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "gemini",
+    "catalog_sdk": "@ai-sdk/google",
+    "catalog_models": 39,
+    "catalog_env": [
+      "GOOGLE_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "GEMINI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "vancine",
+    "display_name": "Vancine",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "MiniMax-M3",
+    "env_key": "VANCINE_API_KEY",
+    "base_url": "https://vancine.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "VANCINE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zhipuai-coding-plan",
+    "display_name": "Zhipu AI Coding Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.3-flash",
+    "env_key": "ZHIPU_API_KEY",
+    "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "ZHIPU_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "lucidquery",
+    "display_name": "LucidQuery",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "lucidquery-agi-01-frontier",
+    "env_key": "LUCIDQUERY_API_KEY",
+    "base_url": "https://api.lucidquery.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "LUCIDQUERY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "gmicloud",
+    "display_name": "GMI Cloud",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-opus-4.6",
+    "env_key": "GMICLOUD_API_KEY",
+    "base_url": "https://api.gmi-serving.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 17,
+    "catalog_env": [
+      "GMICLOUD_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "oci",
+    "display_name": "OCI Generative AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "xai.grok-4.3",
+    "env_key": "OCI_GENAI_API_KEY",
+    "base_url": "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "OCI_GENAI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cloudflare-ai-gateway",
+    "display_name": "Cloudflare AI Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-opus-4.5",
+    "env_key": "CLOUDFLARE_API_TOKEN",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "ai-gateway-provider",
+    "catalog_models": 50,
+    "catalog_env": [
+      "CLOUDFLARE_API_TOKEN",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_GATEWAY_ID"
+    ]
+  },
+  {
+    "provider_id": "clarifai",
+    "display_name": "Clarifai",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "minimaxai/chat-completion/models/MiniMax-M2_5-high-throughput",
+    "env_key": "CLARIFAI_PAT",
+    "base_url": "https://api.clarifai.com/v2/ext/openai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 12,
+    "catalog_env": [
+      "CLARIFAI_PAT"
+    ]
+  },
+  {
+    "provider_id": "aiand",
+    "display_name": "ai&",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "motif-technologies/motif-3",
+    "env_key": "AIAND_API_KEY",
+    "base_url": "https://api.aiand.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 13,
+    "catalog_env": [
+      "AIAND_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "frogbot",
+    "display_name": "FrogBot",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4-1-fast-reasoning",
+    "env_key": "FROGBOT_API_KEY",
+    "base_url": "https://app.frogbot.ai/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 26,
+    "catalog_env": [
+      "FROGBOT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "stackit",
+    "display_name": "STACKIT",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google/gemma-3-27b-it",
+    "env_key": "STACKIT_API_KEY",
+    "base_url": "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "STACKIT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "anyapi",
+    "display_name": "AnyAPI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-haiku-4-5",
+    "env_key": "ANYAPI_API_KEY",
+    "base_url": "https://api.anyapi.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 30,
+    "catalog_env": [
+      "ANYAPI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "crusoe",
+    "display_name": "Crusoe",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "zai/GLM-5.1",
+    "env_key": "CRUSOE_API_KEY",
+    "base_url": "https://api.inference.crusoecloud.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 11,
+    "catalog_env": [
+      "CRUSOE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "volcengine-coding-plan",
+    "display_name": "Volcengine Ark Coding Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "doubao-seed-2.0-lite",
+    "env_key": "ARK_CODING_PLAN_API_KEY",
+    "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 10,
+    "catalog_env": [
+      "ARK_CODING_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "jiekou",
+    "display_name": "Jiekou.AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4-1-fast-reasoning",
+    "env_key": "JIEKOU_API_KEY",
+    "base_url": "https://api.jiekou.ai/openai",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 61,
+    "catalog_env": [
+      "JIEKOU_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ollama-cloud",
+    "display_name": "Ollama Cloud",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.3-flash",
+    "env_key": "OLLAMA_API_KEY",
+    "base_url": "https://ollama.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 24,
+    "catalog_env": [
+      "OLLAMA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "agentrouter",
+    "display_name": "AgentRouter",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "claude-opus-5",
+    "env_key": "AGENTROUTER_API_KEY",
+    "base_url": "https://agentrouter.org/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "AGENTROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tencent-tokenhub",
+    "display_name": "Tencent TokenHub",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "hy3-preview",
+    "env_key": "TENCENT_TOKENHUB_API_KEY",
+    "base_url": "https://tokenhub.tencentmaas.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "TENCENT_TOKENHUB_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "watsonx",
+    "display_name": "watsonx.ai",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+    "env_key": "WATSONX_AI_APIKEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "watsonx-ai-provider",
+    "catalog_models": 5,
+    "catalog_env": [
+      "WATSONX_AI_APIKEY",
+      "WATSONX_AI_PROJECT_ID"
+    ]
+  },
+  {
+    "provider_id": "ambient",
+    "display_name": "Ambient",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek/deepseek-v4-flash-0731",
+    "env_key": "AMBIENT_API_KEY",
+    "base_url": "https://api.ambient.xyz/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 12,
+    "catalog_env": [
+      "AMBIENT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "model-oracle-ai",
+    "display_name": "Model Oracle AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "MODEL_ORACLE_API_KEY",
+    "base_url": "https://api.modeloracle.com/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 15,
+    "catalog_env": [
+      "MODEL_ORACLE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "xai",
+    "display_name": "xAI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4.7",
+    "env_key": "XAI_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/xai",
+    "catalog_models": 13,
+    "catalog_env": [
+      "XAI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nebius",
+    "display_name": "Nebius Token Factory",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google/gemma-3-27b-it",
+    "env_key": "NEBIUS_API_KEY",
+    "base_url": "https://api.tokenfactory.nebius.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 21,
+    "catalog_env": [
+      "NEBIUS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "minimax-cn",
+    "display_name": "MiniMax (minimax.cn)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "MiniMax-M3",
+    "env_key": "MINIMAX_API_KEY",
+    "base_url": "https://api.minimax.cn/anthropic/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 7,
+    "catalog_env": [
+      "MINIMAX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "scaleway",
+    "display_name": "Scaleway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.8-27b",
+    "env_key": "SCALEWAY_API_KEY",
+    "base_url": "https://api.scaleway.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 16,
+    "catalog_env": [
+      "SCALEWAY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "vercel",
+    "display_name": "Vercel AI Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "voyage/rerank-3-lite",
+    "env_key": "AI_GATEWAY_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/gateway",
+    "catalog_models": 403,
+    "catalog_env": [
+      "AI_GATEWAY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zai-coding-plan",
+    "display_name": "Z.AI Coding Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.3-flash",
+    "env_key": "ZHIPU_API_KEY",
+    "base_url": "https://api.z.ai/api/coding/paas/v4",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "ZHIPU_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ebcloud",
+    "display_name": "EBCloud",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Kimi-K2.6",
+    "env_key": "EBCLOUD_API_KEY",
+    "base_url": "https://maas-api.ebcloud.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "EBCLOUD_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "greenpt",
+    "display_name": "GreenPT",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5.2-honey-ultra",
+    "env_key": "GREENPT_API_KEY",
+    "base_url": "https://api.greenpt.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 40,
+    "catalog_env": [
+      "GREENPT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "mixlayer",
+    "display_name": "Mixlayer",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen/qwen3.5-27b",
+    "env_key": "MIXLAYER_API_KEY",
+    "base_url": "https://models.mixlayer.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "MIXLAYER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "hyper",
+    "display_name": "Charm Hyper",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.7-max",
+    "env_key": "HYPER_API_KEY",
+    "base_url": "https://hyper.charm.land/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 23,
+    "catalog_env": [
+      "HYPER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "jalapeno",
+    "display_name": "Jalapeno Cloud",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Qwen3-VL-235B-A22B-Instruct",
+    "env_key": "JALAPENO_API_KEY",
+    "base_url": "https://api.jalapeno-cloud.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 17,
+    "catalog_env": [
+      "JALAPENO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "dinference",
+    "display_name": "DInference",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5",
+    "env_key": "DINFERENCE_API_KEY",
+    "base_url": "https://api.dinference.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 6,
+    "catalog_env": [
+      "DINFERENCE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "neosmith",
+    "display_name": "NeoSmith",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "neosmith.neolite",
+    "env_key": "NEOSMITH_API_KEY",
+    "base_url": "https://router.neosmith.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-responses",
+    "catalog_sdk": "@ai-sdk/openai",
+    "catalog_models": 4,
+    "catalog_env": [
+      "NEOSMITH_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "fireworks-ai",
+    "display_name": "Fireworks AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+    "env_key": "FIREWORKS_API_KEY",
+    "base_url": "https://api.fireworks.ai/inference/v1/",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 22,
+    "catalog_env": [
+      "FIREWORKS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "stepfun-ai",
+    "display_name": "StepFun (Global)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "step-5-preview",
+    "env_key": "STEPFUN_API_KEY",
+    "base_url": "https://api.stepfun.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "STEPFUN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "fastrouter",
+    "display_name": "FastRouter",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-opus-4.1",
+    "env_key": "FASTROUTER_API_KEY",
+    "base_url": "https://go.fastrouter.ai/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 47,
+    "catalog_env": [
+      "FASTROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "orcarouter",
+    "display_name": "OrcaRouter",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok/grok-4.3",
+    "env_key": "ORCAROUTER_API_KEY",
+    "base_url": "https://api.orcarouter.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 117,
+    "catalog_env": [
+      "ORCAROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "friendli",
+    "display_name": "Friendli",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google/gemma-4-31B-it",
+    "env_key": "FRIENDLI_TOKEN",
+    "base_url": "https://api.friendli.ai/serverless/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "FRIENDLI_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "kimi-code-plan-cn",
+    "display_name": "Kimi For Coding (kimi.com)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kimi-for-coding-highspeed",
+    "env_key": "KIMI_API_KEY",
+    "base_url": "https://api.kimi.com/coding/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "KIMI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "inco",
+    "display_name": "Inco",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kimi-k3:fast",
+    "env_key": "INCO_API_KEY",
+    "base_url": "https://api.inco.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "INCO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "sakana",
+    "display_name": "Sakana AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "fugu-ultra",
+    "env_key": "SAKANA_API_KEY",
+    "base_url": "https://api.sakana.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "SAKANA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "scx-ai",
+    "display_name": "SCX.ai",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "GLM-5.2",
+    "env_key": "SCX_API_KEY",
+    "base_url": "https://api.scx.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "SCX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zenifra",
+    "display_name": "Zenifra",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "alibaba/qwen3.6-35b-a3b",
+    "env_key": "ZENIFRA_AI_KEY",
+    "base_url": "https://ai.zenifra.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "ZENIFRA_AI_KEY"
+    ]
+  },
+  {
+    "provider_id": "tokenrouter",
+    "display_name": "TokenRouter",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "z-ai/glm-5.3-free",
+    "env_key": "TOKENROUTER_API_KEY",
+    "base_url": "https://api.tokenrouter.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "TOKENROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "google-vertex-anthropic",
+    "display_name": "Vertex (Anthropic)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "claude-opus-4-8@default",
+    "env_key": null,
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/google-vertex/anthropic",
+    "catalog_models": 16,
+    "catalog_env": [
+      "GOOGLE_VERTEX_PROJECT",
+      "GOOGLE_VERTEX_LOCATION",
+      "GOOGLE_APPLICATION_CREDENTIALS"
+    ]
+  },
+  {
+    "provider_id": "moonshotai",
+    "display_name": "Moonshot AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kimi-k3",
+    "env_key": "MOONSHOT_API_KEY",
+    "base_url": "https://api.moonshot.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "MOONSHOT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ainetcafe",
+    "display_name": "ainetcafe",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Kimi-K3",
+    "env_key": "AINETCAFE_API_KEY",
+    "base_url": "https://microquickjs.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "AINETCAFE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "wallaby",
+    "display_name": "Wallaby",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "moonshotai/kimi-k3",
+    "env_key": "WALLABY_API_KEY",
+    "base_url": "https://api.wallabytoken.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "WALLABY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "bee",
+    "display_name": "Bee by HEOSSI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "bee-buzz",
+    "env_key": "BEE_API_KEY",
+    "base_url": "https://api.bee.heossi.com/bee",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 6,
+    "catalog_env": [
+      "BEE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "scnet-token-plan",
+    "display_name": "SCNet Token Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "DeepSeek-V4-Flash-0731",
+    "env_key": "SCNET_API_KEY",
+    "base_url": "https://api.scnet.cn/api/llm/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 19,
+    "catalog_env": [
+      "SCNET_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ofox",
+    "display_name": "Ofox",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "bailian/qwen-flash",
+    "env_key": "OFOX_API_KEY",
+    "base_url": "https://api.ofox.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 151,
+    "catalog_env": [
+      "OFOX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "neon",
+    "display_name": "Neon",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5-4-mini",
+    "env_key": "NEON_AI_GATEWAY_TOKEN",
+    "base_url": "${NEON_AI_GATEWAY_BASE_URL}/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 47,
+    "catalog_env": [
+      "NEON_AI_GATEWAY_BASE_URL",
+      "NEON_AI_GATEWAY_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "aihubmix",
+    "display_name": "AIHubMix",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-4.6v",
+    "env_key": "AIHUBMIX_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@aihubmix/ai-sdk-provider",
+    "catalog_models": 137,
+    "catalog_env": [
+      "AIHUBMIX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "merge-gateway",
+    "display_name": "Merge Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "zai/glm-4.5",
+    "env_key": "MERGE_GATEWAY_API_KEY",
+    "base_url": "https://api-gateway.merge.dev/v1/ai-sdk",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "merge-gateway-ai-sdk-provider",
+    "catalog_models": 195,
+    "catalog_env": [
+      "MERGE_GATEWAY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "opper",
+    "display_name": "Opper",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "OPPER_API_KEY",
+    "base_url": "https://api.opper.ai/v3/compat",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 57,
+    "catalog_env": [
+      "OPPER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "nvidia",
+    "display_name": "Nvidia",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "baai/bge-m3",
+    "env_key": "NVIDIA_API_KEY",
+    "base_url": "https://integrate.api.nvidia.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 106,
+    "catalog_env": [
+      "NVIDIA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "pioneer",
+    "display_name": "Pioneer",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "PIONEER_API_KEY",
+    "base_url": "https://api.fastino.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 116,
+    "catalog_env": [
+      "PIONEER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "xiaomi",
+    "display_name": "Xiaomi",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro",
+    "env_key": "XIAOMI_API_KEY",
+    "base_url": "https://api.xiaomimimo.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "XIAOMI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "xiaomi-token-plan-sgp",
+    "display_name": "Xiaomi Token Plan (Singapore)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro",
+    "env_key": "XIAOMI_API_KEY",
+    "base_url": "https://token-plan-sgp.xiaomimimo.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "XIAOMI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "minimax",
+    "display_name": "MiniMax (minimax.io)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "MiniMax-M3",
+    "env_key": "MINIMAX_API_KEY",
+    "base_url": "https://api.minimax.io/anthropic/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "anthropic-messages",
+    "catalog_sdk": "@ai-sdk/anthropic",
+    "catalog_models": 7,
+    "catalog_env": [
+      "MINIMAX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "github-copilot",
+    "display_name": "GitHub Copilot",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "GITHUB_TOKEN",
+    "base_url": "https://api.githubcopilot.com",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 34,
+    "catalog_env": [
+      "GITHUB_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "inferx",
+    "display_name": "InferX",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemma-4-31B-it-fp8",
+    "env_key": "INFERX_API_KEY",
+    "base_url": "https://model.inferx.net/endpoints/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 12,
+    "catalog_env": [
+      "INFERX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "opencode-go",
+    "display_name": "OpenCode Go",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mimo-v2.6-pro",
+    "env_key": "OPENCODE_API_KEY",
+    "base_url": "https://opencode.ai/zen/go/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 33,
+    "catalog_env": [
+      "OPENCODE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "openreason",
+    "display_name": "OpenReason",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek-ai/deepseek-v4-flash-0731",
+    "env_key": "OPENREASON_API_KEY",
+    "base_url": "https://api.openreason.app/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "OPENREASON_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "aki-io",
+    "display_name": "AKI.IO",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.8-27b",
+    "env_key": "AKI_IO_API_KEY",
+    "base_url": "https://aki.io/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "AKI_IO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tensorx",
+    "display_name": "TensorX",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek/deepseek-v4-flash-0731",
+    "env_key": "TENSORX_API_KEY",
+    "base_url": "https://api.tensorx.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 25,
+    "catalog_env": [
+      "TENSORX_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "longcat",
+    "display_name": "LongCat",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "LongCat-2.0",
+    "env_key": "LONGCAT_API_KEY",
+    "base_url": "https://api.longcat.chat/openai",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "LONGCAT_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "pareto",
+    "display_name": "Pareto Inference",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "z-ai/glm-5.3-flash",
+    "env_key": "PARETO_API_KEY",
+    "base_url": "https://api.paretoinference.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "PARETO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "chutes",
+    "display_name": "Chutes",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "unsloth/Mistral-Nemo-Instruct-2407-TEE",
+    "env_key": "CHUTES_API_KEY",
+    "base_url": "https://llm.chutes.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 14,
+    "catalog_env": [
+      "CHUTES_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "edenai",
+    "display_name": "Eden AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepinfra/nemotron-3-ultra-550b-a55b",
+    "env_key": "EDENAI_API_KEY",
+    "base_url": "https://api.edenai.run/v3",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 291,
+    "catalog_env": [
+      "EDENAI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "stepfun",
+    "display_name": "StepFun (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "step-1-32k",
+    "env_key": "STEPFUN_API_KEY",
+    "base_url": "https://api.stepfun.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "STEPFUN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "hpc-ai",
+    "display_name": "HPC-AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-opus-4.7",
+    "env_key": "HPC_AI_API_KEY",
+    "base_url": "https://api.hpc-ai.com/inference/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "HPC_AI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "v0",
+    "display_name": "v0",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "v0-1.5-lg",
+    "env_key": "V0_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/vercel",
+    "catalog_models": 3,
+    "catalog_env": [
+      "V0_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tencent-coding-plan",
+    "display_name": "Tencent Coding Plan (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "hunyuan-2.0-thinking",
+    "env_key": "TENCENT_CODING_PLAN_API_KEY",
+    "base_url": "https://api.lkeap.cloud.tencent.com/coding/v3",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 8,
+    "catalog_env": [
+      "TENCENT_CODING_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tempr",
+    "display_name": "Tempr Gateway",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "xiaomi-mimo/mimo-v2.6-pro",
+    "env_key": "TEMPR_API_KEY",
+    "base_url": "https://api.temprhq.io/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 82,
+    "catalog_env": [
+      "TEMPR_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "inception",
+    "display_name": "Inception",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mercury-edit-2",
+    "env_key": "INCEPTION_API_KEY",
+    "base_url": "https://api.inceptionlabs.ai/v1/",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "INCEPTION_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "modelis",
+    "display_name": "Modelis",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gemini-2.5-pro",
+    "env_key": "MODELIS_API_KEY",
+    "base_url": "https://modelishub.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "MODELIS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "opencode",
+    "display_name": "OpenCode Zen",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "ling-3.0-flash-fin-free",
+    "env_key": "OPENCODE_API_KEY",
+    "base_url": "https://opencode.ai/zen/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 116,
+    "catalog_env": [
+      "OPENCODE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "kenari",
+    "display_name": "Kenari",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5-4-mini",
+    "env_key": "KENARI_API_KEY",
+    "base_url": "https://kenari.id/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 60,
+    "catalog_env": [
+      "KENARI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "kimi-code-plan-global",
+    "display_name": "Kimi For Coding (kimi.ai)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "kimi-for-coding-highspeed",
+    "env_key": "KIMI_API_KEY",
+    "base_url": "https://api.kimi.ai/coding/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 4,
+    "catalog_env": [
+      "KIMI_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "trustedrouter",
+    "display_name": "TrustedRouter",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "trustedrouter/cheap",
+    "env_key": "TRUSTEDROUTER_API_KEY",
+    "base_url": "https://api.trustedrouter.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "TRUSTEDROUTER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "wafer.ai",
+    "display_name": "Wafer",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Kimi-K2.6",
+    "env_key": "WAFER_API_KEY",
+    "base_url": "https://pass.wafer.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 5,
+    "catalog_env": [
+      "WAFER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "zhipuai",
+    "display_name": "Zhipu AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "glm-5v-turbo",
+    "env_key": "ZHIPU_API_KEY",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 17,
+    "catalog_env": [
+      "ZHIPU_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "lynkr",
+    "display_name": "Lynkr",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "lynkr-auto",
+    "env_key": "LYNKR_API_KEY",
+    "base_url": "http://127.0.0.1:8081/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "LYNKR_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "meganova",
+    "display_name": "Meganova",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "meta-llama/Llama-3.3-70B-Instruct",
+    "env_key": "MEGANOVA_API_KEY",
+    "base_url": "https://api.meganova.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 19,
+    "catalog_env": [
+      "MEGANOVA_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "ovhcloud",
+    "display_name": "OVHcloud AI Endpoints",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.8-27b",
+    "env_key": "OVHCLOUD_API_KEY",
+    "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 14,
+    "catalog_env": [
+      "OVHCLOUD_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "requesty",
+    "display_name": "Requesty",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "ring-2.6-1t",
+    "env_key": "REQUESTY_API_KEY",
+    "base_url": "https://router.requesty.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 166,
+    "catalog_env": [
+      "REQUESTY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "mistral",
+    "display_name": "Mistral",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "open-mistral-nemo",
+    "env_key": "MISTRAL_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/mistral",
+    "catalog_models": 34,
+    "catalog_env": [
+      "MISTRAL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "amazon-bedrock",
+    "display_name": "Amazon Bedrock",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google.gemma-3-12b-it",
+    "env_key": "AWS_BEARER_TOKEN_BEDROCK",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "bedrock-converse",
+    "catalog_sdk": "@ai-sdk/amazon-bedrock",
+    "catalog_models": 191,
+    "catalog_env": [
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_REGION",
+      "AWS_BEARER_TOKEN_BEDROCK"
+    ]
+  },
+  {
+    "provider_id": "synthetic",
+    "display_name": "Synthetic",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "hf:moonshotai/Kimi-K3",
+    "env_key": "SYNTHETIC_API_KEY",
+    "base_url": "https://api.synthetic.new/openai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 11,
+    "catalog_env": [
+      "SYNTHETIC_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "llmgateway",
+    "display_name": "DevPass (LLM Gateway)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4-1-fast-reasoning",
+    "env_key": "LLMGATEWAY_API_KEY",
+    "base_url": "https://api.llmgateway.io/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 214,
+    "catalog_env": [
+      "LLMGATEWAY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "sap-ai-core",
+    "display_name": "SAP AI Core",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic--claude-4-opus",
+    "env_key": "AICORE_SERVICE_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@jerome-benoit/sap-ai-provider-v2",
+    "catalog_models": 50,
+    "catalog_env": [
+      "AICORE_SERVICE_KEY"
+    ]
+  },
+  {
+    "provider_id": "vivgrid",
+    "display_name": "Vivgrid",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "viv-fast",
+    "env_key": "VIVGRID_API_KEY",
+    "base_url": "https://api.vivgrid.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-responses",
+    "catalog_sdk": "@ai-sdk/openai",
+    "catalog_models": 36,
+    "catalog_env": [
+      "VIVGRID_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "klokintegration",
+    "display_name": "klokintegration.se",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Kloker-Integration-Developer",
+    "env_key": "KLOKINTEGRATION_API_KEY",
+    "base_url": "https://api-gw.klok.ipaas.se/proxy/kloker-key/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "KLOKINTEGRATION_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "google-vertex",
+    "display_name": "Vertex",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "claude-opus-4-8@default",
+    "env_key": null,
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@ai-sdk/google-vertex",
+    "catalog_models": 54,
+    "catalog_env": [
+      "GOOGLE_VERTEX_PROJECT",
+      "GOOGLE_VERTEX_LOCATION",
+      "GOOGLE_APPLICATION_CREDENTIALS"
+    ]
+  },
+  {
+    "provider_id": "evroc",
+    "display_name": "evroc",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "google/gemma-4-26B-A4B-it",
+    "env_key": "EVROC_API_KEY",
+    "base_url": "https://models.think.evroc.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 16,
+    "catalog_env": [
+      "EVROC_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tokengo",
+    "display_name": "TokenGo",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek/deepseek-v3.1",
+    "env_key": "TOKENGO_API_KEY",
+    "base_url": "https://api.tokengo.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 13,
+    "catalog_env": [
+      "TOKENGO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "submodel",
+    "display_name": "submodel",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+    "env_key": "SUBMODEL_INSTAGEN_ACCESS_KEY",
+    "base_url": "https://llm.submodel.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "SUBMODEL_INSTAGEN_ACCESS_KEY"
+    ]
+  },
+  {
+    "provider_id": "kosmik",
+    "display_name": "Kosmik Compute",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen/qwen3.8-27b",
+    "env_key": "KOSMIK_API_KEY",
+    "base_url": "https://api.koscompute.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "KOSMIK_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "tencent-token-plan",
+    "display_name": "Tencent Token Plan",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "hy3",
+    "env_key": "TENCENT_TOKEN_PLAN_API_KEY",
+    "base_url": "https://api.lkeap.cloud.tencent.com/plan/v3",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "TENCENT_TOKEN_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "togetherai",
+    "display_name": "Together AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "env_key": "TOGETHER_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/togetherai",
+    "catalog_models": 29,
+    "catalog_env": [
+      "TOGETHER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "helicone",
+    "display_name": "Helicone",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "grok-4-1-fast-reasoning",
+    "env_key": "HELICONE_API_KEY",
+    "base_url": "https://ai-gateway.helicone.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 90,
+    "catalog_env": [
+      "HELICONE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "cortecs",
+    "display_name": "Cortecs",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "CORTECS_API_KEY",
+    "base_url": "https://api.cortecs.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 109,
+    "catalog_env": [
+      "CORTECS_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "agnes",
+    "display_name": "Agnes AI",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "agnes-2.5-pro-alpha",
+    "env_key": "AGNES_API_KEY",
+    "base_url": "https://apihub.agnes-ai.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "AGNES_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "daoxe",
+    "display_name": "DaoXE",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "gpt-5.4",
+    "env_key": "DAOXE_API_KEY",
+    "base_url": "https://daoxe.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 9,
+    "catalog_env": [
+      "DAOXE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "morph",
+    "display_name": "Morph",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "morph-v3-large",
+    "env_key": "MORPH_API_KEY",
+    "base_url": "https://api.morphllm.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "MORPH_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "alibaba-coding-plan-cn",
+    "display_name": "Alibaba Coding Plan (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3-coder-next",
+    "env_key": "ALIBABA_CODING_PLAN_API_KEY",
+    "base_url": "https://coding.dashscope.aliyuncs.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 10,
+    "catalog_env": [
+      "ALIBABA_CODING_PLAN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "io-net",
+    "display_name": "IO.NET",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "meta-llama/Llama-3.2-90B-Vision-Instruct",
+    "env_key": "IOINTELLIGENCE_API_KEY",
+    "base_url": "https://api.intelligence.io.solutions/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 17,
+    "catalog_env": [
+      "IOINTELLIGENCE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "infomaniak",
+    "display_name": "Infomaniak",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "mini_lm_l12_v2",
+    "env_key": "INFOMANIAK_API_KEY",
+    "base_url": "https://api.infomaniak.com/2/ai/${INFOMANIAK_PRODUCT_ID}/openai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 10,
+    "catalog_env": [
+      "INFOMANIAK_API_KEY",
+      "INFOMANIAK_PRODUCT_ID"
+    ]
+  },
+  {
+    "provider_id": "llmtech",
+    "display_name": "LLM Tech",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "nvidia/Qwen3.8-27B-NVFP4",
+    "env_key": "LLMTECH_API_KEY",
+    "base_url": "https://api.llmtech.eu/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "LLMTECH_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "crossmodel",
+    "display_name": "CrossModel",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "anthropic/claude-haiku-4-5",
+    "env_key": "CROSSMODEL_API_KEY",
+    "base_url": "https://api.crossmodel.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 68,
+    "catalog_env": [
+      "CROSSMODEL_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "arcee",
+    "display_name": "Arcee",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "trinity-large-thinking",
+    "env_key": "ARCEE_API_KEY",
+    "base_url": "https://api.arcee.ai/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "ARCEE_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "drun",
+    "display_name": "D.Run (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "public/deepseek-v3",
+    "env_key": "DRUN_API_KEY",
+    "base_url": "https://chat.d.run/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 3,
+    "catalog_env": [
+      "DRUN_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "amd",
+    "display_name": "AMD",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Qwen3.8-27B",
+    "env_key": "AMD_API_KEY",
+    "base_url": "https://developer.amd.com.cn/radeon/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 6,
+    "catalog_env": [
+      "AMD_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "qvac",
+    "display_name": "QVAC",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen3.5-0.8b",
+    "env_key": "QVAC_API_KEY",
+    "base_url": null,
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "sdk",
+    "catalog_sdk": "@qvac/ai-sdk-provider",
+    "catalog_models": 9,
+    "catalog_env": [
+      "QVAC_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "claudinio",
+    "display_name": "Claudinio",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "claudinio",
+    "env_key": "CLAUDINIO_API_KEY",
+    "base_url": "https://api.claudin.io/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "CLAUDINIO_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "runinfra",
+    "display_name": "RunInfra",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Inferact/Qwen3.8-2.4T-A95B-NVFP4",
+    "env_key": "RUNINFRA_GATEWAY_KEY",
+    "base_url": "https://api.runinfra.ai/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 7,
+    "catalog_env": [
+      "RUNINFRA_GATEWAY_KEY"
+    ]
+  },
+  {
+    "provider_id": "hetzner",
+    "display_name": "Hetzner",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "Qwen3.8-27B",
+    "env_key": "HETZNER_API_KEY",
+    "base_url": "https://inference.hetzner.com/api/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 2,
+    "catalog_env": [
+      "HETZNER_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "digitalocean",
+    "display_name": "DigitalOcean",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "deepseek-3.2",
+    "env_key": "DIGITALOCEAN_ACCESS_TOKEN",
+    "base_url": "https://inference.do-ai.run/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 101,
+    "catalog_env": [
+      "DIGITALOCEAN_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "provider_id": "aixy",
+    "display_name": "Aixy",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "openai/gpt-4.1-mini",
+    "env_key": "AIXY_API_KEY",
+    "base_url": "https://api.aixy-gateway.com/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 1,
+    "catalog_env": [
+      "AIXY_API_KEY"
+    ]
+  },
+  {
+    "provider_id": "alibaba-cn",
+    "display_name": "Alibaba (China)",
+    "auth_type": "api_key",
+    "local": false,
+    "default_model": "qwen-flash",
+    "env_key": "DASHSCOPE_API_KEY",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "env_model": null,
+    "models": [],
+    "available": true,
+    "provider_type": "api_provider",
+    "protocol": "openai-completions",
+    "catalog_sdk": "@ai-sdk/openai-compatible",
+    "catalog_models": 91,
+    "catalog_env": [
+      "DASHSCOPE_API_KEY"
+    ]
+  }
+]

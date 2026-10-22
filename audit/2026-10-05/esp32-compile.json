@@ -1,0 +1,91 @@
+{
+  "success": true,
+  "status": "ResultStatus.SUCCESS",
+  "message": "PlatformIO build succeeded: firmware.bin",
+  "platform_version": "7.0.1",
+  "metadata": {
+    "command": [
+      "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "run",
+      "--project-dir",
+      "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\esp32-fixture",
+      "--environment",
+      "esp32dev"
+    ],
+    "environment": "esp32dev",
+    "configured_environments": [
+      "esp32dev"
+    ],
+    "output_truncated": false,
+    "build_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\esp32-fixture\\.pio\\build",
+    "version_probe_failed": false,
+    "ram_used_bytes": 21464,
+    "ram_total_bytes": 327680,
+    "flash_used_bytes": 266973,
+    "flash_total_bytes": 1310720,
+    "artifact_type": "bin",
+    "artifact_environment": "esp32dev",
+    "artifacts": [
+      "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\esp32-fixture\\.pio\\build\\esp32dev\\firmware.bin",
+      "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\esp32-fixture\\.pio\\build\\esp32dev\\firmware.elf"
+    ],
+    "partition_preflight": {
+      "success": true,
+      "environment": "esp32dev",
+      "validated_environments": [],
+      "validation": "canonical_platformio_build"
+    },
+    "toolchain": {
+      "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+      "version": "6.2.0",
+      "environment": "esp32dev",
+      "board": "esp32dev"
+    },
+    "artifact_manifest": {
+      "schema_version": 1,
+      "chip": "esp32",
+      "environment": "esp32dev",
+      "board": "esp32dev",
+      "toolchain": {
+        "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+        "version": "6.2.0",
+        "environment": "esp32dev",
+        "board": "esp32dev"
+      },
+      "images": [
+        {
+          "role": "bootloader",
+          "offset": 4096,
+          "sha256": "3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8",
+          "size_bytes": 17536,
+          "filename": "bootloader.bin"
+        },
+        {
+          "role": "partitions",
+          "offset": 32768,
+          "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1",
+          "size_bytes": 3072,
+          "filename": "partitions.bin"
+        },
+        {
+          "role": "ota_data",
+          "offset": 57344,
+          "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+          "size_bytes": 8192,
+          "filename": "ota_data.bin"
+        },
+        {
+          "role": "application",
+          "offset": 65536,
+          "sha256": "34c6f0c4ecba1bf2fd148d87388d476c752d2b0beabeb59f1fef3a9c5efcbac6",
+          "size_bytes": 267344,
+          "filename": "application.bin"
+        }
+      ],
+      "sha256": "536f9f5227ecad8131230346b1cf89f2604b77dd9962a1f25207c7c2c793a4ae",
+      "artifact_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-05\\compiler-artifacts\\536f9f5227ecad8131230346b1cf89f2604b77dd9962a1f25207c7c2c793a4ae"
+    },
+    "flash_ready": true
+  },
+  "hardware_verified": false
+}

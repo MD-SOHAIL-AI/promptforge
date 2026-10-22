@@ -1,0 +1,78 @@
+{
+  "run_id": "agent-run-2f0412b3c7b04e69a020a072b0514f67",
+  "project_id": "external-new-folder-17e0f79e27",
+  "status": "failed",
+  "classification": "BUILD_TOOL_UNAVAILABLE",
+  "build_result": {
+    "error_code": "AGENT_PROJECT_TRUST_REQUIRED",
+    "message": "The draft is saved. Mark this project as trusted before running its local build or native tests.",
+    "success": false,
+    "terminal": true
+  },
+  "build_verified": false,
+  "change_set_id": "changeset-2d45afc5cbb24cccb9e2cd7d3d679f1d",
+  "recoverable": true,
+  "recovery": null,
+  "stage_statuses": {
+    "build": "failed",
+    "changes": "pending",
+    "flash": "pending",
+    "flash_confirmation": "pending",
+    "generation": "pending",
+    "monitor": "pending",
+    "planning": "pending",
+    "repair": "pending"
+  },
+  "stage_messages": {
+    "build": "The draft is saved. Mark this project as trusted before running its local build or native tests."
+  },
+  "tool_execution_count": 10,
+  "trust_record_exists": false,
+  "trusted_for_original_workspace": false,
+  "job": {
+    "status": "failed",
+    "blocking_reason": null,
+    "paused_by": null,
+    "limits": {
+      "elapsed_seconds": 900,
+      "input_bytes": 8000000,
+      "output_tokens": 245760,
+      "requests": 120,
+      "tool_calls_used": 100
+    },
+    "consumed": {
+      "elapsed_seconds": 310.75,
+      "input_bytes": 435299,
+      "output_tokens": 13939,
+      "requests": 11,
+      "tool_calls_used": 9
+    }
+  },
+  "log": ".forgex\\logs\\live-runtime.backend-edd0287df871493e9b02c8a1de172431.jsonl",
+  "events": [
+    {
+      "line": 331,
+      "timestamp": "2026-10-05T15:54:01.532790Z",
+      "event": "agent.tool.requested",
+      "tool": "build_firmware",
+      "classification": null,
+      "message": "Tool call queued"
+    },
+    {
+      "line": 332,
+      "timestamp": "2026-10-05T15:54:01.534997Z",
+      "event": "tool.pending",
+      "tool": "build_firmware",
+      "classification": null,
+      "message": "Tool call queued"
+    },
+    {
+      "line": 337,
+      "timestamp": "2026-10-05T15:54:02.254466Z",
+      "event": "agent.run.failed",
+      "tool": null,
+      "classification": "BUILD_TOOL_UNAVAILABLE",
+      "message": "The draft is saved. Mark this project as trusted before running its local build or native tests. Generated files were saved as an unverified recovery draft. Retry to repair and validate them."
+    }
+  ]
+}

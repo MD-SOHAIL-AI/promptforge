@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-10-10T16:09:07.096Z",
+  "passed": true,
+  "checks": [
+    {
+      "name": "standalone middleware identifies the backend",
+      "passed": true
+    },
+    {
+      "name": "concurrent run, graph and queue observations share a slow in-flight health probe",
+      "passed": true
+    },
+    {
+      "name": "mutation method, query, body, auth and request ID reach the backend once",
+      "passed": true
+    },
+    {
+      "name": "SSE reaches the renderer incrementally",
+      "passed": true
+    },
+    {
+      "name": "unrelated listener receives no mutation",
+      "passed": true
+    },
+    {
+      "name": "absent backend produces a structured unavailable response",
+      "passed": true
+    }
+  ]
+}

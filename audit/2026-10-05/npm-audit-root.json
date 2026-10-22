@@ -1,0 +1,252 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@jerome-benoit/sap-ai-provider-v2": {
+      "name": "@jerome-benoit/sap-ai-provider-v2",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@sap-ai-sdk/ai-api",
+        "@sap-ai-sdk/core",
+        "@sap-ai-sdk/foundation-models",
+        "@sap-ai-sdk/orchestration",
+        "@sap-cloud-sdk/connectivity"
+      ],
+      "effects": [],
+      "range": "*",
+      "nodes": [
+        "node_modules/@jerome-benoit/sap-ai-provider-v2"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@sap-ai-sdk/ai-api": {
+      "name": "@sap-ai-sdk/ai-api",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-ai-sdk/core",
+        "@sap-cloud-sdk/connectivity"
+      ],
+      "effects": [
+        "@sap-ai-sdk/orchestration"
+      ],
+      "range": ">=2.4.1-20251224013338.0",
+      "nodes": [
+        "node_modules/@sap-ai-sdk/ai-api"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@sap-ai-sdk/core": {
+      "name": "@sap-ai-sdk/core",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-cloud-sdk/connectivity",
+        "@sap-cloud-sdk/http-client",
+        "@sap-cloud-sdk/openapi"
+      ],
+      "effects": [
+        "@sap-ai-sdk/prompt-registry"
+      ],
+      "range": ">=2.4.1-20251224013338.0",
+      "nodes": [
+        "node_modules/@sap-ai-sdk/core"
+      ],
+      "fixAvailable": true
+    },
+    "@sap-ai-sdk/foundation-models": {
+      "name": "@sap-ai-sdk/foundation-models",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-ai-sdk/ai-api",
+        "@sap-ai-sdk/core",
+        "@sap-cloud-sdk/connectivity",
+        "@sap-cloud-sdk/http-client"
+      ],
+      "effects": [
+        "@jerome-benoit/sap-ai-provider-v2"
+      ],
+      "range": ">=2.4.1-20251224013338.0",
+      "nodes": [
+        "node_modules/@sap-ai-sdk/foundation-models"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@sap-ai-sdk/orchestration": {
+      "name": "@sap-ai-sdk/orchestration",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-ai-sdk/ai-api",
+        "@sap-ai-sdk/core",
+        "@sap-ai-sdk/prompt-registry"
+      ],
+      "effects": [
+        "@jerome-benoit/sap-ai-provider-v2"
+      ],
+      "range": ">=2.4.1-20251224013338.0",
+      "nodes": [
+        "node_modules/@sap-ai-sdk/orchestration"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@sap-ai-sdk/prompt-registry": {
+      "name": "@sap-ai-sdk/prompt-registry",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-ai-sdk/core"
+      ],
+      "effects": [],
+      "range": ">=2.4.1-20251224013338.0",
+      "nodes": [
+        "node_modules/@sap-ai-sdk/prompt-registry"
+      ],
+      "fixAvailable": true
+    },
+    "@sap-cloud-sdk/connectivity": {
+      "name": "@sap-cloud-sdk/connectivity",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "jks-js"
+      ],
+      "effects": [
+        "@jerome-benoit/sap-ai-provider-v2",
+        "@sap-ai-sdk/ai-api",
+        "@sap-ai-sdk/core",
+        "@sap-ai-sdk/foundation-models",
+        "@sap-cloud-sdk/http-client",
+        "@sap-cloud-sdk/openapi"
+      ],
+      "range": "4.1.3-20250919013909.0 - 4.1.3-20251201125815.0 || >=4.2.1-20251128014424.0",
+      "nodes": [
+        "node_modules/@sap-cloud-sdk/connectivity"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@sap-cloud-sdk/http-client": {
+      "name": "@sap-cloud-sdk/http-client",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-cloud-sdk/connectivity"
+      ],
+      "effects": [],
+      "range": ">=4.2.1-20251128014424.0",
+      "nodes": [
+        "node_modules/@sap-cloud-sdk/http-client"
+      ],
+      "fixAvailable": true
+    },
+    "@sap-cloud-sdk/openapi": {
+      "name": "@sap-cloud-sdk/openapi",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@sap-cloud-sdk/connectivity",
+        "@sap-cloud-sdk/http-client"
+      ],
+      "effects": [],
+      "range": ">=4.2.1-20251128014424.0",
+      "nodes": [
+        "node_modules/@sap-cloud-sdk/openapi"
+      ],
+      "fixAvailable": true
+    },
+    "jks-js": {
+      "name": "jks-js",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "node-forge"
+      ],
+      "effects": [
+        "@sap-cloud-sdk/connectivity"
+      ],
+      "range": ">=1.0.0",
+      "nodes": [
+        "node_modules/jks-js"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "node-forge": {
+      "name": "node-forge",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1240912,
+          "name": "node-forge",
+          "dependency": "node-forge",
+          "title": "node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements",
+          "url": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+          "severity": "high",
+          "cwe": [
+            "CWE-347"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "range": "<=1.4.0"
+        }
+      ],
+      "effects": [
+        "jks-js"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/node-forge"
+      ],
+      "fixAvailable": {
+        "name": "@jerome-benoit/sap-ai-provider-v2",
+        "version": "5.0.1",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 11,
+      "critical": 0,
+      "total": 11
+    },
+    "dependencies": {
+      "prod": 316,
+      "dev": 231,
+      "optional": 57,
+      "peer": 15,
+      "peerOptional": 0,
+      "total": 574
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "partition_version": 5,
+  "request_context": [
+    "Project: ESP32 Automatic Temperature Monitor",
+    "Requirements:"
+  ],
+  "project_id": "qualification",
+  "session_id": "qualification",
+  "workspace_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-09\\live-log-implementation-simple-212703\\project",
+  "intent": "firmware_generation",
+  "request": "Build a simple beginner-friendly ESP32 project using Arduino IDE.\n\nProject: ESP32 Automatic Temperature Monitor\n\nRequirements:\n\nUse an ESP32 development board. Use a DHT11 temperature and humidity sensor. Use one LED as a temperature warning indicator. Read temperature and humidity every 2 seconds. Print the readings in the Serial Monitor. If the temperature goes above 30\u00b0C, turn the LED ON. If the temperature is 30\u00b0C or below, turn the LED OFF. Provide:\n\nRequired components. Pin connections in a clear table. Simple circuit/wiring explanation. Complete Arduino C++ code. Required libraries and how to install them. Step-by-step instructions to upload the code to ESP32. Explanation of the code for a beginner. Expected Serial Monitor output. Common errors and troubleshooting steps. Keep the circuit and code simple. Avoid unnecessary classes or advanced programming concepts.",
+  "requirements": [
+    {
+      "id": "req-1",
+      "stable_key": "276c45f4cb843c9f11c1e2f9a2f65e00586c88346d05ad9546fd7a50f4a2df71",
+      "text": "Build a simple beginner-friendly ESP32 project using Arduino IDE.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-2",
+      "stable_key": "cf4220e18c24328866cd318fdb56eb78773ac2314f35d2df04c133e93de02d49",
+      "text": "Use an ESP32 development board. Use a DHT11 temperature and humidity sensor. Use one LED as a temperature warning indicator. Read temperature and humidity every 2 seconds. Print the readings in the Serial Monitor. If the temperature goes above 30\u00b0C, turn the LED ON. If the temperature is 30\u00b0C or below, turn the LED OFF. Provide:\nRequired components. Pin connections in a clear table. Simple circuit/wiring explanation. Complete Arduino C++ code. Required libraries and how to install them. Step-by-step instructions to upload the code to ESP32. Explanation of the code for a beginner. Expected Serial Monitor output. Common errors and troubleshooting steps. Keep the circuit and code simple. Avoid unnecessary classes or advanced programming concepts.",
+      "evidence_kinds": [
+        "documentation",
+        "source"
+      ]
+    }
+  ],
+  "exclusions": [],
+  "superseded_requirements": [],
+  "superseded_exclusions": [],
+  "prohibited_actions": [],
+  "defaults": [
+    "Preserve unrelated user files.",
+    "Do not flash without separate confirmation."
+  ],
+  "evidence_contract_version": 2,
+  "accepted_choices": [],
+  "acceptance_checks": [
+    {
+      "id": "source",
+      "kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source."
+    },
+    {
+      "id": "firmware-build",
+      "kind": "build",
+      "criterion": "A firmware build passes for the current source revision."
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "firmware_source",
+      "kind": "firmware_source"
+    },
+    {
+      "id": "documentation",
+      "kind": "documentation",
+      "paths": [
+        "README.md"
+      ],
+      "topics": [
+        "wiring",
+        "usage"
+      ],
+      "requirement_ids": [
+        "req-2"
+      ]
+    },
+    {
+      "id": "check:source",
+      "kind": "acceptance",
+      "check_kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source."
+    },
+    {
+      "id": "check:firmware-build",
+      "kind": "acceptance",
+      "check_kind": "build",
+      "criterion": "A firmware build passes for the current source revision."
+    }
+  ],
+  "revision": "d0428bdde39ff7bbe31c8c73c7eb2874d77cc0223f6d5d1e08c5eea0a30664cb",
+  "revision_history": [
+    "d0428bdde39ff7bbe31c8c73c7eb2874d77cc0223f6d5d1e08c5eea0a30664cb"
+  ]
+}
