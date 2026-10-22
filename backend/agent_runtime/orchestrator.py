@@ -1146,6 +1146,7 @@ class AgentOrchestrator:
                 source_payload=json.dumps(applied.to_dict(), ensure_ascii=True, sort_keys=True),
                 workspace_revision=fresh.revision,
                 affected_paths=changed_paths,
+                workspace_root=workspace,
                 board_id=run.flash_board_type,
             )
             run.active_workspace_unchanged = False
@@ -1502,7 +1503,7 @@ class AgentOrchestrator:
             async def run_planner(selected_planner: object) -> ToolRuntimeResult:
                 runtime = ForgeXToolRuntime(active_workspace_root=inspection_root, change_service=self.change_service)
                 revision = self.change_service.inspect_workspace(workspace).revision
-                memories = self.memory.active(run.project_id, current_workspace_revision=revision, board_id=run.flash_board_type)
+                memories = self.memory.active(run.project_id, current_workspace_revision=revision, board_id=run.flash_board_type, workspace_root=workspace)
 
                 def memory_search(args: Mapping[str, object]) -> object:
                     query = str(args.get("query") or "").casefold().split()
@@ -1724,6 +1725,7 @@ class AgentOrchestrator:
                     source_payload=json.dumps(applied.to_dict(), ensure_ascii=True, sort_keys=True),
                     workspace_revision=fresh.revision,
                     affected_paths=[item.path for item in applied.changed_files],
+                    workspace_root=workspace,
                 )
                 run.assistant_message_override = "Applied the requested low-risk edit after validation. The change remains undoable."
             else:
@@ -1820,6 +1822,7 @@ class AgentOrchestrator:
                     run.project_id,
                     current_workspace_revision=baseline.revision,
                     board_id=run.flash_board_type,
+                    workspace_root=workspace,
                 )
             )
             self._start_node(run, "planning")
@@ -2136,6 +2139,7 @@ class AgentOrchestrator:
                     source_payload=json.dumps(applied.to_dict(), ensure_ascii=True, sort_keys=True),
                     workspace_revision=fresh.revision,
                     affected_paths=changed_paths,
+                    workspace_root=workspace,
                     board_id=run.flash_board_type,
                 )
             else:
@@ -2144,7 +2148,7 @@ class AgentOrchestrator:
             if run.build_result:
                 self.memory.add_verified(
                     project_id=run.project_id,
-                    kind="verified_build",
+                    kind="verified_build" if run.build_result.get("success") is True and run.build_verified else "build_attempt",
                     value=_verified_build_memory_value(run.build_result),
                     source_type="build_result",
                     source_id=run.run_id,
@@ -2156,6 +2160,7 @@ class AgentOrchestrator:
                         else ()
                     ),
                     board_id=run.flash_board_type,
+                    workspace_root=workspace,
                 )
             if run.autonomy == "build_then_confirm_flash":
                 if _approved_artifact_hash(run) is None or not (run.build_result or {}).get("artifact_manifest"):

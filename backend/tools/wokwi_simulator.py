@@ -116,20 +116,27 @@ class WokwiSimulator:
         artifact: BuildArtifact,
         board_type: BoardType,
         config: SimulationConfig,
+        *,
+        source_project: Path | None = None,
+        elf_path: Path | None = None,
     ) -> SimulationResult:
         """Validate and execute exactly one virtual hardware run."""
         started = time.monotonic()
         simulation_artifact: Optional[SimulationArtifact] = None
 
         try:
-            source_project, firmware_path = _validate_inputs(
+            inferred_project, firmware_path = _validate_inputs(
                 artifact, board_type
             )
+            source_project = Path(source_project).resolve(strict=True) if source_project is not None else inferred_project
+            if not source_project.is_dir():
+                raise ValueError("simulation project directory is unavailable")
             token = _wokwi_token()
             simulation_artifact = _prepare_project(
                 source_project=source_project,
                 firmware_path=firmware_path,
                 board_type=board_type,
+                elf_path=elf_path,
             )
         except asyncio.CancelledError:
             raise
@@ -426,6 +433,7 @@ def _prepare_project(
     source_project: Path,
     firmware_path: Path,
     board_type: BoardType,
+    elf_path: Path | None = None,
 ) -> SimulationArtifact:
     simulation_id = uuid.uuid4().hex
     project_path = (
@@ -436,7 +444,7 @@ def _prepare_project(
     copied_firmware = project_path / firmware_path.name
     shutil.copy2(firmware_path, copied_firmware)
 
-    elf_path = _matching_elf(firmware_path)
+    elf_path = elf_path if elf_path is not None else _matching_elf(firmware_path)
     copied_elf: Optional[Path] = None
     if elf_path is not None and elf_path != firmware_path:
         copied_elf = project_path / elf_path.name

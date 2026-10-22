@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path, PurePosixPath
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ class ProjectMemoryEntry:
     confidence: float
     workspace_revision: str | None = None
     affected_paths: tuple[str, ...] = field(default_factory=tuple)
+    dependency_hashes: Mapping[str, str] = field(default_factory=dict)
     board_id: str | None = None
     status: str = "active"
     created_at: str = field(default_factory=utc_now)
@@ -41,6 +43,7 @@ class ProjectMemoryEntry:
             "confidence": self.confidence,
             "workspace_revision": self.workspace_revision,
             "affected_paths": list(self.affected_paths),
+            "dependency_hashes": dict(self.dependency_hashes),
             "board_id": self.board_id,
             "status": self.status,
             "created_at": self.created_at,
@@ -60,7 +63,7 @@ class ProjectMemoryService:
             kind="user_choice:"+key
             same=False
             for entry in self.store.memories(project_id):
-                if entry.get("kind")!=kind or entry.get("source_id")!=session_id:
+                if entry.get("kind")!=kind:
                     continue
                 if entry.get("value")==choice:
                     same=True
@@ -82,6 +85,7 @@ class ProjectMemoryService:
         source_payload: str,
         workspace_revision: str | None = None,
         affected_paths: Iterable[str] = (),
+        workspace_root: str | Path | None = None,
         board_id: str | None = None,
         confidence: float = 1.0,
     ) -> ProjectMemoryEntry:
@@ -89,6 +93,8 @@ class ProjectMemoryService:
         if not clean_value:
             raise ValueError("AGENT_MEMORY_VALUE_REQUIRED")
         source_hash = hashlib.sha256(source_payload.encode("utf-8")).hexdigest()
+        paths = tuple(dict.fromkeys(str(path) for path in affected_paths))
+        dependencies = _dependency_hashes(workspace_root, paths) if workspace_root is not None else {}
         entry = ProjectMemoryEntry(
             memory_id=f"memory-{uuid.uuid4().hex}",
             project_id=project_id,
@@ -100,7 +106,8 @@ class ProjectMemoryService:
             verified=True,
             confidence=max(0.0, min(float(confidence), 1.0)),
             workspace_revision=workspace_revision,
-            affected_paths=tuple(dict.fromkeys(str(path) for path in affected_paths)),
+            affected_paths=paths,
+            dependency_hashes=dependencies,
             board_id=board_id,
         )
         self.store.remember(entry.to_dict())
@@ -112,18 +119,30 @@ class ProjectMemoryService:
         *,
         current_workspace_revision: str | None = None,
         board_id: str | None = None,
+        workspace_root: str | Path | None = None,
     ) -> tuple[dict[str, object], ...]:
         for entry in self.store.memories(project_id):
+            # Scoped facts are invalidated by invalidate_for_change() when their
+            # own dependencies change; a whole-project revision cannot prove that.
+            # Facts without paths remain conservatively revision-bound.
             stale_revision = bool(
                 current_workspace_revision
                 and entry.get("workspace_revision")
                 and entry.get("workspace_revision") != current_workspace_revision
+                and not entry.get("affected_paths")
             )
+            dependencies = entry.get("dependency_hashes")
+            if workspace_root is not None and entry.get("affected_paths"):
+                if isinstance(dependencies, dict) and dependencies:
+                    stale_revision = _dependency_hashes(workspace_root, dependencies.keys()) != dependencies
+                elif current_workspace_revision and entry.get("workspace_revision") != current_workspace_revision:
+                    # Legacy facts without path digests must fail closed.
+                    stale_revision = True
             stale_board = bool(entry.get("board_id") and board_id and entry.get("board_id") != board_id)
             if stale_revision or stale_board:
                 self.store.invalidate_memory(
                     str(entry["memory_id"]),
-                    "board_changed" if stale_board else "workspace_revision_changed",
+                    "board_changed" if stale_board else "source_files_changed",
                 )
         return self.store.memories(project_id)
 
@@ -162,3 +181,27 @@ class ProjectMemoryService:
             self.store.invalidate_memory(memory_id, reason)
             invalidated.append(memory_id)
         return tuple(invalidated)
+
+
+def _dependency_hashes(workspace_root: str | Path, paths: Iterable[str]) -> dict[str, str]:
+    """Record and verify actual source dependencies, not unrelated tree edits."""
+    root = Path(workspace_root).resolve(strict=True)
+    digests: dict[str, str] = {}
+    for relative in paths:
+        path = PurePosixPath(relative)
+        if path.is_absolute() or not path.parts or any(part in ('..', '.', '') for part in path.parts):
+            raise ValueError('AGENT_MEMORY_DEPENDENCY_PATH_UNSAFE')
+        file_path = root.joinpath(*path.parts)
+        if file_path.is_symlink() or not file_path.resolve(strict=False).is_relative_to(root):
+            raise ValueError('AGENT_MEMORY_DEPENDENCY_PATH_UNSAFE')
+        if not file_path.exists():
+            digests[relative] = '<missing>'
+            continue
+        if not file_path.is_file():
+            raise ValueError('AGENT_MEMORY_DEPENDENCY_NOT_FILE')
+        digest = hashlib.sha256()
+        with file_path.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
+        digests[relative] = digest.hexdigest()
+    return digests

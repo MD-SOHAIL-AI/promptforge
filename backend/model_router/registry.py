@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import os
 import json
 from dataclasses import dataclass, replace
@@ -382,6 +384,12 @@ class ProviderRegistry:
             raise ValueError("Custom provider protocol is invalid")
         if not display_name.strip() or not default_model.strip() or not base_url.startswith(("http://", "https://")):
             raise ValueError("Custom provider definition is invalid")
+        target = urlsplit(base_url)
+        if target.username or target.password or not target.hostname or target.fragment:
+            raise ValueError("Custom provider URL is invalid")
+        local_hosts = {"localhost", "127.0.0.1", "::1"}
+        if target.scheme != "https" and target.hostname not in local_hosts:
+            raise ValueError("Remote model providers require HTTPS (HTTP is only allowed for loopback local runtimes)")
         unique_models = tuple(dict.fromkeys((default_model.strip(), *(item.strip() for item in models if item.strip()))))
         self.storage.save_custom_provider_definition(provider_id, {
             "display_name": display_name.strip(),
@@ -535,8 +543,11 @@ class ProviderRegistry:
         for item in self.storage.provider_models(provider_id):
             if str(item.get("model_id", "")).casefold() == identity.casefold() and isinstance(item.get("free"), bool):
                 return item["free"]
-        if self.definition(provider_id).local or provider_id == "nvidia_nim":
+        if self.definition(provider_id).local:
             return True
+        # Trial access on NIM is not a verified zero-cost billing entitlement.
+        if provider_id == "nvidia_nim":
+            return False
         if identity.endswith(":free") or provider_id == "openrouter" and identity == "openrouter/free":
             return True
         pricing = model_data(provider_id, identity).get("cost", {})
@@ -622,7 +633,14 @@ class ProviderRegistry:
         provider_id: str,
         settings: dict[str, Any],
     ) -> ModelProvider:
-        self.definition(provider_id)
+        definition = self.definition(provider_id)
+        if "base_url" in settings and settings["base_url"]:
+            endpoint = urlsplit(str(settings["base_url"]))
+            loopback = endpoint.hostname in {"localhost", "127.0.0.1", "::1"}
+            if endpoint.username or endpoint.password or endpoint.fragment or endpoint.scheme not in {"http", "https"} or not endpoint.hostname:
+                raise ValueError("Provider endpoint is invalid")
+            if endpoint.scheme != "https" and not loopback:
+                raise ValueError("Remote provider endpoints require HTTPS")
         if "options" in settings:
             options = settings["options"]
             if options is None:

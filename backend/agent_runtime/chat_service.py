@@ -50,8 +50,14 @@ class ChatService:
         if session_id in self.tasks:
             raise ValueError("CHAT_TURN_ACTIVE")
         route = self.router.registry.route_for_task("general_chat")
-        provider_id = provider_id or session.provider_id or route.provider_id
-        model_id = model_id or session.model_id or route.model_id
+        previous_provider = session.provider_id or route.provider_id
+        provider_id = provider_id or previous_provider
+        # Provider-only switching must not send the old provider's model ID.
+        model_id = model_id or (
+            self.router.registry.default_model(provider_id)
+            if provider_id != previous_provider
+            else session.model_id or route.model_id
+        )
         resolver = getattr(self.router.registry, "resolve_model_id", None)
         if callable(resolver):
             model_id = resolver(provider_id, model_id)

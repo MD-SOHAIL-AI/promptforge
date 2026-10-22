@@ -182,7 +182,7 @@ def test_native_test_evidence_requires_executed_passing_tests(tmp_path,monkeypat
     from backend.services.platformio_service import PlatformIOService
     from tests.unit.test_platformio_service import FakeSubprocessManager, process_result
     import shutil
-    monkeypatch.setattr(shutil,"which",lambda _:"gcc")
+    monkeypatch.setattr(shutil,"which",lambda _, path=None:"gcc")
     (tmp_path/"platformio.ini").write_text("[env:native]\nplatform = native\n")
     (tmp_path/"src").mkdir()
     (tmp_path/"src/main.cpp").write_text("int main() { return 0; }")

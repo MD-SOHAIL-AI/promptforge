@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "chip": "esp32",
+  "environment": "esp32dev",
+  "board": "esp32dev",
+  "toolchain": {
+    "executable": "D:\\projects\\ForgeX-Phase6-Final\\.venv\\Scripts\\pio.exe",
+    "version": "6.2.0",
+    "environment": "esp32dev",
+    "board": "esp32dev"
+  },
+  "images": [
+    {
+      "role": "bootloader",
+      "offset": 4096,
+      "sha256": "3d234a7471f67b013686dabd4dee7c1fa915c9928463616a94bc9297acf1abf8",
+      "size_bytes": 17536,
+      "filename": "bootloader.bin"
+    },
+    {
+      "role": "partitions",
+      "offset": 32768,
+      "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1",
+      "size_bytes": 3072,
+      "filename": "partitions.bin"
+    },
+    {
+      "role": "ota_data",
+      "offset": 57344,
+      "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+      "size_bytes": 8192,
+      "filename": "ota_data.bin"
+    },
+    {
+      "role": "application",
+      "offset": 65536,
+      "sha256": "153781cec918bda0a35f9b4074f750d77e4b184c1231daf735fe3ea215bfdb9e",
+      "size_bytes": 977792,
+      "filename": "application.bin"
+    }
+  ],
+  "sha256": "8d878283e03b26512f91ad31400dbd593fcd2e07743885565b78c385ae17e8e7",
+  "artifact_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-07\\project-trust-draft-fix\\firmware-manifests\\8d878283e03b26512f91ad31400dbd593fcd2e07743885565b78c385ae17e8e7"
+}

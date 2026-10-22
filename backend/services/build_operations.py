@@ -10,6 +10,7 @@ class BuildOperations:
     def __init__(self, store):
         self.store = store
         self.tasks = {}
+        self._project_locks = {}
         with store._transaction() as db:
             db.execute("CREATE TABLE IF NOT EXISTS desktop_build_operations(operation_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, payload_json TEXT NOT NULL)")
             for identity, payload in db.execute("SELECT operation_id,payload_json FROM desktop_build_operations").fetchall():
@@ -46,10 +47,14 @@ class BuildOperations:
 
     async def _run(self, value, execute):
         try:
-            value["state"] = "running"
-            self._save(value)
-            response, revision = await execute()
-            value.update(result=response, state="stale" if revision != value["source_revision"] else "passed" if response["result"]["success"] else "failed")
+            # A queued build must not overlap another operation on the same
+            # managed project. Distinct projects may still build concurrently.
+            lock = self._project_locks.setdefault(value["project_id"], asyncio.Lock())
+            async with lock:
+                value["state"] = "running"
+                self._save(value)
+                response, revision = await execute()
+                value.update(result=response, state="stale" if revision != value["source_revision"] else "passed" if response["result"]["success"] else "failed")
         except asyncio.CancelledError:
             value.update(state="interrupted", message="Build interrupted; its result is unknown.")
             raise

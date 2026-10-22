@@ -116,6 +116,7 @@ export interface FileContentResponse {
   path: string;
   content: string;
   file_type: string;
+  revision?: string | null;
 }
 
 export interface BuildHistoryItem {
@@ -499,6 +500,7 @@ export interface ExecutionEvent {
 }
 
 export interface WorkspaceFile {
+  revision?: string | null;
   projectId?: string;
   path: string;
   content: string;

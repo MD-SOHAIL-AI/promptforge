@@ -19,6 +19,7 @@ from typing import Any, Iterable
 
 from .models import ChangeSet, ChangedFile, SnapshotFile, WorkspaceSnapshot
 from backend.security.workspace_io import iter_workspace_files
+from backend.security.workspace_lock import workspace_lock
 
 
 IGNORED_DIRS = frozenset({".git", ".pio", ".promptforge", ".forgex", ".next", "node_modules", "dist", "build"})
@@ -47,7 +48,8 @@ class ChangeSetService:
         self.recovery_issues: dict[str, str] = {}
         for identifier in tuple(self._sets):
             if self._journal_path(identifier).exists():
-                self._recover_publish(identifier)
+                with workspace_lock(self._sets[identifier].workspace_root):
+                    self._recover_publish(identifier)
 
     def create_stage(self, run_id: str | None = None) -> Path:
         identifier = run_id or f"stage-{uuid.uuid4().hex}"
@@ -301,6 +303,12 @@ class ChangeSetService:
             return updated
 
     def apply(self, change_set_id: str) -> ChangeSet:
+        # Serialize baseline verification and publication with managed saves and
+        # other ChangeSet instances, not only within this one service object.
+        with workspace_lock(self.get(change_set_id).workspace_root):
+            return self._apply_locked(change_set_id)
+
+    def _apply_locked(self, change_set_id: str) -> ChangeSet:
         with self._lock:
             change_set = self.get(change_set_id)
             if self._journal_path(change_set_id).exists():
@@ -415,6 +423,10 @@ class ChangeSetService:
             return updated
 
     def undo(self, change_set_id: str) -> ChangeSet:
+        with workspace_lock(self.get(change_set_id).workspace_root):
+            return self._undo_locked(change_set_id)
+
+    def _undo_locked(self, change_set_id: str) -> ChangeSet:
         with self._lock:
             change_set = self.get(change_set_id)
             if self._journal_path(change_set_id).exists():

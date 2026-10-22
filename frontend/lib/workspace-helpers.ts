@@ -86,13 +86,14 @@ export function tabStorageKey(projectId?: string) {
   return projectId ? `promptforge.tabs.${projectId}` : "promptforge.tabs";
 }
 
-export function toFile(projectId: string, path: string, content: string, fileType?: string | null): WorkspaceFile {
+export function toFile(projectId: string, path: string, content: string, fileType?: string | null, revision?: string | null): WorkspaceFile {
   return {
     projectId,
     path,
     content,
     fileType: fileType ?? undefined,
     language: languageFor(path, fileType),
+    revision,
   };
 }
 

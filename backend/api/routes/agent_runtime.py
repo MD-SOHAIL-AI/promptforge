@@ -247,10 +247,11 @@ async def project_memory(project_id: str, request: Request):
     if orchestrator is None:
         raise APIError(404, "AGENT_MEMORY_UNAVAILABLE", "Project memory is unavailable.")
     metadata = await resolve_project_from_request(request, project_id)
-    revision = orchestrator.change_service.inspect_workspace(getattr(metadata, "project_path")).revision
+    root = getattr(metadata, "project_path")
+    revision = orchestrator.change_service.inspect_workspace(root).revision
     return {
         "workspace_revision": revision,
-        "memories": list(orchestrator.memory.active(project_id, current_workspace_revision=revision)),
+        "memories": list(orchestrator.memory.active(project_id, current_workspace_revision=revision, workspace_root=root)),
     }
 
 

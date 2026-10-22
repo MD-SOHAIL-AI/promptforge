@@ -1,0 +1,27 @@
+{
+  "backend-final.xml": {
+    "tests": 147,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "incident-final.xml": {
+    "tests": 64,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "tests": 17,
+    "failures": 0,
+    "evidence": "frontend-regressions.log"
+  },
+  "typescript": {
+    "result": "passed",
+    "evidence": "frontend-typecheck.log"
+  },
+  "lint": {
+    "result": "passed",
+    "evidence": "frontend-lint.log"
+  }
+}

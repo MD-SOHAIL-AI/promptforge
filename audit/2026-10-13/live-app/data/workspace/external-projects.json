@@ -1,0 +1,38 @@
+{
+  "projects": {
+    "external-esp32_smart_monitor-e8a75440e9": {
+      "created_at": "2026-10-13T14:26:13.984670Z",
+      "external": true,
+      "file_count": 0,
+      "framework": "UNKNOWN",
+      "metadata": {
+        "active_environment": null,
+        "board": "",
+        "created_at": "2026-10-13T14:26:13.984670Z",
+        "external": true,
+        "files_loaded": true,
+        "framework": "",
+        "generation_framework": "UNKNOWN",
+        "generation_target_board": "UNKNOWN",
+        "has_platformio_ini": false,
+        "last_opened_at": "2026-10-13T14:26:13.984670Z",
+        "missing": false,
+        "monitor_speed": null,
+        "name": "ESP32_Smart_Monitor",
+        "path": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-13\\live-app\\ESP32_Smart_Monitor",
+        "platformio": {
+          "environments": []
+        },
+        "project_type": "generic",
+        "upload_speed": null
+      },
+      "project_id": "external-esp32_smart_monitor-e8a75440e9",
+      "project_name": "ESP32_Smart_Monitor",
+      "project_path": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-13\\live-app\\ESP32_Smart_Monitor",
+      "project_type": "generic",
+      "target_board": "UNKNOWN",
+      "updated_at": "2026-10-13T14:26:13.984670Z"
+    }
+  },
+  "schema_version": 1
+}

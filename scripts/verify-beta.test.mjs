@@ -14,7 +14,7 @@ const silentOutput = () => ({ write() {} });
 test("the beta gate contains every required software check in release order", () => {
   assert.deepEqual(
     BETA_CHECKS.map((check) => check.id),
-    ["python", "harness", "ui-state", "read-recovery", "electron", "typecheck", "lint", "conversations"],
+    ["harness", "python", "ui-state", "read-recovery", "electron", "typecheck", "lint", "conversations"],
   );
 });
 
@@ -43,7 +43,8 @@ test("the verifier runs all checks without cleanup or shell indirection", async 
 
   assert.deepEqual(result, { passed: 8, total: 8 });
   assert.equal(invocations.length, 8);
-  assert.deepEqual(invocations[0], { command: "python", args: ["-m", "pytest", "-q"] });
+  assert.deepEqual(invocations[0], { command: process.execPath, args: ["/tools/npm-cli.js", "run", "test:harness"] });
+  assert.deepEqual(invocations[1], { command: "python", args: ["-m", "pytest", "-q"] });
   assert.equal(invocations.some(({ args }) => args.includes("cleanup")), false);
 });
 
@@ -61,7 +62,7 @@ test("the verifier stops immediately at the first failing gate", async () => {
       },
       output: silentOutput(),
     }),
-    (error) => error instanceof VerificationError && error.check.id === "harness" && error.exitCode === 7,
+    (error) => error instanceof VerificationError && error.check.id === "python" && error.exitCode === 7,
   );
   assert.equal(calls, 2);
 });

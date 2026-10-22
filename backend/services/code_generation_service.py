@@ -590,7 +590,9 @@ class CodeGenerationService:
                     strategy=strategy,
                     transaction=transaction,
                 )
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
+                # asyncio.CancelledError does not inherit Exception; an interrupted
+                # standalone generator must not leave half-written sources.
                 rolled_back = transaction.rollback() if transaction is not None and owns_transaction else False
                 await _emit_generation_event(
                     request,
@@ -1383,11 +1385,20 @@ class CodeGenerationService:
                     if isinstance(forbidden_value, Sequence) and not isinstance(forbidden_value, (str, bytes, bytearray))
                     else ()
                 )
+                workspace_info = request.context.metadata.get("active_workspace")
+                workspace_info = workspace_info if isinstance(workspace_info, Mapping) else {}
+                selected_board = workspace_info.get("selected_board")
+                default_board = _BUILTIN_PLATFORMIO_BOARDS.get(request.plan.target_board)
+                expected_board = str(selected_board or (default_board[1] if default_board else "esp32dev"))
+                selected_framework = str(workspace_info.get("selected_framework") or "arduino").casefold()
+                expected_framework = "espidf" if "idf" in selected_framework else "arduino"
                 validation_errors = validate_chunk_file(
                     path,
                     content,
                     advanced=advanced,
                     forbidden_features=forbidden_features,
+                    platformio_board=expected_board,
+                    platformio_framework=expected_framework,
                 )
                 if validation_errors:
                     raise ProjectValidationError(
@@ -1674,7 +1685,7 @@ class CodeGenerationService:
         return (
             "Your previous response was invalid and cannot be used.\n"
             f"Validation error: {reason}\n"
-            "Return a corrected complete PlatformIO project with platformio.ini and src/main.cpp. "
+            "Return a corrected complete project for the selected board and framework, retaining platformio.ini and src/main.cpp when the project uses PlatformIO. "
             "Return only valid project files. All file paths must be relative and inside the project root."
             f"{advanced_note}\n\n"
             + base
@@ -2139,10 +2150,18 @@ def _chunk_file_prompt(
         for item in existing_files
         if item.path in {"platformio.ini", "include/config.h"}
     }
+    workspace_info = request.context.metadata.get("active_workspace")
+    workspace_info = workspace_info if isinstance(workspace_info, Mapping) else {}
+    default_board = _BUILTIN_PLATFORMIO_BOARDS.get(request.plan.target_board)
+    requested_board = str(workspace_info.get("selected_board") or (default_board[1] if default_board else "esp32dev"))
+    actual_board = requested_board
+    requested_framework = str(workspace_info.get("selected_framework") or _identifier_value(request.plan.framework)).casefold()
+    platformio_framework = "espidf" if "idf" in requested_framework else "arduino"
     instructions = {
         "platformio.ini": (
-            "Generate only platformio.ini. It must contain [env:esp32dev], "
-            "platform = espressif32, board = esp32dev, framework = arduino."
+            f"Generate only platformio.ini. It must contain [env:{actual_board}], "
+            f"platform = espressif32, board = {actual_board}, framework = {platformio_framework}. "
+            "Preserve the explicit target board and framework; do not substitute esp32dev."
         ),
         "include/config.h": (
             "Generate only include/config.h. Define only constants required by the supplied requirements and manifest."

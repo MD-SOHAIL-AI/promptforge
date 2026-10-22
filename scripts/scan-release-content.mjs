@@ -42,6 +42,7 @@ const ALLOWED_WORKSPACE_FILES = new Set([
 
 const SOURCE_TREE_LOCAL_DIRECTORIES = new Set([
   ".forgex",
+  ".promptforge",
   ".pytest_cache",
   ".venv",
   "dist",
@@ -68,6 +69,10 @@ export function classifyReleasePath(releasePath, { isDirectory = false, isSymbol
   const lowerSegments = segments.map((segment) => segment.toLowerCase());
   const lowerPath = lowerSegments.join("/");
   const basename = lowerSegments.at(-1) ?? "";
+
+  if (lowerSegments[0] === ".promptforge") {
+    return violation("workspace_runtime", "runtime application state", normalized);
+  }
 
   if (/^[a-z]:[\\/]/i.test(original) || original.startsWith("/") || segments.includes("..")) {
     return violation("unsafe_path", "absolute or parent-traversing archive path", original);

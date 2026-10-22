@@ -1426,9 +1426,7 @@ class AutonomousForgeAgentLoop:
         self._refresh_verification()
         if not self.build_passed or not self.last_build.get("elf_sha256"):
             raise ValueError("CURRENT_ELF_REQUIRED")
-        elf=Path(self.last_build["elf_path"])
-        if hashlib.sha256(elf.read_bytes()).hexdigest()!=self.last_build["elf_sha256"]:
-            raise ValueError("ELF_EVIDENCE_STALE")
+        elf, _ = self._verified_build_image(self.last_build["elf_path"], self.last_build["elf_sha256"])
         core=Path(os.environ.get("PLATFORMIO_CORE_DIR",str(Path.home()/".platformio")))
         candidates=list(core.glob("packages/toolchain-xtensa-esp32*/bin/xtensa-esp32-elf-addr2line*"))
         candidates=[path for path in candidates if path.suffix in {".exe",""} and path.is_file() and not path.is_symlink()]
@@ -1522,7 +1520,10 @@ class AutonomousForgeAgentLoop:
             from .source_contracts import source_contract_focus
             contracts = source_contract_focus(source_paths, self.executor._read_overlay_text, source_snapshot.revision)
             if contracts:
-                pinned = (*pinned, {"tool": "source_contract_focus", "status": "completed", "output": contracts})
+                # General source declarations are background evidence. Keep a
+                # concrete interface/compiler repair focus at the end, where
+                # compacted context consumers look for the active next action.
+                pinned = ({"tool": "source_contract_focus", "status": "completed", "output": contracts}, *pinned)
         # A provider turn can issue five calls. Keep their complete settled
         # observations plus a progress hint even when an earlier large result
         # forces the ordinary character-based tail to shrink.
@@ -1636,17 +1637,23 @@ class AutonomousForgeAgentLoop:
             "diagnostic_fingerprint": diagnostic_fingerprint(prior_failure),
             "changed_paths": [path] if path else [], "result_success": None})
 
+    def _verified_build_image(self, path, expected_sha256=None):
+        from backend.services.build_snapshot import verify_build_image
+        return verify_build_image(path, workspace_root=self.workspace_root,
+            artifact_store=getattr(self.platformio, "artifact_store", None),
+            expected_sha256=expected_sha256)
+
     def _refresh_verification(self) -> bool:
         if not self.build_passed:
             return False
         try:
             revision = _snapshot_for_context(self.workspace_root).revision
-            artifact = Path(str(self.last_build["firmware_path"])).resolve(strict=True)
-            artifact.relative_to(self.workspace_root)
+            _, digest = self._verified_build_image(self.last_build["firmware_path"], self.last_build["firmware_hash"])
+            if self.last_build.get("elf_path"):
+                self._verified_build_image(self.last_build["elf_path"], self.last_build["elf_sha256"])
             fresh = (
                 revision == self.last_build.get("workspace_revision")
-                and hashlib.sha256(artifact.read_bytes()).hexdigest()
-                == self.last_build.get("firmware_hash")
+                and digest == self.last_build.get("firmware_hash")
             )
         except (OSError, ValueError, KeyError):
             fresh = False
@@ -2024,10 +2031,7 @@ class AutonomousForgeAgentLoop:
         firmware_hash = None
         if result.success and result.firmware_path:
             try:
-                artifact = Path(result.firmware_path).resolve(strict=True)
-                artifact.relative_to(self.workspace_root)
-                if artifact.is_file() and not artifact.is_symlink():
-                    firmware_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+                artifact, firmware_hash = self._verified_build_image(result.firmware_path)
             except (OSError, ValueError):
                 firmware_hash = None
             if firmware_hash and self.artifact_service is not None:
@@ -2100,6 +2104,8 @@ class AutonomousForgeAgentLoop:
             "artifact_manifest": getattr(result, "metadata", {}).get("artifact_manifest"),
             "flash_ready": getattr(result, "metadata", {}).get("flash_ready", False),
             "flash_readiness_error": getattr(result, "metadata", {}).get("flash_readiness_error"),
+            "source_snapshot_sha256": build_metadata.get("source_snapshot_sha256"),
+            "source_workspace_revision": build_metadata.get("source_workspace_revision"),
             "exit_code": result.process_result.returncode if result.process_result else None,
             "dependency_candidates": dependency_candidates[:10],
             "failure": failure if isinstance(failure, Mapping) else None,
@@ -2121,7 +2127,11 @@ class AutonomousForgeAgentLoop:
         self.build_passed = bool(
             result.success and result.firmware_path and firmware_hash
         )
-        if self.build_passed and not self._refresh_verification():
+        if self.build_passed and (
+            build_metadata.get("source_workspace_revision", workspace_revision) != workspace_revision
+            or not self._refresh_verification()
+        ):
+            self.build_passed = False
             self.last_build = {
                 "success": False,
                 "message": "Workspace or firmware changed during the build; rebuild required.",
@@ -2132,9 +2142,12 @@ class AutonomousForgeAgentLoop:
             for key in ("firmware_path", "firmware_hash", "firmware_artifact_id"):
                 self.last_build.pop(key, None)
         if self.build_passed:
-            elf = Path(str(self.last_build["firmware_path"])).with_suffix(".elf")
-            if elf.is_file() and not elf.is_symlink() and elf.resolve().is_relative_to(self.workspace_root):
-                self.last_build.update(elf_path=str(elf),elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest())
+            elf = build_metadata.get("elf_path") or Path(str(self.last_build["firmware_path"])).with_suffix(".elf")
+            try:
+                elf_path, elf_digest = self._verified_build_image(elf, build_metadata.get("elf_sha256"))
+                self.last_build.update(elf_path=str(elf_path), elf_sha256=elf_digest)
+            except (OSError, ValueError):
+                pass  # Firmware can compile without optional ELF evidence.
         for repair in self.repair_history:
             if repair.get("strategy") == "model_edit" and repair.get("result_success") is None:
                 repair["result_fingerprint"] = diagnostic_fingerprint(self.last_build)
@@ -2213,11 +2226,10 @@ class AutonomousForgeAgentLoop:
                 "tool": ToolName.RUN_SIMULATION.value,
                 "error": "wokwi_board_not_supported",
             }
-        artifact_path = Path(firmware_path).resolve(strict=True)
-        artifact_path.relative_to(self.workspace_root)
+        artifact_path, _ = self._verified_build_image(firmware_path, self.last_build["firmware_hash"])
         artifact = BuildArtifact(
             path=artifact_path,
-            environment=_platformio_environment_from_artifact(artifact_path),
+            environment=self.last_build.get("environment") or _platformio_environment_from_artifact(artifact_path),
             artifact_type=artifact_path.suffix.lstrip(".") or "bin",
             size_bytes=artifact_path.stat().st_size,
         )
@@ -2227,10 +2239,19 @@ class AutonomousForgeAgentLoop:
         )
         simulation_path: str | None = None
         try:
+            simulation_inputs = {}
+            if not artifact_path.is_relative_to(self.workspace_root):
+                # Durable images have no project ancestor. Keep simulation
+                # outputs and the selected diagram in the staged workspace.
+                simulation_inputs["source_project"] = self.workspace_root
+                if self.last_build.get("elf_path"):
+                    simulation_inputs["elf_path"], _ = self._verified_build_image(
+                        self.last_build["elf_path"], self.last_build["elf_sha256"])
             result = await WokwiSimulator(self.subprocess_manager).simulate(
                 artifact,
                 board_type,
                 SimulationConfig(timeout_s=max(1.0, min(timeout_seconds, 120.0))),
+                **simulation_inputs,
             )
             if result.simulation_artifact is not None:
                 simulation_path = result.simulation_artifact.project_path

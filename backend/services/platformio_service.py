@@ -9,6 +9,7 @@ result construction retain a single canonical implementation.
 from __future__ import annotations
 
 import asyncio
+import weakref
 import configparser
 import hashlib
 import json
@@ -265,6 +266,11 @@ class PlatformIOProject:
         )
 
 
+# Shared by agent and manual services in the same backend process. Locks are
+# weakly held to avoid an unbounded registry of removed workspaces.
+_WORKSPACE_BUILD_LOCKS: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+
+
 class PlatformIOService:
     """Validate projects and execute PlatformIO through one process boundary."""
 
@@ -298,7 +304,7 @@ class PlatformIOService:
         self._timeout_s = float(timeout_s)
         self._env = _validate_env(env or {})
         self._session_id = session_id
-        self._artifact_store = Path(artifact_store) if artifact_store else None
+        self._artifact_store = Path(artifact_store).expanduser().resolve() if artifact_store else None
         # Host code injection only. The runner must isolate workspace writes,
         # network and physical devices; a process group/job is insufficient.
         self._native_test_runner = native_test_runner
@@ -401,6 +407,11 @@ class PlatformIOService:
             ),
         )
 
+    @property
+    def artifact_store(self) -> Path | None:
+        """Host-configured authority for durable compiled images."""
+        return self._artifact_store
+
     def validate_project(
         self,
         project_path: str | Path,
@@ -425,6 +436,80 @@ class PlatformIOService:
         return self.validate_project(project_path).environments
 
     async def build(
+        self,
+        project: str | Path | BuildConfig,
+        *,
+        environment: str | None = None,
+        board: str | None = None,
+        timeout_s: float | None = None,
+        extra_args: Sequence[str] = (),
+    ) -> BuildResult:
+        """Serialize PlatformIO invocations that share one mutable workspace.
+
+        Both agent and manual callers pass through this boundary, even if the
+        addressable build-operation scheduler is bypassed. This is process-local
+        serialization, not a cross-process or immutable-source guarantee.
+        """
+        root = project.project_dir if isinstance(project, BuildConfig) else project
+        identity = str(Path(root).expanduser().resolve())
+        lock = _WORKSPACE_BUILD_LOCKS.get(identity)
+        if lock is None:
+            lock = asyncio.Lock()
+            _WORKSPACE_BUILD_LOCKS[identity] = lock
+        async with lock:
+            # The desktop backend has a durable artifact directory, so it can
+            # compile against copied source rather than mutable editor files.
+            # Lightweight standalone services without an artifact store retain
+            # their existing behavior for backward compatibility.
+            if self._artifact_store is None:
+                return await self._build_unlocked(project, environment=environment,
+                    board=board, timeout_s=timeout_s, extra_args=extra_args)
+            from .build_snapshot import isolated_build_sources, preserve_firmware
+            from dataclasses import replace
+            with isolated_build_sources(root) as snapshot:
+                # Bind the canonical workspace revision to the captured bytes,
+                # not a live directory that can change and then change back
+                # while this build waits for its compiler.
+                from backend.changes import ChangeSetService
+                captured_revision = ChangeSetService(
+                    state_root=snapshot.root.parent / 'revision-state',
+                    staging_root=snapshot.root.parent / 'revision-stage',
+                ).inspect_workspace(snapshot.root).revision
+                if isinstance(project, BuildConfig):
+                    staged = replace(project, project_dir=str(snapshot.root),
+                                     expected_project_root=str(snapshot.root))
+                else:
+                    staged = snapshot.root
+                result = await self._build_unlocked(staged, environment=environment,
+                    board=board, timeout_s=timeout_s, extra_args=extra_args)
+                result.metadata.update(source_snapshot_sha256=snapshot.revision,
+                                       source_workspace_revision=captured_revision,
+                                       source_snapshot_file_count=snapshot.files,
+                                       source_snapshot_bytes=snapshot.total_bytes,
+                                       isolated_compilation=True)
+                if result.success and result.firmware_path:
+                    try:
+                        saved_path, digest = preserve_firmware(result.firmware_path, self._artifact_store)
+                    except (OSError, ValueError) as exc:
+                        # A compile without persistent verified output must not
+                        # be reported as firmware ready for flashing.
+                        result.metadata.update(flash_ready=False, flash_readiness_error=str(exc),
+                                               artifact_persistence_failed=True)
+                        return replace(result, firmware_path=None)
+                    result.metadata["firmware_sha256"] = digest
+                    # ELF evidence is needed for crash decoding and simulations
+                    # after the disposable compilation directory is removed.
+                    elf = Path(result.firmware_path).with_suffix(".elf")
+                    if elf.exists():
+                        try:
+                            elf_path, elf_digest = preserve_firmware(str(elf), self._artifact_store)
+                            result.metadata.update(elf_path=elf_path, elf_sha256=elf_digest)
+                        except (OSError, ValueError) as exc:
+                            result.metadata["elf_persistence_error"] = str(exc)
+                    return replace(result, firmware_path=saved_path)
+                return result
+
+    async def _build_unlocked(
         self,
         project: str | Path | BuildConfig,
         *,

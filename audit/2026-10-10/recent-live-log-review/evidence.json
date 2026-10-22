@@ -1,0 +1,602 @@
+{
+  "captured_at_utc": "2026-10-10T14:33:55.191634+00:00",
+  "scope": "Latest desktop session; read-only log and state inspection. Proposed fixes have not been implemented.",
+  "sources": [
+    {
+      "path": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "sha256_at_capture": "a4c69c8053bbad95b9f5804d66860b4f0f68fd8d3c455fdb5de1dcb11fb90060",
+      "records_at_capture": 417,
+      "first_timestamp": "2026-10-10T12:02:06.897815Z",
+      "last_timestamp": "2026-10-10T14:24:21.221404Z"
+    },
+    {
+      "path": ".forgex/logs/live-runtime.desktop-5e743c4d-7d61-4282-bb73-8bd6f48fc454.jsonl",
+      "sha256_at_capture": "2faaf658f047a0d807498057c92e86fda01a1a9d599ed9c4537baba398ba9949",
+      "records_at_capture": 276,
+      "first_timestamp": "2026-10-10T12:01:01.584Z",
+      "last_timestamp": "2026-10-10T14:24:21.269Z"
+    }
+  ],
+  "selected_events": [
+    {
+      "timestamp": "2026-10-10T12:02:46.252461Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "update_plan",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-1",
+      "message": "Updating implementation plan completed",
+      "status": "running",
+      "duration_ms": 140,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 75,
+      "plan_steps": [
+        {
+          "status": "in_progress",
+          "text": "Create project directory structure",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Initialize PlatformIO project with platformio.ini",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create knock detector module",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create pattern manager module",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create LED controller module",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create buzzer module",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create pattern storage module (NVS)",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create main.cpp with state machine logic",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Create README.md with documentation",
+          "verification": "inspection"
+        },
+        {
+          "status": "pending",
+          "text": "Build project with PlatformIO and fix compilation errors",
+          "verification": "build"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-10T12:02:56.802973Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-2",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 202,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 103,
+      "result_path": "src/knock/knock_detector.h"
+    },
+    {
+      "timestamp": "2026-10-10T12:03:11.347093Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-3",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 155,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 128,
+      "result_path": "src/knock/knock_detector.cpp"
+    },
+    {
+      "timestamp": "2026-10-10T12:03:30.233270Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-4",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 202,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 158,
+      "result_path": "src/pattern/pattern_manager.h"
+    },
+    {
+      "timestamp": "2026-10-10T12:03:48.223638Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-5",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 202,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 179,
+      "result_path": "src/pattern/pattern_manager.cpp"
+    },
+    {
+      "timestamp": "2026-10-10T12:03:59.281740Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-6",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 187,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 205,
+      "result_path": "src/output/led_controller.h"
+    },
+    {
+      "timestamp": "2026-10-10T12:04:22.468074Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-7",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 187,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 232,
+      "result_path": "src/output/led_controller.cpp"
+    },
+    {
+      "timestamp": "2026-10-10T12:04:31.198119Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-8",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 219,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 258,
+      "result_path": "src/output/buzzer.h"
+    },
+    {
+      "timestamp": "2026-10-10T12:04:40.752664Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-9",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 187,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 281,
+      "result_path": "src/output/buzzer.cpp"
+    },
+    {
+      "timestamp": "2026-10-10T12:04:54.328342Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-10",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 421,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 312,
+      "result_path": "src/storage/pattern_storage.h"
+    },
+    {
+      "timestamp": "2026-10-10T12:05:19.947549Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-11",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 233,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 335,
+      "result_path": "src/storage/pattern_storage.cpp"
+    },
+    {
+      "timestamp": "2026-10-10T12:06:38.231381Z",
+      "event": "agent.tool.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "tool": "write_file",
+      "turn_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732:turn-12",
+      "message": "Writing staged source completed",
+      "status": "running",
+      "duration_ms": 187,
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 367,
+      "result_path": "src/main.cpp"
+    },
+    {
+      "timestamp": "2026-10-10T12:06:39.357549Z",
+      "event": "agent.context.checkpoint.created",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "message": "Older Agent observations compacted into a durable checkpoint",
+      "status": "running",
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 373
+    },
+    {
+      "timestamp": "2026-10-10T12:06:44.938397Z",
+      "event": "agent.build.completed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "message": "missing platformio.ini: D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-agent-run-6b81bccdeb614c2dba6a1e5a6088d732\\platformio.ini",
+      "status": "running",
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 395
+    },
+    {
+      "timestamp": "2026-10-10T12:06:46.402122Z",
+      "event": "agent.run.failed",
+      "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "message": "missing platformio.ini: D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-agent-run-6b81bccdeb614c2dba6a1e5a6088d732\\platformio.ini Generated files were saved as an unverified recovery draft. Retry to repair and validate them.",
+      "status": "failed",
+      "source": ".forgex/logs/live-runtime.backend-0a9eb3447bb14b39b57f2005dd358b39.jsonl",
+      "line": 400
+    },
+    {
+      "timestamp": "2026-10-10T12:02:46.289Z",
+      "event": "renderer.http.failed",
+      "status": 503,
+      "duration_ms": 2096,
+      "request_id": "renderer-http-c01ade3c-463f-45fe-aec1-81166f1749b3",
+      "path": "/agent-runtime/runs/agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "source": ".forgex/logs/live-runtime.desktop-5e743c4d-7d61-4282-bb73-8bd6f48fc454.jsonl",
+      "line": 98,
+      "error": {
+        "error_code": "BACKEND_UNAVAILABLE",
+        "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+        "response_body": {
+          "code": "BACKEND_UNAVAILABLE",
+          "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+          "details": {
+            "request_dispatched": false
+          },
+          "request_id": "renderer-http-c01ade3c-463f-45fe-aec1-81166f1749b3"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-10-10T12:03:32.175Z",
+      "event": "renderer.http.failed",
+      "status": 503,
+      "duration_ms": 2056,
+      "request_id": "renderer-http-31fedd52-24e7-441a-b034-a8017a995926",
+      "path": "/agent-runtime/runs/agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+      "source": ".forgex/logs/live-runtime.desktop-5e743c4d-7d61-4282-bb73-8bd6f48fc454.jsonl",
+      "line": 134,
+      "error": {
+        "error_code": "BACKEND_UNAVAILABLE",
+        "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+        "response_body": {
+          "code": "BACKEND_UNAVAILABLE",
+          "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+          "details": {
+            "request_dispatched": false
+          },
+          "request_id": "renderer-http-31fedd52-24e7-441a-b034-a8017a995926"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-10-10T12:04:56.418Z",
+      "event": "renderer.http.failed",
+      "status": 503,
+      "duration_ms": 2086,
+      "request_id": "renderer-http-33185a04-d1a1-4570-901a-cf500945c8e0",
+      "path": "/agent-runtime/runs/agent-run-6b81bccdeb614c2dba6a1e5a6088d732/graph",
+      "source": ".forgex/logs/live-runtime.desktop-5e743c4d-7d61-4282-bb73-8bd6f48fc454.jsonl",
+      "line": 193,
+      "error": {
+        "error_code": "BACKEND_UNAVAILABLE",
+        "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+        "response_body": {
+          "code": "BACKEND_UNAVAILABLE",
+          "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+          "details": {
+            "request_dispatched": false
+          },
+          "request_id": "renderer-http-33185a04-d1a1-4570-901a-cf500945c8e0"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-10-10T12:04:56.687Z",
+      "event": "renderer.http.failed",
+      "status": 503,
+      "duration_ms": 2352,
+      "request_id": "renderer-http-9062e7e7-e54e-49f5-b301-3fa996e55850",
+      "path": "/agent-runtime/runs/agent-run-6b81bccdeb614c2dba6a1e5a6088d732/queue",
+      "source": ".forgex/logs/live-runtime.desktop-5e743c4d-7d61-4282-bb73-8bd6f48fc454.jsonl",
+      "line": 194,
+      "error": {
+        "error_code": "BACKEND_UNAVAILABLE",
+        "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+        "response_body": {
+          "code": "BACKEND_UNAVAILABLE",
+          "message": "The ForgeX backend is unavailable. Saved work is preserved; reconnect or restart ForgeX.",
+          "details": {
+            "request_dispatched": false
+          },
+          "request_id": "renderer-http-9062e7e7-e54e-49f5-b301-3fa996e55850"
+        }
+      }
+    }
+  ],
+  "run": {
+    "run_id": "agent-run-6b81bccdeb614c2dba6a1e5a6088d732",
+    "session_id": "agent-session-18eea64486c442888ce37b8501017092",
+    "status": "failed",
+    "classification": "DEPENDENCY_VALIDATION_FAILED",
+    "change_set_id": "changeset-97f4bc78aaa74adfab91645abeba76be",
+    "recoverable": true,
+    "recovery_actions": [
+      "retry"
+    ],
+    "active_workspace_unchanged": true,
+    "build_result": {
+      "diagnostics": "PlatformIOProjectError: missing platformio.ini: D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-agent-run-6b81bccdeb614c2dba6a1e5a6088d732\\platformio.ini",
+      "error_code": "DEPENDENCY_VALIDATION_FAILED",
+      "message": "missing platformio.ini: D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-agent-run-6b81bccdeb614c2dba6a1e5a6088d732\\platformio.ini",
+      "origin": "platformio",
+      "retryable": false,
+      "success": false,
+      "terminal": true
+    }
+  },
+  "requirement_count": 58,
+  "deliverable_manifest": [
+    {
+      "id": "file:platformio.ini",
+      "kind": "file",
+      "path": "platformio.ini",
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "missing"
+    },
+    {
+      "id": "file:README.md",
+      "kind": "file",
+      "path": "README.md",
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "missing"
+    },
+    {
+      "id": "firmware_source",
+      "kind": "firmware_source",
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "present"
+    },
+    {
+      "id": "project_configuration",
+      "kind": "project_configuration",
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "missing"
+    },
+    {
+      "id": "documentation",
+      "kind": "documentation",
+      "paths": [
+        "README.md"
+      ],
+      "requirement_ids": [
+        "req-2",
+        "req-33",
+        "req-35",
+        "req-36",
+        "req-38",
+        "req-39",
+        "req-40",
+        "req-48",
+        "req-49",
+        "req-51",
+        "req-58"
+      ],
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "missing",
+      "topics": [
+        "wiring",
+        "test_checklist"
+      ]
+    },
+    {
+      "check_kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source.",
+      "id": "check:source",
+      "kind": "acceptance",
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "unverified"
+    },
+    {
+      "check_kind": "build",
+      "criterion": "A firmware build passes for the current source revision.",
+      "id": "check:firmware-build",
+      "kind": "acceptance",
+      "source_revision": "workspace:e11f2edf78e002d5db46afe5",
+      "status": "unverified"
+    }
+  ],
+  "job": {
+    "job_id": "job-7ffbc5e2ec6447108f4fc90027de9e51",
+    "execution_profile": "advanced",
+    "consumed": {
+      "elapsed_seconds": 253.8279999999795,
+      "input_bytes": 807277,
+      "output_tokens": 7434,
+      "requests": 13,
+      "tool_calls_used": 12
+    },
+    "limits": {
+      "elapsed_seconds": 2700,
+      "input_bytes": 24000000,
+      "output_tokens": 737280,
+      "requests": 360,
+      "tool_calls_used": 300
+    },
+    "auto_recovery_count": 0
+  },
+  "checkpoint": {
+    "checkpoint_id": "b910b6d70a6f7326bb6f328d68615579808316060c8a3923edb8e80c4107630c",
+    "turn": 12,
+    "session_seq": 165,
+    "safe_boundary": "turn.settled",
+    "updated_at": "2026-10-10T12:06:39.052261Z"
+  },
+  "checkpoint_stage_path": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\checkpoint-e1bf63f2efdd43c68a0659fdf7f14893",
+  "draft": {
+    "change_set_id": "changeset-97f4bc78aaa74adfab91645abeba76be",
+    "status": "draft",
+    "applied_at": null,
+    "base_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+    "staging_root": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-566d69ff42484cc09922ed25053a629e"
+  },
+  "draft_files": [
+    {
+      "path": "src/knock/knock_detector.cpp",
+      "sha256": "67866b15c102a7b71b6548d45aae7d343115478c4d274d8ef3050ad863f740f2"
+    },
+    {
+      "path": "src/knock/knock_detector.h",
+      "sha256": "3ae012f9aa0a7c87f134a6461e2717b5d1dacec9b8c217a6aa92e18d0d597551"
+    },
+    {
+      "path": "src/main.cpp",
+      "sha256": "cc135e0393183726b0b1d15786c89a025cc7c6480ca0e43c95662f44fdb4fcc7"
+    },
+    {
+      "path": "src/output/buzzer.cpp",
+      "sha256": "7bf7043459427772156d514269b102ea9064369beecf7ee48d4832f0ddf09516"
+    },
+    {
+      "path": "src/output/buzzer.h",
+      "sha256": "aca0a69906413d058b340d7ed100eaa34dfd6dd6710eefce4a0e0f660174f34b"
+    },
+    {
+      "path": "src/output/led_controller.cpp",
+      "sha256": "a5d02fb45375ca6fe4c4b229b2035ae8fdbe0b54217f078a58daa5f95f5cb735"
+    },
+    {
+      "path": "src/output/led_controller.h",
+      "sha256": "7fe132b756cda243f567cfedde8a80e7e1da7685412d7118aa97c52ae40e55dc"
+    },
+    {
+      "path": "src/pattern/pattern_manager.cpp",
+      "sha256": "0db1968ac46f2468253607e31c5105b6f60fbb56150c8cde39a017d3e46b4b0d"
+    },
+    {
+      "path": "src/pattern/pattern_manager.h",
+      "sha256": "a82a82e16a28a9bbc3540f548ad716e4240fa09835af96ae98f39cecae896a7c"
+    },
+    {
+      "path": "src/storage/pattern_storage.cpp",
+      "sha256": "ae1ee6e26727c4cb6e8f2eca6509261fcf5683214fc24b02ac8ab82db5ef36db"
+    },
+    {
+      "path": "src/storage/pattern_storage.h",
+      "sha256": "c1763abd15cfd70e06dbe4017d41a51f965781b033a244b17c66097edab8d9ed"
+    }
+  ],
+  "current_health_samples": {
+    "method": "GET http://127.0.0.1:8000/health during review",
+    "samples": [
+      {
+        "status": 200,
+        "duration_ms": 31
+      },
+      {
+        "status": 200,
+        "duration_ms": 16
+      },
+      {
+        "status": 200,
+        "duration_ms": 16
+      }
+    ],
+    "service": "forgex-backend",
+    "engine_ready": true,
+    "source_fingerprint": "7accf7c8d0df925679d76038086445fc3d3ae55c28a473d1a493c41100e93a4b",
+    "qualification_limit": "Idle checks only; they do not establish responsiveness during generation."
+  },
+  "historical_retention_warning": {
+    "source": ".forgex/logs/desktop-launch-20261010-173012.stderr.log",
+    "lines": [
+      1,
+      14
+    ],
+    "run": {
+      "run_id": "agent-run-0fd0f6b00fff4589b17b3ef51402aa95",
+      "status": "cancelled",
+      "classification": "AGENT_RUNTIME_CANCELLED",
+      "change_set_id": null,
+      "recoverable": false
+    },
+    "code": "AGENT_RESUME_WORKSPACE_CHANGED",
+    "occurrences_in_startup_excerpt": 2
+  },
+  "runtime_code_findings": [
+    {
+      "path": "backend/agent_runtime/task_state.py",
+      "line": 100,
+      "finding": "An unfinished milestone can suppress missing-deliverable next_action."
+    },
+    {
+      "path": "backend/agent_runtime/autonomous_loop.py",
+      "line": 1589,
+      "finding": "Generic project-validation exceptions become terminal dependency-validation failures."
+    },
+    {
+      "path": "backend/agent_runtime/build_recovery.py",
+      "line": 14,
+      "finding": "Configuration repair focus handles only DEPENDENCY_UNRESOLVED with a configuration fingerprint."
+    },
+    {
+      "path": "frontend/lib/backend-proxy.ts",
+      "line": 49,
+      "finding": "The health probe has a default 2000 ms timeout; its catch discards the transport cause."
+    }
+  ],
+  "firmware_findings": [
+    {
+      "path": "src/knock/knock_detector.cpp",
+      "line": 14,
+      "status": "Static inspection finding; behavior tests required",
+      "finding": "Repeatedly resetting the debounce timestamp while raw and accepted states differ appears to prevent a transition for a positive debounce interval."
+    },
+    {
+      "path": "src/main.cpp",
+      "lines": [
+        125,
+        177,
+        228,
+        262,
+        376,
+        384
+      ],
+      "status": "Observed source",
+      "finding": "Blocking delay calls appear in sensing/learning/feedback paths."
+    },
+    {
+      "path": "src/main.cpp",
+      "line": 24,
+      "status": "Review required",
+      "finding": "Pause-pattern interval order is {400,800}; reconcile it with the requested sequence."
+    }
+  ]
+}

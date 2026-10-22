@@ -18,6 +18,43 @@ async function server(handler) {
 }
 const input = (url, extra = {}) => ({ provider_id: "deepseek", model_id: "test-model", protocol: "openai-completions", npm: "@ai-sdk/openai-compatible", api_key: "fake-secret", base_url: url, prompt: "hello", temperature: 0.2, max_tokens: 50, policy: { header_ms: 3000, idle_ms: 3000 }, ...extra });
 
+test("unavailable model responses are actionable without retiring an unknown endpoint", () => {
+  const cases = [
+    {statusCode: 404, message: "This model is unavailable for free. The paid version is available now - use this slug instead: paid/private"},
+    {statusCode: 404, responseBody: JSON.stringify({error:{message:"This model is unavailable for free.", code:404}})},
+    {statusCode: 404, responseBody: JSON.stringify({error:{code:"model_not_found", message:"private upstream text"}})},
+    {statusCode: 410, message:"private upstream text"},
+  ];
+  for (const error of cases) {
+    const result = normalizeError(error, "openrouter");
+    assert.equal(result.code, "MODEL_RETIRED");
+    assert.equal(result.category, "model_unavailable");
+    assert.equal(result.retryable, false);
+    assert.match(result.message, /Choose another model explicitly/);
+    assert.doesNotMatch(result.message, /paid\/private|private upstream/);
+  }
+  for (const message of ["Not Found", "No endpoints found matching your data policy", "Upstream service unavailable"]) {
+    assert.equal(normalizeError({statusCode:404, message}, "openrouter").code, "PROVIDER_REQUEST_FAILED");
+  }
+  assert.equal(normalizeError({statusCode:401, message:"model not found"}, "openrouter").category, "authentication");
+});
+
+test("a real OpenRouter unavailable-free-model error is normalized without another request", async () => {
+  let attempts = 0;
+  const app = await server(async (_req, response) => {
+    attempts++;
+    response.writeHead(404, {"Content-Type":"application/json"});
+    response.end(JSON.stringify({error:{code:404,message:"This model is unavailable for free. The paid version is available now."}}));
+  });
+  try {
+    await assert.rejects(execute(input(app.url, {provider_id:"openrouter", model_id:"free/model:free"}), () => {}), error => {
+      assert.equal(normalizeError(error, "openrouter").code, "MODEL_RETIRED");
+      return true;
+    });
+    assert.equal(attempts, 1);
+  } finally {await app.close();}
+});
+
 test("NVIDIA malformed stream keeps a repairable category without upstream content", () => {
   const result = normalizeError({ reason: { _tag: "InvalidProviderOutput", message: "Invalid nvidia_nim/openai-compatible-chat stream event private source" } }, "nvidia_nim");
   assert.equal(result.code, "PROVIDER_STREAM_INVALID");

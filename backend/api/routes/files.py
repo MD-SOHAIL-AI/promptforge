@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import posixpath
+import asyncio
+import hashlib
+import tempfile
 import re
 import shutil
 import os
@@ -12,9 +15,10 @@ from pathlib import Path, PurePosixPath
 from fastapi import APIRouter, Query, Request
 
 from ...agent_runtime.tool_policy import is_sensitive_path
+from ...security.workspace_lock import workspace_lock
 from ...contracts.generated_project import GeneratedFile, GeneratedProject
 from ...services.project_import_service import ExternalProjectRecord
-from ...services.project_service import ProjectService, ProjectServiceError
+from ...services.project_service import ProjectService, ProjectServiceError, ProjectConflictError, ProjectNotFoundError
 from ..dependencies import required_state, resolve_project, resolve_project_from_request
 from ..errors import APIError, error_responses
 from ..schemas.files import (
@@ -30,6 +34,20 @@ from ..schemas.files import (
 router = APIRouter(tags=["files"])
 
 _FOLDER_MARKER = ".promptforge-folder"
+_FILE_EDIT_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _file_revision(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _require_current_revision(expected: str | None, actual_content: str) -> None:
+    if expected is None:
+        raise APIError(428, "FILE_REVISION_REQUIRED", "Reload the file before saving; a baseline revision is required.")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise APIError(422, "FILE_REVISION_INVALID", "Invalid baseline file revision.")
+    if expected != _file_revision(actual_content):
+        raise APIError(409, "FILE_REVISION_CONFLICT", "The file changed on disk. Your unsaved changes were preserved; compare before retrying.")
 
 
 @router.get(
@@ -119,6 +137,7 @@ async def get_file_content(
             path=normalized,
             content=content,
             file_type=_file_type(normalized),
+            revision=_file_revision(content),
         )
     project = await _load_project_by_metadata(_project_service(request), metadata)
     file = _find_file(project, normalized)
@@ -129,6 +148,7 @@ async def get_file_content(
         path=file.path,
         content=file.content,
         file_type=file.file_type,
+        revision=_file_revision(file.content),
     )
 
 
@@ -143,23 +163,7 @@ async def create_file(body: FileCreateRequest, request: Request) -> ProjectFiles
     metadata = await resolve_project_from_request(request, _identifier(body.project_id))
     path = _guard_workspace_path(body.path)
     if isinstance(metadata, ExternalProjectRecord):
-        root = Path(metadata.project_path)
-        target = _external_target(root, path)
-        if target.exists() or target.is_symlink():
-            raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": path})
-        try:
-            if body.kind == "folder":
-                target.mkdir(parents=True, exist_ok=False)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(body.content, encoding="utf-8")
-        except OSError as exc:
-            raise APIError(500, "FILE_CREATE_FAILED", "Workspace entry could not be created") from exc
-        return ProjectFilesResponse(
-            project_id=metadata.project_id,
-            project_name=metadata.project_name,
-            entries=_external_entries(root),
-        )
+        return await asyncio.to_thread(_create_external_entry_locked, body, metadata, path)
     project = await _load_project_by_metadata(service, metadata)
     target = _folder_marker(path) if body.kind == "folder" else path
     if _path_exists(project, target):
@@ -174,7 +178,7 @@ async def create_file(body: FileCreateRequest, request: Request) -> ProjectFiles
             file_type=body.file_type or _file_type(target),
         ),
     ]
-    saved = await _save_project(service, _replace_files(project, files))
+    saved = await _save_project(service, _replace_files(project, files), baseline=project)
     loaded = await service.load_project(saved.project_name)
     return ProjectFilesResponse(
         project_id=loaded.project_id,
@@ -193,53 +197,41 @@ async def update_file(
     body: FileUpdateRequest,
     request: Request,
 ) -> FileContentResponse | ProjectFilesResponse:
+    lock = _FILE_EDIT_LOCKS.setdefault(body.project_id, asyncio.Lock())
+    async with lock:
+        return await _update_file_serialized(body, request)
+
+
+async def _update_file_serialized(body: FileUpdateRequest, request: Request) -> FileContentResponse | ProjectFilesResponse:
     service = _project_service(request)
     metadata = await resolve_project_from_request(request, _identifier(body.project_id))
     path = _guard_workspace_path(body.path)
     new_path = _guard_workspace_path(body.new_path) if body.new_path else None
     if isinstance(metadata, ExternalProjectRecord):
-        root = Path(metadata.project_path)
-        target = _external_target(root, path)
-        if not target.exists() or target.is_symlink():
-            raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": path})
-        if new_path:
-            destination = _external_target(root, new_path)
-            if destination.exists() or destination.is_symlink():
-                raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": new_path})
-            try:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                target.replace(destination)
-                target = destination
-                path = new_path
-            except OSError as exc:
-                raise APIError(500, "FILE_RENAME_FAILED", "Workspace entry could not be renamed") from exc
-        if body.kind == "folder":
-            return ProjectFilesResponse(
-                project_id=metadata.project_id,
-                project_name=metadata.project_name,
-                entries=_external_entries(root),
-            )
-        if not target.is_file():
-            raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": path})
-        if body.content is not None:
-            try:
-                target.write_text(body.content, encoding="utf-8")
-            except OSError as exc:
-                raise APIError(500, "FILE_SAVE_FAILED", "File could not be saved") from exc
+        return await asyncio.to_thread(_update_external_file_locked, body, metadata, path, new_path)
+    if body.kind == "file" and body.content is not None and new_path is None:
+        # Compare/write under ProjectService's *single* persistence lock.
+        # Reading the file here and saving in a later step would be a TOCTOU race.
+        if body.expected_revision is None:
+            raise APIError(428, "FILE_REVISION_REQUIRED", "Reload the file before saving; a baseline is required")
+        if not re.fullmatch(r"[0-9a-f]{64}", body.expected_revision):
+            raise APIError(422, "FILE_REVISION_INVALID", "Invalid file baseline revision")
         try:
-            content = target.read_text(encoding="utf-8")
-        except UnicodeDecodeError as exc:
-            raise APIError(422, "FILE_NOT_TEXT", "File is not valid UTF-8 text", {"path": path}) from exc
-        return FileContentResponse(
-            project_id=metadata.project_id,
-            path=path,
-            content=content,
-            file_type=body.file_type or _file_type(path),
-        )
+            updated = await service.save_file_if_revision_matches(
+                metadata.project_name, metadata.project_id, path,
+                body.content, body.expected_revision, body.file_type,
+            )
+        except ProjectConflictError as exc:
+            raise APIError(409, "FILE_REVISION_CONFLICT", "The file changed; unsaved editor content was preserved") from exc
+        except ProjectNotFoundError as exc:
+            raise APIError(404, "FILE_NOT_FOUND", "File no longer exists") from exc
+        return FileContentResponse(project_id=metadata.project_id, path=path,
+            content=updated.content, file_type=updated.file_type,
+            revision=_file_revision(updated.content))
     project = await _load_project_by_metadata(service, metadata)
     if body.kind == "folder":
         updated = _rename_folder(project, path, new_path) if new_path else project.files
-        saved = await _save_project(service, _replace_files(project, updated))
+        saved = await _save_project(service, _replace_files(project, updated), baseline=project)
         loaded = await service.load_project(saved.project_name)
         return ProjectFilesResponse(
             project_id=loaded.project_id,
@@ -250,6 +242,8 @@ async def update_file(
     current = _find_file(project, path)
     if current is None or _is_folder_marker(current.path):
         raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": path})
+    if body.content is not None:
+        _require_current_revision(body.expected_revision, current.content)
     target_path = new_path or current.path
     if target_path != current.path and _path_exists(project, target_path):
         raise APIError(
@@ -264,7 +258,7 @@ async def update_file(
         file_type=body.file_type or current.file_type,
     )
     files = tuple(updated_file if item.path == current.path else item for item in project.files)
-    saved = await _save_project(service, _replace_files(project, files))
+    saved = await _save_project(service, _replace_files(project, files), baseline=project)
     loaded = await service.load_project(saved.project_name)
     file = _find_file(loaded, target_path)
     if file is None:
@@ -274,6 +268,7 @@ async def update_file(
         path=file.path,
         content=file.content,
         file_type=file.file_type,
+        revision=_file_revision(file.content),
     )
 
 
@@ -292,25 +287,7 @@ async def delete_file(
     metadata = await resolve_project_from_request(request, _identifier(project_id))
     normalized = _guard_workspace_path(path)
     if isinstance(metadata, ExternalProjectRecord):
-        root = Path(metadata.project_path)
-        target = _external_target(root, normalized)
-        if not target.exists() or target.is_symlink():
-            raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": normalized})
-        deleted_count = 1
-        try:
-            if target.is_dir():
-                deleted_count = sum(1 for item in target.rglob("*") if item.is_file() and not item.is_symlink())
-                shutil.rmtree(target)
-            else:
-                target.unlink()
-        except OSError as exc:
-            raise APIError(500, "FILE_DELETE_FAILED", "Workspace entry could not be deleted") from exc
-        return FileDeleteResponse(
-            project_id=metadata.project_id,
-            path=normalized,
-            deleted=True,
-            deleted_count=max(deleted_count, 1),
-        )
+        return await asyncio.to_thread(_delete_external_entry_locked, metadata, normalized)
     project = await _load_project_by_metadata(service, metadata)
     files = [
         item
@@ -322,12 +299,140 @@ async def delete_file(
         raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": normalized})
     if not files:
         raise APIError(422, "PROJECT_EMPTY", "Project must contain at least one file")
-    await _save_project(service, _replace_files(project, files))
+    await _save_project(service, _replace_files(project, files), baseline=project)
     return FileDeleteResponse(
         project_id=project.project_id,
         path=normalized,
         deleted=True,
         deleted_count=deleted_count,
+    )
+
+
+def _delete_external_entry_locked(metadata: ExternalProjectRecord, normalized: str) -> FileDeleteResponse:
+    with workspace_lock(metadata.project_path):
+        return _delete_external_entry_under_lock(metadata, normalized)
+
+
+def _delete_external_entry_under_lock(metadata: ExternalProjectRecord, normalized: str) -> FileDeleteResponse:
+    root = Path(metadata.project_path)
+    target = _external_target(root, normalized)
+    if not target.exists() or target.is_symlink():
+        raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": normalized})
+    deleted_count = 1
+    try:
+        if target.is_dir():
+            deleted_count = sum(1 for item in target.rglob("*") if item.is_file() and not item.is_symlink())
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+    except OSError as exc:
+        raise APIError(500, "FILE_DELETE_FAILED", "Workspace entry could not be deleted") from exc
+    return FileDeleteResponse(
+        project_id=metadata.project_id,
+        path=normalized,
+        deleted=True,
+        deleted_count=max(deleted_count, 1),
+    )
+
+
+def _create_external_entry_locked(body: FileCreateRequest, metadata: ExternalProjectRecord, path: str) -> ProjectFilesResponse:
+    with workspace_lock(metadata.project_path):
+        return _create_external_entry_under_lock(body, metadata, path)
+
+
+def _create_external_entry_under_lock(body: FileCreateRequest, metadata: ExternalProjectRecord, path: str) -> ProjectFilesResponse:
+    root = Path(metadata.project_path)
+    target = _external_target(root, path)
+    if target.exists() or target.is_symlink():
+        raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": path})
+    try:
+        if body.kind == "folder":
+            target.mkdir(parents=True, exist_ok=False)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body.content, encoding="utf-8")
+    except OSError as exc:
+        raise APIError(500, "FILE_CREATE_FAILED", "Workspace entry could not be created") from exc
+    return ProjectFilesResponse(
+        project_id=metadata.project_id,
+        project_name=metadata.project_name,
+        entries=_external_entries(root),
+    )
+
+
+def _update_external_file_locked(
+    body: FileUpdateRequest, metadata: ExternalProjectRecord, path: str, new_path: str | None,
+) -> FileContentResponse | ProjectFilesResponse:
+    """One atomic ForgeX edit transaction across backend processes/AI ChangeSets."""
+    with workspace_lock(metadata.project_path):
+        return _update_external_file_under_lock(body, metadata, path, new_path)
+
+
+def _update_external_file_under_lock(
+    body: FileUpdateRequest, metadata: ExternalProjectRecord, path: str, new_path: str | None,
+) -> FileContentResponse | ProjectFilesResponse:
+    root = Path(metadata.project_path)
+    target = _external_target(root, path)
+    if not target.exists() or target.is_symlink():
+        raise APIError(404, "FILE_NOT_FOUND", "Workspace entry was not found", {"path": path})
+    if new_path and body.content is not None and body.kind == "file":
+        # Reject conflicting compound rename+write before moving anything.
+        try:
+            _require_current_revision(body.expected_revision, target.read_text(encoding="utf-8"))
+        except UnicodeDecodeError as exc:
+            raise APIError(422, "FILE_NOT_TEXT", "File is not valid UTF-8 text", {"path": path}) from exc
+    if new_path:
+        destination = _external_target(root, new_path)
+        if destination.exists() or destination.is_symlink():
+            raise APIError(409, "FILE_EXISTS", "Workspace entry already exists", {"path": new_path})
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            target.replace(destination)
+            target = destination
+            path = new_path
+        except OSError as exc:
+            raise APIError(500, "FILE_RENAME_FAILED", "Workspace entry could not be renamed") from exc
+    if body.kind == "folder":
+        return ProjectFilesResponse(
+            project_id=metadata.project_id,
+            project_name=metadata.project_name,
+            entries=_external_entries(root),
+        )
+    if not target.is_file():
+        raise APIError(404, "FILE_NOT_FOUND", "File was not found", {"path": path})
+    if body.content is not None:
+        try:
+            current_content = target.read_text(encoding="utf-8")
+            _require_current_revision(body.expected_revision, current_content)
+            # Replace atomically rather than truncating a live source file.
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent, delete=False) as stream:
+                    temp_path = Path(stream.name)
+                    stream.write(body.content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.chmod(temp_path, stat.S_IMODE(target.stat().st_mode))
+                # Best-effort second check for out-of-process editors:
+                # their write could arrive during our fsync. The normal
+                # lock only coordinates requests inside this backend.
+                _require_current_revision(body.expected_revision, target.read_text(encoding="utf-8"))
+                os.replace(temp_path, target)
+            finally:
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise APIError(500, "FILE_SAVE_FAILED", "File could not be saved") from exc
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise APIError(422, "FILE_NOT_TEXT", "File is not valid UTF-8 text", {"path": path}) from exc
+    return FileContentResponse(
+        project_id=metadata.project_id,
+        path=path,
+        content=content,
+        file_type=body.file_type or _file_type(path),
+        revision=_file_revision(content),
     )
 
 
@@ -351,9 +456,11 @@ async def _load_project_by_metadata(service: ProjectService, metadata: object) -
         raise APIError(500, "PROJECT_SERVICE_ERROR", "Project could not be loaded") from exc
 
 
-async def _save_project(service: ProjectService, project: GeneratedProject):
+async def _save_project(service: ProjectService, project: GeneratedProject, *, baseline: GeneratedProject):
     try:
-        return await service.save_project(project)
+        return await service.save_project_if_current(project, baseline)
+    except ProjectConflictError as exc:
+        raise APIError(409, "PROJECT_REVISION_CONFLICT", "The project changed during this operation; reload and retry") from exc
     except ProjectServiceError as exc:
         raise APIError(500, "PROJECT_SERVICE_ERROR", "Project could not be saved") from exc
 

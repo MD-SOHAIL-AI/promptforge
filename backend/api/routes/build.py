@@ -24,7 +24,7 @@ async def accept_build(body: BuildRequest, request: Request, idempotency_key: st
     changes = services(request).change_set_service
     snapshot = await asyncio.to_thread(changes.inspect_workspace, metadata.project_path)
     async def execute():
-        response = (await build_project(body, request)).model_dump(mode="json")
+        response = (await build_project(body, request, operation_id=idempotency_key)).model_dump(mode="json")
         revision = (await asyncio.to_thread(changes.inspect_workspace, metadata.project_path)).revision
         response["result"]["metadata"].update(project_id=body.project_id, environment=body.environment,
             source_revision=snapshot.revision, operation_id=idempotency_key)
@@ -57,7 +57,7 @@ async def observe_build(operation_id: str, request: Request):
     responses=error_responses(404, 422, 500, 503),
     summary="Build a managed firmware project",
 )
-async def build_project(body: BuildRequest, request: Request) -> BuildResponse:
+async def build_project(body: BuildRequest, request: Request, operation_id: str | None = None) -> BuildResponse:
     projects = required_state(request, "project_service", "project service")
     platformio = required_state(request, "platformio_service", "PlatformIO")
     assert isinstance(projects, ProjectService)
@@ -82,16 +82,18 @@ async def build_project(body: BuildRequest, request: Request) -> BuildResponse:
         raise APIError(422, "BUILD_REQUEST_INVALID", message, {"project_id": body.project_id, "rootPath": str(root)}) from exc
     workspace = services(request).workspace_manager
     if workspace is not None:
-        _save_build_workspace(workspace, body.project_id, result)
+        _save_build_workspace(workspace, body.project_id, result, operation_id=operation_id)
     return BuildResponse(
         project_id=body.project_id,
         result=BuildResultResponse.model_validate(result.api_dict()),
     )
 
 
-def _save_build_workspace(workspace: object, project_id: str, result: object) -> None:
+def _save_build_workspace(workspace: object, project_id: str, result: object, *, operation_id: str | None = None) -> None:
     try:
-        execution_id = f"build-{project_id}"
+        # Each invocation is an independent, immutable history entry.
+        import uuid
+        execution_id = f"build-{operation_id or uuid.uuid4().hex}"
         api_dict = result.api_dict()
         workspace.save_artifact(execution_id, "build_report.json", api_dict)
         workspace.save_log(execution_id, "build", getattr(result, "message", "Build completed"))
@@ -112,7 +114,8 @@ def _save_build_workspace(workspace: object, project_id: str, result: object) ->
                     },
                 )
     except Exception:
-        pass
+        logger.exception("Build evidence persistence failed for project=%s operation=%s", project_id, operation_id)
+        raise
 
 
 def _build_error_message(root: Path, exc: Exception) -> str:

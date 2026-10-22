@@ -1,0 +1,5 @@
+{
+  "transport": "official codex app-server proxy",
+  "started_at": "2026-10-21T19:58:44+0530",
+  "error": "initialize did not respond within 20 seconds"
+}

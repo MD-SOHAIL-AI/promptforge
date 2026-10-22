@@ -1,0 +1,30 @@
+{
+  "original_change_set_id": "changeset-cc098de46bc24517ba3547fb5f62e62c",
+  "change_set_id": "changeset-ecf5cdaf087d450a87db35b86f809496",
+  "workspace_root": "C:\\Users\\diwan\\OneDrive\\Desktop\\simple esp32 project",
+  "staging_root": "D:\\projects\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\stage-1f4ee2ac232c4c26af7ccf0a32bae3f2",
+  "files": {
+    "README.md": "627a464ecbc7d0a955708e179abcbba24ced489f61428f22e8e198079730b6cb",
+    "platformio.ini": "89f3c1496bcb5d5dc7e006a505fa2208e64223174e8b44f32f09c2f4be154846",
+    "run_host_tests.py": "86f2d0f1d7f9ab37db31761bee975cfd4a7b1b0c99588244dc18de1e836719b2",
+    "src/knock/knock_detector.cpp": "eba5ac53e9d404be81cd7088163282ae7ca0efab15dfdf9503676fdf72e34a94",
+    "src/knock/knock_detector.h": "24ea72adc8425f2fe025e4b9b26f354ec3337f5854fa358e8265e479441669e8",
+    "src/main.cpp": "2ccc2342840d0fc44063326c362957af3bd7ebc433e9cfeac5288fdad6d0760c",
+    "src/output/buzzer.cpp": "7c7d9eb1e50ea395856f72b0145a361693366d0e3fbad4d80001d545acd3001a",
+    "src/output/buzzer.h": "7f8cc5256f77d0870dbd1d4f88d9b13df1d1419cc77677ffe3021018edafd60a",
+    "src/output/led_controller.cpp": "4451e167133d916c9d754ecab9457d87344c7efdf3cae035531bbc90e5b23376",
+    "src/output/led_controller.h": "80bc3f652c1f5acd3a34a8f3a8792714f8062117aa7d30019d22c2f1e440590f",
+    "src/pattern/pattern_manager.cpp": "efe49088d95460389cd6a44026bbe19d0b0b33b0ccfc589e03fadfcb3f5f7bc9",
+    "src/pattern/pattern_manager.h": "4ee6f8f2828131c504843f2dfe4c13ff79b7bec575e4160855bf84fc09f8eaef",
+    "src/storage/pattern_storage.cpp": "4bb2ec8c40edd019b1e46278df99b6690e4c001f4e3d89cdf6d4fa672766fcbf",
+    "src/storage/pattern_storage.h": "e12077aab99edc5c884f0c913da8d8edf71de1a065ce691040ab13ef8e8f150b",
+    "tests/host/firmware_tests.cpp": "1ab37938d76a14141ac5d757a6805d05180022efbb98970398f93a719414350e",
+    "tests/host/stubs/Arduino.h": "cd4c7e2a02e087dfb6392838234e2200c7e0c7a316ef06c6733ba7a753a5f8dd",
+    "tests/host/stubs/Preferences.h": "9789020b7593130b85e503b1cd82327b681d632b9cb9f8d7dab5da15c950550e"
+  },
+  "host_tests": "passed; actual source with hardware API stubs",
+  "physical_hardware_verified": false,
+  "firmware_sha256": "fa31e482a15da6bd1eda91b1146e7b37b9fb283923878d94ada6c2acd6068c20",
+  "status": "applied",
+  "applied_at": "2026-10-07T14:38:27.261954Z"
+}

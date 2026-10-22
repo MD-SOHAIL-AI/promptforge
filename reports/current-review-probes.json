@@ -1,0 +1,19 @@
+{
+  "artifact_integration": {
+    "compiler_success": "SUCCESS",
+    "agent_success": false,
+    "agent_build_passed": false,
+    "saved_firmware_count": 1
+  },
+  "crash_recovery": {
+    "projects_visible_after_crash": 0,
+    "api_resolution": "PROJECT_NOT_FOUND",
+    "direct_named_load_recovers": true
+  },
+  "request_deadline": {
+    "request_timeout_seconds": 0.03,
+    "parent_timeout_seconds": 0.5,
+    "elapsed_seconds": 0.106,
+    "result": "completed"
+  }
+}

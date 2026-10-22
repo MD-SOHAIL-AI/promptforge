@@ -140,3 +140,12 @@ test("ZIP scanning reads the central directory and rejects nested release debris
 test("malformed archives fail closed", () => {
   assert.throws(() => parseZipEntryNames(Buffer.from("not a zip")), /valid ZIP file/);
 });
+
+test("local runtime state is excluded from source scans and rejected in release staging", async () => {
+  await withTemporaryDirectory(async directory => {
+    await mkdir(path.join(directory, ".promptforge", "state"), {recursive:true});
+    await writeFile(path.join(directory, ".promptforge", "state", "runtime.json"), "{}");
+    assert.deepEqual((await scanReleaseTarget(directory, {sourceTreeMode:true})).findings, []);
+    assert.ok((await scanReleaseTarget(directory)).findings.some(finding => finding.code === "workspace_runtime"));
+  });
+});

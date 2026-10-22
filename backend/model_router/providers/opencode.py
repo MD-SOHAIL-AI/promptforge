@@ -15,6 +15,7 @@ import time
 from contextlib import aclosing
 from dataclasses import replace
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from backend.contracts.transport import TransportPolicy
 from backend.observability.diagnostics import emit_diagnostic_event
@@ -55,6 +56,10 @@ class OpenCodeProvider(BaseModelProvider):
             from .nvidia_nim import NvidiaNimProvider
             self.model_list_source = "provider"
             return await NvidiaNimProvider(self.registry).list_models()
+        if self.provider_id == "cerebras":
+            from .cerebras import CerebrasProvider
+            self.model_list_source = "provider"
+            return await CerebrasProvider(self.registry).list_models()
         def cached_models():
             with self.registry.storage.read_snapshot():
                 if self.registry.storage.provider_models(self.provider_id):
@@ -122,6 +127,13 @@ class OpenCodeProvider(BaseModelProvider):
         if self.provider_id.startswith("github-copilot") and options.get("enterpriseUrl") and not saved_endpoint:
             domain = options["enterpriseUrl"].removeprefix("https://").removeprefix("http://").rstrip("/")
             endpoint = f"https://copilot-api.{domain}"
+        # Enforce transport security at execution too: persisted settings or
+        # environment overrides can predate the configuration validation.
+        if endpoint:
+            parsed_endpoint = urlsplit(endpoint)
+            if parsed_endpoint.scheme == "http" and parsed_endpoint.hostname not in {"127.0.0.1", "localhost", "::1"}:
+                raise LLMConfigurationError("Remote provider endpoints require HTTPS", provider=LLMProvider.OPENAI,
+                    code="PROVIDER_ENDPOINT_INSECURE")
         policy = request_transport_policy(request, provider_id=self.provider_id, model_id=model_id,
                                           reasoning=self.registry.model_capabilities(self.provider_id, model_id).reasoning,
                                           free=self.registry.model_is_free(self.provider_id, model_id))
@@ -150,8 +162,15 @@ class OpenCodeProvider(BaseModelProvider):
                 payload["response_format"] = {"type": "json", "schema": dict(spec.json_schema)}
             elif spec.allow_prompt_fallback:
                 payload["system_prompt"] = (request.system_prompt or "") + "\nReturn only a JSON object matching this schema: " + json.dumps(dict(spec.json_schema))
-        if self.provider_id in {"nvidia_nim", "nvidia"} and (request.task_type == "planning" or payload.get("tools")):
-            payload["temperature"] = 1.0
+        # NVIDIA-specific chat_template_kwargs are not a provider-wide API.
+        # Restrict this compatibility profile to models we explicitly qualified.
+        nemotron_3_profile = model_id.casefold() in {
+            "nvidia/nemotron-3-super-120b-a12b",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+        }
+        if self.provider_id in {"nvidia_nim", "nvidia"} and nemotron_3_profile and (request.task_type == "planning" or payload.get("tools")):
+            if request.temperature is None:
+                payload["temperature"] = 1.0
             payload["top_p"] = 0.95
             payload["http_body"] = {"chat_template_kwargs": {"enable_thinking": False, "force_nonempty_content": True}, **(payload.get("http_body") or {})}
         if self.provider_id == "openrouter" and request.metadata.get("model_output_repair"):

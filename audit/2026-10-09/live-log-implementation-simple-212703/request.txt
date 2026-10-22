@@ -1,0 +1,9 @@
+Build a simple beginner-friendly ESP32 project using Arduino IDE.
+
+Project: ESP32 Automatic Temperature Monitor
+
+Requirements:
+
+Use an ESP32 development board. Use a DHT11 temperature and humidity sensor. Use one LED as a temperature warning indicator. Read temperature and humidity every 2 seconds. Print the readings in the Serial Monitor. If the temperature goes above 30°C, turn the LED ON. If the temperature is 30°C or below, turn the LED OFF. Provide:
+
+Required components. Pin connections in a clear table. Simple circuit/wiring explanation. Complete Arduino C++ code. Required libraries and how to install them. Step-by-step instructions to upload the code to ESP32. Explanation of the code for a beginner. Expected Serial Monitor output. Common errors and troubleshooting steps. Keep the circuit and code simple. Avoid unnecessary classes or advanced programming concepts.

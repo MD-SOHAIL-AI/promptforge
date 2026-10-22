@@ -1,0 +1,706 @@
+{
+  "schema_version": 1,
+  "partition_version": 5,
+  "request_context": [
+    "Provide:"
+  ],
+  "project_id": "qualification",
+  "session_id": "qualification",
+  "workspace_root": "D:\\projects\\ForgeX-Phase6-Final\\audit\\2026-10-09\\live-log-implementation-ultra-212713\\project",
+  "intent": "firmware_generation",
+  "request": "Build an advanced ESP32-based IoT Smart Environment Monitoring and Control System.\n\nThe project should be designed like a real embedded systems product, not just a basic Arduino demo.\n\nCore requirements:\n\nHardware:\n- ESP32 development board\n- DHT22 for temperature and humidity\n- MQ-135 air quality sensor\n- LDR for ambient light\n- PIR motion sensor\n- OLED display using I2C\n- Relay module to control a fan or lamp\n- Buzzer for alerts\n- Status LEDs\n- Push buttons for manual control\n- Optional microSD card for local data logging\n\nMain features:\n1. Continuously monitor temperature, humidity, air quality, light level, and motion.\n2. Display sensor values and system status on the OLED.\n3. Automatically control a fan through a relay when temperature crosses a configurable threshold.\n4. Automatically control a light based on LDR readings and motion detection.\n5. Trigger buzzer alerts when air quality becomes unsafe.\n6. Support both AUTO mode and MANUAL mode.\n7. Allow manual relay control using physical push buttons.\n8. Connect the ESP32 to Wi-Fi.\n9. Host a responsive web dashboard directly from the ESP32.\n10. Show live sensor values on the dashboard without refreshing the entire webpage.\n11. Use WebSockets Events for real-time updates.\n12. Allow the user to control relays and operating modes from the dashboard.\n13. Allow threshold values to be changed from the dashboard.\n14. Store configuration values permanently using ESP32 Preferences/NVS.\n15. Automatically reconnect to Wi-Fi if the connection is lost.\n16. If Wi-Fi is unavailable, the embedded control logic must continue working normally.\n17. Add an Access Point configuration mode so Wi-Fi credentials can be entered without hardcoding them.\n18. Include OTA firmware update support.\n19. Add a watchdog mechanism or recovery logic for unexpected failures.\n20. Use non-blocking programming. Avoid unnecessary delay() calls.\n21. Use millis(), timers, tasks, or event-driven logic where appropriate.\n22. Use FreeRTOS tasks if they improve the architecture.\n23. Protect shared data correctly if multiple FreeRTOS tasks are used.\n24. Add sensor-failure detection and graceful fallback behaviour.\n25. Log important system events such as Wi-Fi connection, relay changes, alarms, sensor errors, and startup events.\n26. Optionally log sensor readings to a microSD card in CSV format.\n\nSoftware architecture:\n\nDesign the firmware using separate modules such as:\n\nmain.cpp\n\u251c\u2500\u2500 sensors/\n\u2502   \u251c\u2500\u2500 temperature_sensor\n\u2502   \u251c\u2500\u2500 air_quality_sensor\n\u2502   \u251c\u2500\u2500 light_sensor\n\u2502   \u2514\u2500\u2500 motion_sensor\n\u251c\u2500\u2500 control/\n\u2502   \u251c\u2500\u2500 automation_controller\n\u2502   \u2514\u2500\u2500 relay_controller\n\u251c\u2500\u2500 network/\n\u2502   \u251c\u2500\u2500 wifi_manager\n\u2502   \u251c\u2500\u2500 web_server\n\u2502   \u2514\u2500\u2500 websocket_manager\n\u251c\u2500\u2500 storage/\n\u2502   \u251c\u2500\u2500 settings_manager\n\u2502   \u2514\u2500\u2500 data_logger\n\u251c\u2500\u2500 display/\n\u2502   \u2514\u2500\u2500 oled_manager\n\u2514\u2500\u2500 system/\n    \u251c\u2500\u2500 diagnostics\n    \u2514\u2500\u2500 watchdog\n\nUse a state-machine-based design wherever appropriate.\n\nCreate system states such as:\n\nBOOT\n\u2193\nINITIALIZATION\n\u2193\nWIFI_CONNECTING\n\u2193\nNORMAL_OPERATION\n\u251c\u2500\u2500 AUTO_MODE\n\u251c\u2500\u2500 MANUAL_MODE\n\u2514\u2500\u2500 ALARM_MODE\n\u2193\nERROR_RECOVERY\n\nWeb dashboard:\n\nCreate a modern responsive dashboard with:\n\n- Temperature card\n- Humidity card\n- Air quality card\n- Light level card\n- Motion status\n- Relay/fan status\n- Light status\n- Wi-Fi status\n- Device uptime\n- AUTO/MANUAL mode selector\n- Fan ON/OFF controls\n- Light ON/OFF controls\n- Temperature threshold adjustment\n- Air-quality threshold adjustment\n- Live updating charts for sensor history\n- System logs\n\nThe frontend can use:\n- HTML\n- CSS\n- JavaScript\n- Chart.js if appropriate\n\nThe dashboard should work on both desktop and mobile.\n\nNetworking:\n\nUse ESPAsyncWebServer if appropriate.\n\nImplement:\n- WebSocket/SSE communication\n- JSON messages\n- Automatic client reconnection\n- REST API endpoints where useful\n\nExample API structure:\n\nGET /api/sensors\nGET /api/status\nPOST /api/mode\nPOST /api/relay\nPOST /api/settings\nGET /api/logs\n\nEmbedded-system requirements:\n\nThe device must remain functional even when:\n- Wi-Fi disconnects\n- Dashboard is closed\n- A sensor fails temporarily\n- Internet access is unavailable\n\nThe ESP32 itself must be responsible for automation and safety logic.\n\nDo not make the cloud or web interface responsible for critical control.\n\nFreeRTOS architecture:\n\nIf using FreeRTOS, consider separate tasks for:\n\nTask 1: Sensor acquisition\nTask 2: Control logic\nTask 3: OLED updates\nTask 4: Network/web server\nTask 5: Data logging\nTask 6: System monitoring\n\nUse queues, mutexes, semaphores, or event groups where appropriate.\n\nSafety logic:\n\nExamples:\n\nIf temperature > configured threshold:\n    Fan ON\n\nIf temperature < threshold - hysteresis:\n    Fan OFF\n\nIf air quality exceeds dangerous threshold:\n    Buzzer ON\n    Alarm status ON\n\nIf darkness detected AND motion detected:\n    Light ON\n\nIf no motion for a configurable timeout:\n    Light OFF\n\nImplement hysteresis so relays do not rapidly switch ON and OFF around threshold values.\n\nCode quality requirements:\n\n- Use modern C++ suitable for ESP32.\n- Keep the code modular.\n- Avoid putting the entire program inside one file.\n- Use meaningful variable and function names.\n- Avoid global variables where possible.\n- Add comments for important logic.\n- Use enums and structs for system states and sensor data.\n- Handle errors explicitly.\n- Avoid blocking code.\n- Make the project easy to extend later.\n\nDevelopment environment:\n\nPrefer PlatformIO with VS Code.\n\nAlso explain how the same project could be compiled with Arduino IDE if practical.\n\nProvide:\n\n1. Complete project architecture.\n2. Hardware component list.\n3. Detailed pin mapping table.\n4. Wiring explanation.\n5. System block diagram.\n6. Data-flow diagram.\n7. State-machine diagram.\n8. FreeRTOS task architecture.\n9. Complete folder structure.\n10. Complete ESP32 firmware.\n11. Complete HTML/CSS/JavaScript dashboard.\n12. WebSocket/API protocol.\n13. Configuration storage implementation.\n14. Wi-Fi provisioning implementation.\n15. OTA update implementation.\n16. Sensor failure handling.\n17. Relay safety logic.\n18. Data logging implementation.\n19. PlatformIO configuration file.\n20. Library dependencies.\n21. Step-by-step build instructions.\n22. Flashing instructions.\n23. Testing procedure.\n24. Example sensor values and expected behaviour.\n25. Common errors and troubleshooting.\n26. Explanation of how each firmware module works.\n27. Suggestions for future upgrades.\n\nFuture upgrade ideas should include:\n\n- MQTT\n- Home Assistant integration\n- ESP-NOW\n- Bluetooth provisioning\n- Mobile application\n- Cloud database\n- Grafana dashboard\n- InfluxDB\n- Multiple ESP32 sensor nodes\n- LoRa communication\n- Matter smart-home integration\n- Voice assistant integration\n- Machine-learning-based anomaly detection\n- Predictive control\n\nMost importantly, build this like a proper embedded/IoT engineering project rather than a single-file Arduino tutorial.\n\nStart by explaining the architecture and block diagram before generating the code.\n\nConfirmed choices:\ncomponent_1: WebSockets",
+  "requirements": [
+    {
+      "id": "req-1",
+      "stable_key": "6b6661908d76fcdd3bd17702b5f607b5fd24c33be62f2aceaea23ef2602db916",
+      "text": "Build an advanced ESP32-based IoT Smart Environment Monitoring and Control System.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-2",
+      "stable_key": "dc34cab74fc176745573514fed9cc0338c4c79db12cf0502f80f0801dc7a60ee",
+      "text": "The project should be designed like a real embedded systems product, not just a basic Arduino demo.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-3",
+      "stable_key": "3ac8abefc639eb12d70a2340add7cd7e8e684ace0b974125262812501639e8d2",
+      "text": "Core requirements:\nHardware:\nESP32 development board\nDHT22 for temperature and humidity\nMQ-135 air quality sensor\nLDR for ambient light\nPIR motion sensor\nOLED display using I2C\nRelay module to control a fan or lamp\nBuzzer for alerts\nStatus LEDs\nPush buttons for manual control\nOptional microSD card for local data logging\nMain features:",
+      "evidence_kinds": [
+        "documentation",
+        "source"
+      ]
+    },
+    {
+      "id": "req-4",
+      "stable_key": "6542b100f10b8e2464077cc83b8e4f19444d1e8bb96010d2d93575da0e059f1f",
+      "text": "1. Continuously monitor temperature, humidity, air quality, light level, and motion.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-5",
+      "stable_key": "5b1854aae1b207806f4aa0c54060d96ded7f5892cda00220d356b9e60befa4b6",
+      "text": "2. Display sensor values and system status on the OLED.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-6",
+      "stable_key": "c4c1f866cde85185cdad167b1489efb32bfe1b1d55defacae649ace6f02d9c05",
+      "text": "3. Automatically control a fan through a relay when temperature crosses a configurable threshold.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-7",
+      "stable_key": "e5eaaac013ab5e75651313256b7c977272efc1a4eb0bc4bb0cbaede4b626f59d",
+      "text": "4. Automatically control a light based on LDR readings and motion detection.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-8",
+      "stable_key": "261c11e7d1e412245664315bdce730041ab7014db965994123cbd759b3cc0dd0",
+      "text": "5. Trigger buzzer alerts when air quality becomes unsafe.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-9",
+      "stable_key": "413d37bd1e0a3e1d0c53298f37757637f3bb4bdb7da662ebaed7ad6e7a670919",
+      "text": "6. Support both AUTO mode and MANUAL mode.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-10",
+      "stable_key": "cb1e2b5efcffeb5442b40bb50cf2987eaa5eeb84fab1aa911a67671f24b68b48",
+      "text": "7. Allow manual relay control using physical push buttons.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-11",
+      "stable_key": "ff56cb138a81429420b5d3937581082d4206e37f3f3838b5651552fedf27ad90",
+      "text": "8. Connect the ESP32 to Wi-Fi.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-12",
+      "stable_key": "ed063761d0838194bf6cf640005464648dd23b6103c8053d4566c4359f27b389",
+      "text": "9. Host a responsive web dashboard directly from the ESP32.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-13",
+      "stable_key": "52cbd6dc9b0fcd3c4f4fe5f19c35d434f6e488f9ac839373f18f124db3278e71",
+      "text": "10. Show live sensor values on the dashboard without refreshing the entire webpage.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-14",
+      "stable_key": "fd845aa2eb9a05925b3bc7e71dd3a18ae3627d1abb0e6c01b4bfe9083b33e420",
+      "text": "11. Use WebSockets Events for real-time updates.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-15",
+      "stable_key": "a9277215e1ecfb7dd177d97d5e94fce462f008886fe87bd3e74ddbdd301f15fb",
+      "text": "12. Allow the user to control relays and operating modes from the dashboard.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-16",
+      "stable_key": "02ca081aaf70e34b6847f6945338f21de24e74c6aa6591191250a81db0af0cfb",
+      "text": "13. Allow threshold values to be changed from the dashboard.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-17",
+      "stable_key": "2c012fa865bbb030f2a56b061a612b17a9f792886dc7859df92694a7ddc57fd6",
+      "text": "14. Store configuration values permanently using ESP32 Preferences/NVS.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-18",
+      "stable_key": "1056f641a3c714f51ce05142221f449b0cb2156102ea9f66bf3490184fc39ab1",
+      "text": "15. Automatically reconnect to Wi-Fi if the connection is lost.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-19",
+      "stable_key": "bc021d0b6fc0f1bbb43fa057991f8c4ce5a235e660fddb4114263bc95c11e8b4",
+      "text": "16. If Wi-Fi is unavailable, the embedded control logic must continue working normally.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-20",
+      "stable_key": "26043190d77d3dc33c6344a03d2618b63ac7a336b4f5e4589b74e53bcbbfa58e",
+      "text": "17. Add an Access Point configuration mode so Wi-Fi credentials can be entered without hardcoding them.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-21",
+      "stable_key": "9d075eac3587a8018ff7116894dde96f7106a800d81066fbea802e5e27348fb1",
+      "text": "18. Include OTA firmware update support.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-22",
+      "stable_key": "0940d3ffde03a53b53209a947262de451d66bd3b51f0efb73520aecf35f92d3b",
+      "text": "19. Add a watchdog mechanism or recovery logic for unexpected failures.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-23",
+      "stable_key": "0d077c2747379e2d4f2a5d4abda447939ec794e099253350d621053c22b09d3f",
+      "text": "20. Use non-blocking programming. Avoid unnecessary delay() calls.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-24",
+      "stable_key": "46142a7dccb8eb6a451d2bb6f56de9ba9c15e44edf6825f75709987b14dbeddf",
+      "text": "21. Use millis(), timers, tasks, or event-driven logic where appropriate.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-25",
+      "stable_key": "fb30b363da095b6f32200e880f48f60c947c4adde510458b5235ba2e8478df19",
+      "text": "22. Use FreeRTOS tasks if they improve the architecture.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-26",
+      "stable_key": "67eb86ecc67b5bb479d814734a32a490433b7a3d6296bdfa72ebf52c6c9e30cb",
+      "text": "23. Protect shared data correctly if multiple FreeRTOS tasks are used.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-27",
+      "stable_key": "f1633e9b75689e66b64db35a253707bcc372e864c37c072442465814a3479643",
+      "text": "24. Add sensor-failure detection and graceful fallback behaviour.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-28",
+      "stable_key": "c8557161852900db99c7053514da340d81e6e40603adb78327578f84827babae",
+      "text": "25. Log important system events such as Wi-Fi connection, relay changes, alarms, sensor errors, and startup events.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-29",
+      "stable_key": "fd9a8f501c58f83cb5f64639cd49ad29e56a5176b0435aeab10bca75ef95f341",
+      "text": "26. Optionally log sensor readings to a microSD card in CSV format.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-30",
+      "stable_key": "b85cdc88707844465a1f804eb48b765da87ae501e4298865bc22e945993c3be1",
+      "text": "Software architecture:\nDesign the firmware using separate modules such as:\nmain.cpp\n\u251c\u2500\u2500 sensors/\n\u2502   \u251c\u2500\u2500 temperature_sensor\n\u2502   \u251c\u2500\u2500 air_quality_sensor\n\u2502   \u251c\u2500\u2500 light_sensor\n\u2502   \u2514\u2500\u2500 motion_sensor\n\u251c\u2500\u2500 control/\n\u2502   \u251c\u2500\u2500 automation_controller\n\u2502   \u2514\u2500\u2500 relay_controller\n\u251c\u2500\u2500 network/\n\u2502   \u251c\u2500\u2500 wifi_manager\n\u2502   \u251c\u2500\u2500 web_server\n\u2502   \u2514\u2500\u2500 websocket_manager\n\u251c\u2500\u2500 storage/\n\u2502   \u251c\u2500\u2500 settings_manager\n\u2502   \u2514\u2500\u2500 data_logger\n\u251c\u2500\u2500 display/\n\u2502   \u2514\u2500\u2500 oled_manager\n\u2514\u2500\u2500 system/\n\u251c\u2500\u2500 diagnostics\n\u2514\u2500\u2500 watchdog",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-31",
+      "stable_key": "f0bb08e35396b0bc0e2f006d84c2545d0d60b675867d61178be0552eca51e58e",
+      "text": "Use a state-machine-based design wherever appropriate.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-32",
+      "stable_key": "7eb626158a4ba00381742e221fe82e27a5840cd014489bdd44558b98d22a67bb",
+      "text": "Create system states such as:\nBOOT\n\u2193\nINITIALIZATION\n\u2193\nWIFI_CONNECTING\n\u2193\nNORMAL_OPERATION\n\u251c\u2500\u2500 AUTO_MODE\n\u251c\u2500\u2500 MANUAL_MODE\n\u2514\u2500\u2500 ALARM_MODE\n\u2193\nERROR_RECOVERY\nWeb dashboard:\nCreate a modern responsive dashboard with:\nTemperature card\nHumidity card\nAir quality card\nLight level card\nMotion status\nRelay/fan status\nLight status\nWi-Fi status\nDevice uptime\nAUTO/MANUAL mode selector\nFan ON/OFF controls\nLight ON/OFF controls\nTemperature threshold adjustment\nAir-quality threshold adjustment\nLive updating charts for sensor history\nSystem logs\nThe frontend can use:\nHTML\nCSS\nJavaScript\nChart.js if appropriate\nThe dashboard should work on both desktop and mobile.\nNetworking:",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-33",
+      "stable_key": "13839b56ef9fe0d88171c608f26109e0b88fdc162ddfebc9a20715b2ccf26f7e",
+      "text": "Use ESPAsyncWebServer if appropriate.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-34",
+      "stable_key": "9b46fe07783c792e61578bf67c9ca48560527e0ab3e32ddc910fc91c0ad77c49",
+      "text": "Implement:\nWebSocket/SSE communication\nJSON messages\nAutomatic client reconnection\nREST API endpoints where useful\nExample API structure:\nGET /api/sensors\nGET /api/status\nPOST /api/mode\nPOST /api/relay\nPOST /api/settings\nGET /api/logs\nEmbedded-system requirements:\nThe device must remain functional even when:\nWi-Fi disconnects\nDashboard is closed\nA sensor fails temporarily\nInternet access is unavailable",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-35",
+      "stable_key": "4af56f1291833491c3158de6f490bde6b8f72779022c661916bb2924c4633ec4",
+      "text": "The ESP32 itself must be responsible for automation and safety logic.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-36",
+      "stable_key": "ded3ebe7d0f62c7dfc15e8b135cc839b6f0b8bb9fda271b66570ba6e9a61df8e",
+      "text": "FreeRTOS architecture:\nIf using FreeRTOS, consider separate tasks for:\nTask 1: Sensor acquisition\nTask 2: Control logic\nTask 3: OLED updates\nTask 4: Network/web server\nTask 5: Data logging\nTask 6: System monitoring",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-37",
+      "stable_key": "788af367b71e88966fe178cab86da6d75d6aefe91e8f1db8e5407d502aecfa9b",
+      "text": "Use queues, mutexes, semaphores, or event groups where appropriate.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-38",
+      "stable_key": "4705af83f77173919efdfde111506162662c9992da92408b6bf7d289105bd09c",
+      "text": "Safety logic:\nExamples:\nIf temperature > configured threshold:\nFan ON\nIf temperature < threshold - hysteresis:\nFan OFF\nIf air quality exceeds dangerous threshold:\nBuzzer ON\nAlarm status ON\nIf darkness detected AND motion detected:\nLight ON\nIf no motion for a configurable timeout:\nLight OFF\nCode quality requirements:",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-39",
+      "stable_key": "6b51e8b57429b030c63e40bebf020eb30b2398daa05070506c8083589221c041",
+      "text": "Use modern C++ suitable for ESP32.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-40",
+      "stable_key": "3a12df64a2489249981095ede0f8300a2bc324902df2dedf426e2a24be9ed714",
+      "text": "Keep the code modular.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-41",
+      "stable_key": "05cf2ad0f640e83d0db9d2defc5eb06bf78f9a192b0692cac4020da1ab25612f",
+      "text": "Avoid putting the entire program inside one file.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-42",
+      "stable_key": "f3399bcce3c3aff71e8720b712472ceb3617e76e8de3a4a55fe50655acc6aab2",
+      "text": "Use meaningful variable and function names.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-43",
+      "stable_key": "e10e844cb73504fd767b28671641f326a04360bdf347201fe0dcd9b2a3628915",
+      "text": "Avoid global variables where possible.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-44",
+      "stable_key": "8e4d6b61df425592da73498ade51e774d8aaf799a825349457f4b3e5ecd3fe75",
+      "text": "Add comments for important logic.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-45",
+      "stable_key": "ddae7a7160d2243a183b245cbb76cd04c0f7a9eb7c79ab4541d1d023cbcc2b13",
+      "text": "Use enums and structs for system states and sensor data.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-46",
+      "stable_key": "68319df7227e4b3e4a6165a499a2407ce4282620e6db2bf650855ad64c846f55",
+      "text": "Handle errors explicitly.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-47",
+      "stable_key": "de9d888ff0ef77d3701b48eb61ec655d9c0957b84d0f27937038c0dbb31d101f",
+      "text": "Avoid blocking code.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-48",
+      "stable_key": "4ed9aaec4f0a2e285d224a9d28dc8af6642a39311dbdbec650d468536b7b979c",
+      "text": "Make the project easy to extend later.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-49",
+      "stable_key": "0098ab1d6a4058376a97e6ac360568f45d725985b6c192a30745cbceeb9cf503",
+      "text": "Development environment:\nPrefer PlatformIO with VS Code.\nAlso explain how the same project could be compiled with Arduino IDE if practical.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-50",
+      "stable_key": "ac5a508f5f0310c46a92aaa02d3d4a9f50b93122136202fbfdbc37b847acd0d3",
+      "text": "1. Complete project architecture.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-51",
+      "stable_key": "d8cd0553ba8e7e733384948a8172cd22e09105c0add8089aed6efcc860536b8c",
+      "text": "2. Hardware component list.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-52",
+      "stable_key": "fdbf944c741e2cd3d381b870bf7fac749fe83739d802cd7baee0bffccb0f5b4f",
+      "text": "3. Detailed pin mapping table.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-53",
+      "stable_key": "1fadd47a8d7542e331c93c8c5ab38360331b0eda1a5a67257726ceff3d96cc10",
+      "text": "4. Wiring explanation.",
+      "evidence_kinds": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "req-54",
+      "stable_key": "d73ada4728b6d9c56fd1bbbf3159aba4fa0b69d6ed93003f74a33f9124612299",
+      "text": "5. System block diagram.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-55",
+      "stable_key": "a48c2829f006873190791fda666b2b766f2e4527c2fa7dd9b182e9f48d2b1056",
+      "text": "6. Data-flow diagram.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-56",
+      "stable_key": "6257950550b8a11ffbf61e01f7073ecfe733d975236051a1aef3c25a06617777",
+      "text": "7. State-machine diagram.",
+      "evidence_kinds": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "req-57",
+      "stable_key": "773a21475d85ac7ae3dce70015b4153891673665d873468b94252ffab96f845a",
+      "text": "8. FreeRTOS task architecture.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-58",
+      "stable_key": "58ff6914c76cbcde403a254e159661a9df470277067215f64a5f6704494076b0",
+      "text": "9. Complete folder structure.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-59",
+      "stable_key": "354d72840824b23b8868c09a43ff9890dc7790f3637ce73a39a2d0cafa2b7dcf",
+      "text": "10. Complete ESP32 firmware.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-60",
+      "stable_key": "1e80d3f0f5e1fa549503ac7114bfaec3d965fd57ee313deea327f75071a1cab5",
+      "text": "11. Complete HTML/CSS/JavaScript dashboard.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-61",
+      "stable_key": "d25943c0defeadb8b7af4ab0635967a6469e269b55121b85fe8756b685ba16b1",
+      "text": "12. WebSocket/API protocol.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-62",
+      "stable_key": "39a92e9af0c1f09ee9b6c7c26f582a1e59276274fd452be6c919328bd8518f1e",
+      "text": "13. Configuration storage implementation.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-63",
+      "stable_key": "24fef60110958edaac37075c3a2a34cadb743ee9764a943c1a478fda7563249b",
+      "text": "14. Wi-Fi provisioning implementation.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-64",
+      "stable_key": "46ab73161c653ed572640385c34b8ba884fe213689722a9f5309d63ad3615592",
+      "text": "15. OTA update implementation.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-65",
+      "stable_key": "0472fa838307954c74a1d6ea294e4cea32f93012ce84796b54bdd60566c0b761",
+      "text": "16. Sensor failure handling.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-66",
+      "stable_key": "7bda9c34e6a8d80c78304d2a43ae988ed13f0f179843aac45cc8f3d92981b7c2",
+      "text": "17. Relay safety logic.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-67",
+      "stable_key": "ad06837e776b7fa47dad5248fcc983883085614137191a462c0bb712ebc3cd25",
+      "text": "18. Data logging implementation.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-68",
+      "stable_key": "c107e3fefbe71f921437d4dceb6a3389b6e0b8d7a2f3fc6cbc1b4c6abffaf154",
+      "text": "19. PlatformIO configuration file.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-69",
+      "stable_key": "1edacae7a2c8d678cc825c28ad1375531eb43510769d4a837050044a33d0e50b",
+      "text": "20. Library dependencies.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-70",
+      "stable_key": "4ad368362f17564f9a0383c4114300a64f68b85b2498dfc10108c4646d8c8762",
+      "text": "21. Step-by-step build instructions.",
+      "evidence_kinds": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "req-71",
+      "stable_key": "8f22785fff0582849fa708cab91969c1a938a532bf7582b5126bd6559e4eebb6",
+      "text": "22. Flashing instructions.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-72",
+      "stable_key": "9f1109a86157befde4d62ee33b441c5e5f0607870f5bece02791b709d8efd6bc",
+      "text": "23. Testing procedure.",
+      "evidence_kinds": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "req-73",
+      "stable_key": "4000538ac731a506c13055fb751dad972fc0d5ecc996c9ababa5627cf2e97d53",
+      "text": "24. Example sensor values and expected behaviour.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-74",
+      "stable_key": "852960a750da2cc5d89648c23ef22a7df3cab10f168e4c835ac6657d8b7c80c7",
+      "text": "25. Common errors and troubleshooting.",
+      "evidence_kinds": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "req-75",
+      "stable_key": "3082bfb1c98e3d10a9b5d7aee07af732e21245f61a543466080f32b1d0158a58",
+      "text": "26. Explanation of how each firmware module works.",
+      "evidence_kinds": [
+        "documentation"
+      ]
+    },
+    {
+      "id": "req-76",
+      "stable_key": "55a13ff5aaf0af525b25334edf39d164a42ebaee55953bde828e23e487ab97c9",
+      "text": "27. Suggestions for future upgrades.",
+      "evidence_kinds": [
+        "source"
+      ]
+    },
+    {
+      "id": "req-77",
+      "stable_key": "c149c0adf7c35a269a8728b8078de0f570034c278a49a6ae2f3040b5dfdb0aec",
+      "text": "Future upgrade ideas should include:\nMQTT\nHome Assistant integration\nESP-NOW\nBluetooth provisioning\nMobile application\nCloud database\nGrafana dashboard\nInfluxDB\nMultiple ESP32 sensor nodes\nLoRa communication\nMatter smart-home integration\nVoice assistant integration\nMachine-learning-based anomaly detection\nPredictive control\nMost importantly, build this like a proper embedded/IoT engineering project rather than a single-file Arduino tutorial.\nStart by explaining the architecture and block diagram before generating the code.\nConfirmed choices:\ncomponent_1: WebSockets",
+      "evidence_kinds": [
+        "source"
+      ]
+    }
+  ],
+  "exclusions": [
+    "Do not make the cloud or web interface responsible for critical control.",
+    "Implement hysteresis so relays do not rapidly switch ON and OFF around threshold values."
+  ],
+  "superseded_requirements": [],
+  "superseded_exclusions": [],
+  "prohibited_actions": [],
+  "defaults": [
+    "Preserve unrelated user files.",
+    "Do not flash without separate confirmation."
+  ],
+  "evidence_contract_version": 2,
+  "accepted_choices": [
+    "component_1: WebSockets"
+  ],
+  "acceptance_checks": [
+    {
+      "id": "source",
+      "kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source."
+    },
+    {
+      "id": "firmware-build",
+      "kind": "build",
+      "criterion": "A firmware build passes for the current source revision."
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "firmware_source",
+      "kind": "firmware_source"
+    },
+    {
+      "id": "project_configuration",
+      "kind": "project_configuration"
+    },
+    {
+      "id": "documentation",
+      "kind": "documentation",
+      "paths": [
+        "README.md"
+      ],
+      "topics": [
+        "wiring",
+        "test_checklist",
+        "usage"
+      ],
+      "requirement_ids": [
+        "req-3",
+        "req-53",
+        "req-56",
+        "req-70",
+        "req-71",
+        "req-72",
+        "req-74",
+        "req-75"
+      ]
+    },
+    {
+      "id": "check:source",
+      "kind": "acceptance",
+      "check_kind": "source_review",
+      "criterion": "Every requested requirement passes independent review against current source."
+    },
+    {
+      "id": "check:firmware-build",
+      "kind": "acceptance",
+      "check_kind": "build",
+      "criterion": "A firmware build passes for the current source revision."
+    }
+  ],
+  "revision": "0fd94cd8ec8ec30efe4b140dbde6621a535ac8cf723cd0435419a42d281f3a5c",
+  "revision_history": [
+    "0fd94cd8ec8ec30efe4b140dbde6621a535ac8cf723cd0435419a42d281f3a5c"
+  ]
+}

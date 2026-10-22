@@ -196,10 +196,13 @@ def test_memory_provenance_is_invalidated_when_workspace_revision_changes(tmp_pa
         affected_paths=("src/main.cpp",),
     )
     assert memory.active("project-1", current_workspace_revision="workspace:one")[0]["source_hash"] == entry.source_hash
+    # Unrelated whole-project revision changes must not invalidate scoped facts.
+    assert len(memory.active("project-1", current_workspace_revision="workspace:two")) == 1
+    memory.invalidate_for_change("project-1", changed_paths=("src/main.cpp",), new_workspace_revision="workspace:two")
     assert memory.active("project-1", current_workspace_revision="workspace:two") == ()
     invalidated = store.memories("project-1", include_invalidated=True)[0]
     assert invalidated["status"] == "invalidated"
-    assert invalidated["invalidation_reason"] == "workspace_revision_changed"
+    assert invalidated["invalidation_reason"] == "source_files_changed"
 
 
 def test_hardware_approval_is_one_time_and_fingerprint_bound(tmp_path: Path) -> None:

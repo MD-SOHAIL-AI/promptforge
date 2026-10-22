@@ -805,7 +805,7 @@ class AgentOrchestrationStore:
     def memories(self, project_id: str, *, include_invalidated: bool = False) -> tuple[dict[str, object], ...]:
         query = "SELECT payload_json FROM project_memory WHERE project_id=?"; params: list[object] = [project_id]
         if not include_invalidated: query += " AND status='active'"
-        query += " ORDER BY created_at,memory_id"
+        query += " ORDER BY created_at DESC,memory_id DESC"
         with closing(self._connect()) as connection: rows = connection.execute(query, tuple(params)).fetchall()
         return tuple(_decode(row[0]) for row in rows)
 

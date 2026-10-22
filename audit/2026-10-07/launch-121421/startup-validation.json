@@ -1,0 +1,10 @@
+{
+  "service": "forgex-backend",
+  "status": "healthy",
+  "engine_ready": true,
+  "runtime_contract": "forgex-agent-runtime-v3",
+  "source_fingerprint": "75f7d125714d6590da0e887cb3e725651dc88ec6fd86a5ce9c68f6447b19620e",
+  "local_auth_required": true,
+  "updated_source_loaded": true,
+  "platformio_available": true
+}

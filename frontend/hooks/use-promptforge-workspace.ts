@@ -6,6 +6,7 @@ import { promptForgeApi } from "@/lib/api";
 import { localSession } from "@/lib/local-session";
 import { apiErrorCode, toErrorMessage } from "@/lib/errors";
 import { SingleFlight } from "@/lib/single-flight";
+import { WriteQueue } from "@/lib/write-queue";
 import { useForgeXDialogs } from "@/components/ide/dialogs/forgex-dialog-provider";
 import {
   EMPTY_FILE,
@@ -380,6 +381,9 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
   const [recentlyAddedPaths, setRecentlyAddedPaths] = useState<string[]>([]);
   const [stages, setStages] = useState<WorkflowStage[]>(initialStages);
   const [tabs, setTabs] = useState<EditorTab[]>([]);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const fileWritesRef = useRef(new WriteQueue());
   const [activePath, setActivePath] = useState<string | null>(null);
   const [logs, setLogs] = useState<ConsoleEntry[]>([]);
   const [workspaceLogs, setWorkspaceLogs] = useState<WorkspaceLog[]>([]);
@@ -580,16 +584,16 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
         const response = await promptForgeApi.fileContent(activeProject.project_id, path);
         if (activeProjectIdRef.current !== projectId) return;
         const file = toFile(response.project_id, response.path, response.content, response.file_type);
-        setTabs((current) =>
-          current.map((tab) => (tab.path === path ? { ...file, dirty: false } : tab)),
-        );
+        setTabs((current) => current.map((tab) =>
+          tab.path === path && !tab.dirty ? { ...file, revision: response.revision, dirty: false } : tab,
+        ));
         setActivePath(file.path);
       } catch (err) {
         const cached = activeProject.files.find((file) => file.path === path);
         if (cached) {
           const file = toFile(activeProject.project_id, cached.path, cached.content, cached.file_type);
           setTabs((current) =>
-            current.map((tab) => (tab.path === path ? { ...file, dirty: false } : tab)),
+            current.map((tab) => (tab.path === path && !tab.dirty ? { ...file, dirty: false } : tab)),
           );
           setActivePath(file.path);
           return;
@@ -604,6 +608,8 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
   );
 
   const closeTab = useCallback((path: string) => {
+    const candidate = tabs.find((tab) => tab.path === path);
+    if (candidate?.dirty && !window.confirm(`Discard unsaved changes to ${path}? Cancel keeps the tab open.`)) return;
     setTabs((current) => {
       const next = current.filter((tab) => tab.path !== path);
       setActivePath((selected) => {
@@ -612,45 +618,55 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
       });
       return next;
     });
-  }, []);
+  }, [tabs]);
 
   const updateTabContent = useCallback((path: string, content: string) => {
     invalidateBuild();
-    setTabs((current) =>
-      current.map((tab) => (tab.path === path ? { ...tab, content, dirty: true } : tab)),
-    );
+    const next = tabsRef.current.map((tab) => tab.path === path ? {...tab, content, dirty: true} : tab);
+    tabsRef.current = next;
+    setTabs(next);
   }, [invalidateBuild]);
 
   const saveFile = useCallback(
     async (path: string, contentOverride?: string) => {
       if (!activeProject) return;
-      const tab = tabs.find((item) => item.path === path);
+      const tab = tabsRef.current.find((item) => item.path === path);
       if (!tab) return;
+      const projectId = activeProject.project_id;
+      const submitted = contentOverride ?? tab.content;
       invalidateBuild();
       try {
-        const response = await promptForgeApi.updateFile({
-          project_id: activeProject.project_id,
-          path,
-          content: contentOverride ?? tab.content,
-          file_type: tab.fileType,
+        await fileWritesRef.current.run(JSON.stringify([projectId, path]), async () => {
+          if (activeProjectIdRef.current !== projectId) return;
+          const currentTab = tabsRef.current.find((item) => item.path === path);
+          if (!currentTab) return;
+          const response = await promptForgeApi.updateFile({
+            project_id: projectId,
+            path,
+            content: submitted,
+            expected_revision: currentTab.revision ?? undefined,
+            file_type: currentTab.fileType,
+          });
+          if (activeProjectIdRef.current !== projectId) return;
+          if ("content" in response) {
+            // A successful save advances the disk baseline even if the operator
+            // typed more text while it was in flight. Keep that newer buffer dirty.
+            const next = tabsRef.current.map((item) =>
+              item.path === path && item.revision === currentTab.revision
+                ? {...item, revision: response.revision, dirty: item.content !== submitted}
+                : item);
+            tabsRef.current = next;
+            setTabs(next);
+          }
         });
-        if (activeProjectIdRef.current !== activeProject.project_id) return;
-        if ("content" in response) {
-          setTabs((current) =>
-            current.map((item) =>
-              item.path === path && item.content === (contentOverride ?? tab.content)
-                ? { ...toFile(response.project_id, response.path, response.content, response.file_type), dirty: false }
-                : item,
-            ),
-          );
-        }
-        await loadProjectFiles(activeProject.project_id);
-        await refreshProjects(activeProject.project_id);
+        if (activeProjectIdRef.current !== projectId) return;
+        await loadProjectFiles(projectId);
+        await refreshProjects(projectId);
       } catch (err) {
         reportError(err, `File could not be saved: ${path}`);
       }
     },
-    [activeProject, invalidateBuild, loadProjectFiles, refreshProjects, reportError, tabs],
+    [activeProject, invalidateBuild, loadProjectFiles, refreshProjects, reportError],
   );
 
   const createEntry = useCallback(
@@ -695,6 +711,10 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
   const renameEntry = useCallback(
     async (entry: WorkspaceEntry, explicitPath?: string) => {
       if (!activeProject) return;
+      if (tabs.some(tab => tab.dirty && (tab.path === entry.path || entry.kind === "folder" && tab.path.startsWith(`${entry.path}/`)))) {
+        await dialogs.message({ title: "Unsaved changes", description: "Save or discard changes in affected tabs before renaming this entry." });
+        return;
+      }
       const value = explicitPath ?? await dialogs.input({
         title: entry.kind === "file" ? "Rename File" : "Rename Folder",
         description: "Path is relative to the active project root.",
@@ -751,12 +771,16 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
         });
       }
     },
-    [activeProject, dialogs, invalidateBuild, loadProjectFiles, refreshProjects, reportError],
+    [activeProject, dialogs, invalidateBuild, loadProjectFiles, refreshProjects, reportError, tabs],
   );
 
   const deleteEntry = useCallback(
     async (entry: WorkspaceEntry) => {
       if (!activeProject) return;
+      if (tabs.some(tab => tab.dirty && (tab.path === entry.path || entry.kind === "folder" && tab.path.startsWith(`${entry.path}/`)))) {
+        await dialogs.message({ title: "Unsaved changes", description: "Save or discard changes in affected tabs before deleting this entry." });
+        return;
+      }
       const approved = preferencesRef.current["workspace.confirm_before_delete"] === false ? true : await dialogs.confirmAction({
         title: entry.kind === "file" ? "Delete File?" : "Delete Folder?",
         description: `Delete ${entry.path} from ${activeProject.project_name}?`,
@@ -779,11 +803,15 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
         });
       }
     },
-    [activeProject, dialogs, invalidateBuild, loadProjectFiles, refreshProjects, reportError],
+    [activeProject, dialogs, invalidateBuild, loadProjectFiles, refreshProjects, reportError, tabs],
   );
 
   const deleteProject = useCallback(async () => {
     if (!activeProject) return;
+    if (tabs.some(tab => tab.dirty)) {
+      await dialogs.message({ title: "Unsaved changes", description: "Save or discard open file changes before deleting the project." });
+      return;
+    }
     const approved = await dialogs.confirmAction({
       title: "Delete Project?",
       description: `Delete project ${activeProject.project_name}?`,
@@ -796,11 +824,15 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
     setActivePath(null);
     setEntries([]);
     await refreshProjects();
-  }, [activeProject, dialogs, refreshProjects]);
+  }, [activeProject, dialogs, refreshProjects, tabs]);
 
   const selectProject = useCallback((project: ProjectResponse) => {
     if (activeProjectIdRef.current === project.project_id && project.metadata?.missing !== true
         && !missingProjectsRef.current.has(project.project_id)) return;
+    if (tabs.some(tab => tab.dirty)) {
+      window.alert("Save or discard unsaved editor changes before switching projects.");
+      return;
+    }
     buildObserverRef.current?.abort();
     buildObserverRef.current = null;
     setToolAction((value) => value === "build" ? null : value);
@@ -821,7 +853,7 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
     restoredProjectRef.current = null;
     if (preferencesRef.current["workspace.remember_last_workspace"] !== false) window.localStorage.setItem(LAST_PROJECT_KEY, project.project_id);
     else window.localStorage.removeItem(LAST_PROJECT_KEY);
-  }, []);
+  }, [tabs]);
 
   const rememberDesktopWorkspacePath = useCallback((path: string | null) => {
     setDesktopWorkspacePathState(path);
@@ -1149,11 +1181,11 @@ export function usePromptForgeWorkspace(preferences: Record<string, ForgeXSettin
       if (preferencesRef.current["general.auto_open_generated_main_cpp"] !== false && loadedEntries.some((entry) => entry.kind === "file" && entry.path === "src/main.cpp")) {
         try {
           const response = await promptForgeApi.fileContent(project.project_id, "src/main.cpp");
-          const file = toFile(response.project_id, response.path, response.content, response.file_type);
+          const file = toFile(response.project_id, response.path, response.content, response.file_type, response.revision);
           setTabs((current) => {
             const exists = current.some((tab) => tab.path === file.path);
             return exists
-              ? current.map((tab) => (tab.path === file.path ? { ...file, dirty: false } : tab))
+              ? current.map((tab) => (tab.path === file.path && !tab.dirty ? { ...file, revision: response.revision, dirty: false } : tab))
               : [...current, { ...file, dirty: false }];
           });
           setActivePath(file.path);

@@ -26,7 +26,7 @@ def test_addressable_build_is_idempotent_and_invalidates_after_source_edit(tmp_p
         assert client.post("/build/operations", json=body, headers=headers).status_code == 202
         assert len(calls) == 1
         assert observed.json()["result"]["result"]["metadata"]["operation_id"] == headers["Idempotency-Key"]
-        edit = client.put("/files", json={"project_id":project_id, "path":"src/main.cpp", "content":"void setup() {}\nvoid loop() {}\n// changed"})
+        edit = client.put("/files", json={"project_id":project_id, "path":"src/main.cpp", "content":"void setup() {}\nvoid loop() {}\n// changed", "expected_revision":client.get("/files/content",params={"project_id":project_id,"path":"src/main.cpp"}).json()["revision"]})
         assert edit.status_code == 200, edit.text
         assert client.get("/build/operations/" + headers["Idempotency-Key"]).json()["state"] == "stale"
         assert len(calls) == 1
@@ -77,6 +77,6 @@ def test_agent_build_evidence_checks_actual_source_and_environment(tmp_path, env
         owner._runs[run.run_id] = run
         assert client.get(f"/agent-runtime/runs/{run.run_id}/build-evidence?environment=debug").json()["state"] == "passed"
         assert client.get(f"/agent-runtime/runs/{run.run_id}/build-evidence?environment=release").json()["state"] == "stale"
-        edit = client.put("/files", json={"project_id":project_id, "path":"src/main.cpp", "content":"// edited after compilation"})
+        edit = client.put("/files", json={"project_id":project_id, "path":"src/main.cpp", "content":"// edited after compilation", "expected_revision":client.get("/files/content",params={"project_id":project_id,"path":"src/main.cpp"}).json()["revision"]})
         assert edit.status_code == 200, edit.text
         assert client.get(f"/agent-runtime/runs/{run.run_id}/build-evidence?environment=debug").json()["state"] == "stale"

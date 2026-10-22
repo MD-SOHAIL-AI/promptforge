@@ -1,0 +1,57 @@
+{
+  "task_partition": {
+    "request_characters": 1286,
+    "positive_requirements": 0,
+    "whole_request_is_excluded": true,
+    "checks": [
+      "source_review"
+    ],
+    "deliverables": [
+      {
+        "id": "check:source",
+        "kind": "acceptance",
+        "check_kind": "source_review",
+        "criterion": "Every requested requirement passes independent review against current source."
+      }
+    ]
+  },
+  "rate_limit_classification": {
+    "category": "budget_exhaustion",
+    "origin": "forgex",
+    "normalized_code": "RATE_LIMITED",
+    "retryable": false
+  },
+  "rate_limit_supported_by_job_recovery": false,
+  "retired_model_classification": {
+    "category": "runtime",
+    "origin": "forgex",
+    "normalized_code": "FORGEX_RUNTIME_ERROR",
+    "recovery_actions": [
+      "retry"
+    ]
+  },
+  "blank_platformio": {
+    "exception": {
+      "type": "PlatformIOProjectError",
+      "message": "platformio.ini contains no [env:<name>] sections"
+    },
+    "readiness_http_status": 500,
+    "profile_http_status": 422
+  },
+  "cached_model_returned_by_active_adapter": "qwen/qwen3-coder-480b-a35b-instruct",
+  "saved_draft": {
+    "files": [
+      "platformio.ini",
+      "src/main.cpp"
+    ],
+    "missing_headers": [
+      "sensor_handler.h",
+      "display_handler.h",
+      "web_server.h",
+      "alert_handler.h",
+      "button_handler.h",
+      "demo_mode.h"
+    ],
+    "build_result_present": false
+  }
+}

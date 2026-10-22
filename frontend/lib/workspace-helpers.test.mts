@@ -36,6 +36,7 @@ test("workspace helper maps file language and editor tabs", () => {
   assert.equal(languageFor("README.md"), "markdown");
   assert.equal(languageFor("data/config.json"), "json");
   assert.equal(toFile("p1", "src/main.cpp", "code").language, "cpp");
+  assert.equal(toFile("p1", "src/main.cpp", "generated", "cpp", "a".repeat(64)).revision, "a".repeat(64));
   assert.equal(tabStorageKey("p1"), "promptforge.tabs.p1");
 });
 

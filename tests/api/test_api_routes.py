@@ -427,7 +427,7 @@ def test_external_project_import_files_and_build(tmp_path: Path) -> None:
 
         saved = client.put(
             "/files",
-            json={"project_id": project_id, "path": "src/main.cpp", "content": "void setup() {}\n"},
+            json={"project_id": project_id, "path": "src/main.cpp", "content": "void setup() {}\n", "expected_revision": content.json()["revision"]},
         )
         assert saved.status_code == 200
         assert (external / "src" / "main.cpp").read_text(encoding="utf-8") == "void setup() {}\n"
@@ -603,6 +603,7 @@ def test_workspace_file_routes(tmp_path: Path) -> None:
                 "project_id": project_id,
                 "path": "include/config.h",
                 "content": "#pragma once\n",
+                "expected_revision": client.get("/files/content", params={"project_id": project_id, "path": "include/config.h"}).json()["revision"],
             },
         )
         assert saved.status_code == 200
@@ -636,7 +637,7 @@ def test_workspace_build_history_and_logs(tmp_path: Path) -> None:
         history = client.get("/build-history")
         assert history.status_code == 200
         assert history.json()["count"] == 1
-        assert history.json()["builds"][0]["execution_id"] == f"build-{project_id}"
+        assert history.json()["builds"][0]["execution_id"].startswith("build-")
         assert history.json()["builds"][0]["duration_ms"] == 12
 
         logs = client.get("/logs")

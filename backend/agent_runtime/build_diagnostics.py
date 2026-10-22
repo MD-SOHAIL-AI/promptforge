@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _COMPILER = re.compile(r"^(.+?):(\d+)(?::(\d+))?:\s*(warning|error|fatal error):\s*(.+)$")
 _LINKER = re.compile(r"(?P<kind>undefined reference to|multiple definition of|undefined symbol:)\s*[`'\"]?(?P<symbol>[^\r\n]+)")
 _SOURCE = re.compile(r"(?P<path>(?:[A-Za-z]:)?[^\s:()]+\.(?:cpp|cc|cxx|c|ino))(?::(?P<line>\d+))?")
@@ -14,6 +15,10 @@ def contained_diagnostic_path(value, root):
     """Normalize only locations inside the project, including Windows paths."""
     value = str(value).strip().strip('"').replace("\\", "/")
     if not value or "\x00" in value:
+        return None
+    # Never reinterpret Windows absolute compiler paths as project-relative
+    # when the backend runs on POSIX (or vice versa).
+    if PureWindowsPath(value).is_absolute() and not Path(value).is_absolute():
         return None
     try:
         candidate = Path(value)
@@ -29,7 +34,8 @@ def contained_diagnostic_path(value, root):
 def parse_build_diagnostics(text, root):
     compiler, linker, seen = [], [], set()
     # Process already bounded subprocess output before reducing the display tail.
-    for line in text.splitlines():
+    for raw_line in text.splitlines():
+        line = _ANSI_ESCAPE.sub("", raw_line)
         match = _COMPILER.match(line)
         if match and len(compiler) < 100:
             compiler.append({"path": contained_diagnostic_path(match[1], root),

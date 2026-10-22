@@ -1,0 +1,40 @@
+{
+  "review_date": "2026-10-20",
+  "report": "D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\reports\\FORGEX_COMPLETE_REVIEW_2026-10-20.md",
+  "findings": {
+    "P1": 1,
+    "P2": 7
+  },
+  "python": {
+    "tests": 2739,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 4
+  },
+  "javascript_tests_passed": {
+    "electron": 45,
+    "harness": 12,
+    "model_router": 49,
+    "release_scripts": 46,
+    "ui_state_final": 104,
+    "read_recovery": 5
+  },
+  "browser": {
+    "distinct_passed": 66,
+    "skipped": 1,
+    "single_full_run_green": false
+  },
+  "frontend": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "production_build": "passed"
+  },
+  "unqualified": [
+    "current dependency advisories",
+    "source release scan blocked by runtime directory access",
+    "signed installer and clean Windows machine",
+    "new live provider compatibility",
+    "physical hardware"
+  ],
+  "application_fixes_applied": false
+}

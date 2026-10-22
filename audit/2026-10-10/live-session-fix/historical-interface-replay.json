@@ -1,0 +1,152 @@
+{
+  "checkpoint": "checkpoint-d0fec346d6324e828bc477e1cca4f978",
+  "source_files": 30,
+  "ready": true,
+  "missing_local_headers": [],
+  "interface_conflicts": [
+    {
+      "header": "src/display/oled_manager.h",
+      "implementation": "src/display/oled_manager.cpp",
+      "line": 14,
+      "issue": "Implementation uses OLEDManager; the paired header declares OledManager.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/display/oled_manager.h",
+      "implementation": "src/display/oled_manager.cpp",
+      "line": 39,
+      "issue": "Implementation uses OLEDManager; the paired header declares OledManager.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/display/oled_manager.h",
+      "implementation": "src/display/oled_manager.cpp",
+      "line": 107,
+      "issue": "Implementation uses OLEDManager; the paired header declares OledManager.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/display/oled_manager.h",
+      "implementation": "src/display/oled_manager.cpp",
+      "line": 138,
+      "issue": "Implementation uses OLEDManager; the paired header declares OledManager.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/display/oled_manager.h",
+      "implementation": "src/display/oled_manager.cpp",
+      "line": 168,
+      "issue": "Implementation uses OLEDManager; the paired header declares OledManager.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/display/oled_manager.h",
+      "implementation": "src/display/oled_manager.cpp",
+      "line": 181,
+      "issue": "Implementation uses OLEDManager; the paired header declares OledManager.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/sensors/temperature_sensor.h",
+      "implementation": "src/sensors/temperature_sensor.cpp",
+      "line": 45,
+      "issue": "TemperatureSensor::isValid is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 10,
+      "issue": "SettingsManager::init is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 32,
+      "issue": "SettingsManager::getSettings is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 36,
+      "issue": "SettingsManager::saveSettings is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 52,
+      "issue": "SettingsManager::loadSettings is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 69,
+      "issue": "SettingsManager::resetToDefaults is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 75,
+      "issue": "SettingsManager::validateSettings is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 85,
+      "issue": "SettingsManager::applySettingsToSystem is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/storage/settings_manager.h",
+      "implementation": "src/storage/settings_manager.cpp",
+      "line": 92,
+      "issue": "SettingsManager::handleWebsocketMessage is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/system/diagnostics.h",
+      "implementation": "src/system/diagnostics.cpp",
+      "line": 82,
+      "issue": "Diagnostics::saveLogs is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/system/diagnostics.h",
+      "implementation": "src/system/diagnostics.cpp",
+      "line": 97,
+      "issue": "Diagnostics::loadLogs is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    },
+    {
+      "header": "src/system/diagnostics.h",
+      "implementation": "src/system/diagnostics.cpp",
+      "line": 137,
+      "issue": "Diagnostics::addLogEntry is not declared in the paired header.",
+      "advisory": true,
+      "correction": "Read and align both files; compile to verify the complete interface."
+    }
+  ]
+}

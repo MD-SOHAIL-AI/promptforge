@@ -33,6 +33,7 @@ class FileContentResponse(APIModel):
     path: str
     content: str
     file_type: str
+    revision: str | None = None
 
 
 class FileCreateRequest(APIModel):
@@ -47,6 +48,7 @@ class FileUpdateRequest(APIModel):
     project_id: str
     path: str
     content: str | None = None
+    expected_revision: str | None = None
     new_path: str | None = None
     kind: Literal["file", "folder"] = "file"
     file_type: str | None = None

@@ -1,0 +1,665 @@
+{
+  "verification_path": "authenticated in-process ForgeX API",
+  "gui_verified": false,
+  "selection": {
+    "provider_id": "openrouter",
+    "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "fallback_enabled": false,
+    "fallback_provider_id": null,
+    "local_only": false
+  },
+  "provider": {
+    "provider_id": "openrouter",
+    "configured": true,
+    "enabled": true,
+    "default_model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+  },
+  "free_models": [
+    "tencent/hy3:free",
+    "poolside/laguna-xs-2.1:free",
+    "cohere/north-mini-code:free",
+    "nvidia/nemotron-3.5-content-safety:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "poolside/laguna-m.1:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "nvidia/nemotron-nano-12b-v2-vl:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "nvidia/nemotron-nano-9b-v2:free",
+    "openai/gpt-oss-20b:free",
+    "qwen/qwen3-coder:free",
+    "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "meta-llama/llama-3.2-3b-instruct:free",
+    "nousresearch/hermes-3-llama-3.1-405b:free",
+    "stealth/space-bunny-alpha",
+    "poolside/laguna-s-2.1:free",
+    "thinkingmachines/inkling-small:free",
+    "thinkingmachines/inkling:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "inclusionai/ling-3.0-flash-sante:free",
+    "inclusionai/ling-3.1-flash",
+    "apodex/apodex-1.1-mini:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "dots-studio/dots-3-note-preview:free",
+    "qwen/qwen3.8-27b:free"
+  ],
+  "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "project_path": "D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\workspace\\projects\\esp32-button-debounce-demo",
+  "project_id": "external-esp32-button-debounce-demo-3b3fff809c",
+  "run_id": "agent-run-51857da5a46946cebea2314a051814b5",
+  "prompt": "Create a new ESP32 Arduino PlatformIO project named esp32-button-debounce-demo using board esp32dev. Use GPIO4 as an INPUT_PULLUP button and GPIO2 as an LED. Debounce the button with a 35 ms millis-based state machine. Each stable press toggles the LED and increments a press counter. At Serial 115200, report each press and print uptime plus free heap every five seconds. Keep the loop nonblocking and do not use delay. Include pin wiring and build instructions in README.md. Compile the project, but do not flash, upload, reset a device, or open a serial monitor. Write files only within this new project.",
+  "run": {
+    "active_workflow_task_id": "task-agent-run-51857da5a46946cebea2314a051814b5",
+    "active_workspace_unchanged": true,
+    "agent_plan": [],
+    "approval_expires_at": null,
+    "approval_id": null,
+    "assistant_message": "ForgeX could not continue the Agent runtime.",
+    "autonomy": "build_only",
+    "build_result": {
+      "configuration_sha256": "missing",
+      "correction": "Create or repair platformio.ini, preserving the requested board, framework and environment.",
+      "error_code": "BUILD_CONFIGURATION_MISSING",
+      "execution_attempted": false,
+      "message": "missing platformio.ini: D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-51857da5a46946cebea2314a051814b5\\platformio.ini",
+      "origin": "project_configuration",
+      "repair_paths": [
+        "platformio.ini"
+      ],
+      "repairable": true,
+      "retryable": false,
+      "success": false,
+      "terminal": false
+    },
+    "build_verified": false,
+    "cancellable": false,
+    "change_set_id": null,
+    "classification": "PROVIDER_REQUEST_FAILED",
+    "created_at": "2026-10-21T16:50:38.913272Z",
+    "created_file_count": 0,
+    "deleted_file_count": 0,
+    "execution_mode": "tool_planner",
+    "failure": {
+      "category": "runtime",
+      "cause_origin": "opencode",
+      "evidence": {
+        "build_id": null,
+        "diagnostics": {
+          "budget_failure": null,
+          "budget_persistence_cause": null,
+          "completion_received": false,
+          "duration_ms": 18550,
+          "effective_output_tokens": 8192,
+          "failure_shape": null,
+          "finish_reason": null,
+          "first_event_ms": null,
+          "http_status": null,
+          "initial_attempt_diagnostics": {
+            "completion_received": false,
+            "duration_ms": 18550,
+            "effective_output_tokens": 8192,
+            "finish_reason": null,
+            "first_event_ms": null,
+            "http_status": null,
+            "input_tokens": null,
+            "last_event_ms": null,
+            "output_tokens": null,
+            "physical_attempt_id": "ac56fb8cd6aa4873aa0080c65a2ad389",
+            "provider_request_id": null,
+            "reasoning_event_count": 0,
+            "reasoning_tokens": null,
+            "requested_output_tokens": 8192,
+            "stream_event_count": 0,
+            "text_event_count": 0,
+            "timeout_stage": null,
+            "tool_event_count": 0,
+            "total_tokens": null,
+            "worker_cleanup_incomplete": false,
+            "worker_exit_code": 1,
+            "worker_failure_kind": null,
+            "worker_phase": "response"
+          },
+          "initial_failure_code": "PROVIDER_REQUEST_FAILED",
+          "input_tokens": null,
+          "last_argument_issue": null,
+          "last_event_ms": null,
+          "last_failure_code": "PROVIDER_REQUEST_FAILED",
+          "last_failure_origin": "opencode",
+          "last_parse_reason": null,
+          "last_repair_outcome": "not_attempted",
+          "last_response_shape": null,
+          "last_response_tool_count": null,
+          "last_turn": 1,
+          "outbound_request_count": 1,
+          "output_tokens": null,
+          "physical_attempt_id": "ac56fb8cd6aa4873aa0080c65a2ad389",
+          "physical_request_count": 1,
+          "provider_request_id": null,
+          "reasoning_event_count": 0,
+          "reasoning_tokens": null,
+          "recovery_failure_code": null,
+          "repair_attempt_diagnostics": null,
+          "repair_skip_reason": null,
+          "request_dispatched": true,
+          "request_reached_provider": false,
+          "requested_output_tokens": 8192,
+          "response_headers_received": false,
+          "response_mode": "native_tools",
+          "retry_after_ms": null,
+          "stream_event_count": 0,
+          "stream_fallback_used": false,
+          "text_event_count": 0,
+          "timeout_stage": null,
+          "tool_event_count": 0,
+          "total_tokens": null,
+          "worker_cleanup_incomplete": false,
+          "worker_exit_code": 1,
+          "worker_failure_kind": null,
+          "worker_phase": "response"
+        },
+        "http_status": null,
+        "initial_failure_code": "PROVIDER_REQUEST_FAILED",
+        "job_id": "job-951aa478ad284c5a9277af427dfc88bb",
+        "physical_request_count": 1,
+        "recovery_failure_code": null,
+        "references_valid": false,
+        "remaining_allowances": {
+          "elapsed_seconds": 880.1969384999975,
+          "input_bytes": 7981970,
+          "output_tokens": 237568,
+          "requests": 119,
+          "tool_calls_used": 100
+        },
+        "run_id": "agent-run-51857da5a46946cebea2314a051814b5"
+      },
+      "normalized_code": "FORGEX_RUNTIME_ERROR",
+      "origin": "forgex",
+      "original_code": "PROVIDER_REQUEST_FAILED",
+      "physical_attempt_id": "ac56fb8cd6aa4873aa0080c65a2ad389",
+      "primary_code": "PROVIDER_REQUEST_FAILED",
+      "recovery_actions": [],
+      "recovery_code": null,
+      "retryable": false,
+      "schema_version": 2,
+      "terminal_stop_code": "PROVIDER_REQUEST_FAILED",
+      "timeout_stage": null
+    },
+    "flash_board_type": "esp32dev",
+    "flash_confirmation_required": false,
+    "flash_environment": "esp32dev",
+    "flash_port": null,
+    "flash_result": null,
+    "interrupted_at": null,
+    "job": {
+      "schema_version": 3,
+      "job_id": "job-951aa478ad284c5a9277af427dfc88bb",
+      "project_id": "external-esp32-button-debounce-demo-3b3fff809c",
+      "session_id": "run:agent-run-51857da5a46946cebea2314a051814b5",
+      "current_run_id": "agent-run-51857da5a46946cebea2314a051814b5",
+      "run_ids": [
+        "agent-run-51857da5a46946cebea2314a051814b5"
+      ],
+      "status": "failed",
+      "recovery_policy": "safe_auto",
+      "paused_by": null,
+      "milestones": [],
+      "blocking_reason": null,
+      "auto_recovery_count": 0,
+      "retry_due_at": null,
+      "created_at": "2026-10-21T16:50:38.933593Z",
+      "updated_at": "2026-10-21T16:50:58.778151Z",
+      "execution_profile": "standard",
+      "recovery": null,
+      "durable_wait_seconds": 0.0,
+      "budget": {
+        "limits": {
+          "elapsed_seconds": 900,
+          "input_bytes": 8000000,
+          "output_tokens": 245760,
+          "requests": 120,
+          "tool_calls_used": 100
+        },
+        "consumed": {
+          "elapsed_seconds": 19.803061500002514,
+          "input_bytes": 18030,
+          "output_tokens": 8192,
+          "requests": 1,
+          "tool_calls_used": 0
+        },
+        "accounting": {
+          "reserved_output_tokens": 8192,
+          "actual_completed_output_tokens": 0,
+          "unresolved_output_tokens": 8192,
+          "physical_attempts": 1
+        },
+        "remaining": {
+          "elapsed_seconds": 880.1969384999975,
+          "input_bytes": 7981970,
+          "output_tokens": 237568,
+          "requests": 119,
+          "tool_calls_used": 100
+        }
+      }
+    },
+    "job_id": "job-951aa478ad284c5a9277af427dfc88bb",
+    "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "modified_file_count": 0,
+    "monitor_result": null,
+    "pending_decision": false,
+    "project_id": "external-esp32-button-debounce-demo-3b3fff809c",
+    "provider_diagnostics": {
+      "budget_failure": null,
+      "budget_persistence_cause": null,
+      "completion_received": false,
+      "duration_ms": 18550,
+      "effective_output_tokens": 8192,
+      "failure_shape": null,
+      "finish_reason": null,
+      "first_event_ms": null,
+      "http_status": null,
+      "initial_attempt_diagnostics": {
+        "completion_received": false,
+        "duration_ms": 18550,
+        "effective_output_tokens": 8192,
+        "finish_reason": null,
+        "first_event_ms": null,
+        "http_status": null,
+        "input_tokens": null,
+        "last_event_ms": null,
+        "output_tokens": null,
+        "physical_attempt_id": "ac56fb8cd6aa4873aa0080c65a2ad389",
+        "provider_request_id": null,
+        "reasoning_event_count": 0,
+        "reasoning_tokens": null,
+        "requested_output_tokens": 8192,
+        "stream_event_count": 0,
+        "text_event_count": 0,
+        "timeout_stage": null,
+        "tool_event_count": 0,
+        "total_tokens": null,
+        "worker_cleanup_incomplete": false,
+        "worker_exit_code": 1,
+        "worker_failure_kind": null,
+        "worker_phase": "response"
+      },
+      "initial_failure_code": "PROVIDER_REQUEST_FAILED",
+      "input_tokens": null,
+      "last_argument_issue": null,
+      "last_event_ms": null,
+      "last_failure_code": "PROVIDER_REQUEST_FAILED",
+      "last_failure_origin": "opencode",
+      "last_parse_reason": null,
+      "last_repair_outcome": "not_attempted",
+      "last_response_shape": null,
+      "last_response_tool_count": null,
+      "last_turn": 1,
+      "outbound_request_count": 1,
+      "output_tokens": null,
+      "physical_attempt_id": "ac56fb8cd6aa4873aa0080c65a2ad389",
+      "physical_request_count": 1,
+      "provider_request_id": null,
+      "reasoning_event_count": 0,
+      "reasoning_tokens": null,
+      "recovery_failure_code": null,
+      "repair_attempt_diagnostics": null,
+      "repair_skip_reason": null,
+      "request_dispatched": true,
+      "request_reached_provider": false,
+      "requested_output_tokens": 8192,
+      "response_headers_received": false,
+      "response_mode": "native_tools",
+      "retry_after_ms": null,
+      "stream_event_count": 0,
+      "stream_fallback_used": false,
+      "text_event_count": 0,
+      "timeout_stage": null,
+      "tool_event_count": 0,
+      "total_tokens": null,
+      "worker_cleanup_incomplete": false,
+      "worker_exit_code": 1,
+      "worker_failure_kind": null,
+      "worker_phase": "response"
+    },
+    "provider_id": "openrouter",
+    "recoverable": false,
+    "recovered_by_run_id": null,
+    "recovery": null,
+    "recovery_actions": [],
+    "repair_attempt_count": 0,
+    "repair_history": [],
+    "requirement_report": {
+      "acceptance": {
+        "checks": [
+          {
+            "criterion": "Every requested requirement passes independent review against current source.",
+            "id": "source",
+            "kind": "source_review",
+            "passed": false,
+            "status": "unverified"
+          },
+          {
+            "criterion": "A firmware build passes for the current source revision.",
+            "id": "firmware-build",
+            "kind": "build",
+            "passed": false,
+            "status": "unverified"
+          }
+        ],
+        "evidence": [],
+        "hardware_verified": false,
+        "passed": false,
+        "schema_version": 2,
+        "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+        "task_revision": "b9d6eb815f43f36bb2ba7834b04b1b5160ae258e08d41c17ed69fe1d77441b5d"
+      },
+      "completion_review_required": true
+    },
+    "retry_of_run_id": null,
+    "run_id": "agent-run-51857da5a46946cebea2314a051814b5",
+    "schema_version": 1,
+    "session_id": "run:agent-run-51857da5a46946cebea2314a051814b5",
+    "simulation_result": {},
+    "stage_messages": {
+      "build": "missing platformio.ini: D:\\projects\\ForgeX_Software_Hardening_2026-10-20\\ForgeX-Phase6-Final\\.promptforge\\state\\change-staging\\workflow-51857da5a46946cebea2314a051814b5\\platformio.ini"
+    },
+    "stage_statuses": {
+      "build": "failed",
+      "changes": "pending",
+      "flash": "pending",
+      "flash_confirmation": "pending",
+      "generation": "pending",
+      "monitor": "pending",
+      "planning": "pending",
+      "repair": "pending"
+    },
+    "start_monitor_after_flash": false,
+    "status": "failed",
+    "suggested_alternatives": [],
+    "summary": {
+      "actual_provider": "openrouter",
+      "auth_status": "unknown",
+      "build_status": "failed",
+      "changed_files": [],
+      "content_verification_status": "pending",
+      "created_files": [],
+      "deleted_files": [],
+      "errors": [
+        {
+          "code": "PROVIDER_REQUEST_FAILED",
+          "message": "ForgeX could not continue the Agent runtime."
+        }
+      ],
+      "fallback_reason": null,
+      "fallback_used": false,
+      "flash_status": "pending",
+      "generation_source": "openrouter",
+      "generation_status": "runtime_failed",
+      "modified_files": [],
+      "monitor_status": "pending",
+      "next_suggested_action": null,
+      "no_op_status": false,
+      "project_type": "generic",
+      "provider_type": "api_provider",
+      "requested_provider": "openrouter",
+      "run_id": "agent-run-51857da5a46946cebea2314a051814b5",
+      "selected_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "unchanged_files": [],
+      "warnings": [],
+      "workspace_mode": "generate_into_open_folder"
+    },
+    "task_revision": "b9d6eb815f43f36bb2ba7834b04b1b5160ae258e08d41c17ed69fe1d77441b5d",
+    "task_state": {
+      "acceptance_checks": [
+        {
+          "criterion": "Every requested requirement passes independent review against current source.",
+          "id": "source",
+          "kind": "source_review"
+        },
+        {
+          "criterion": "A firmware build passes for the current source revision.",
+          "id": "firmware-build",
+          "kind": "build"
+        }
+      ],
+      "artifact_status": [],
+      "blockers": [
+        "BUILD_CONFIGURATION_MISSING"
+      ],
+      "decisions": [],
+      "deliverable_manifest": [
+        {
+          "id": "file:README.md",
+          "kind": "file",
+          "path": "README.md",
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "status": "missing"
+        },
+        {
+          "id": "firmware_source",
+          "kind": "firmware_source",
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "status": "missing"
+        },
+        {
+          "id": "project_configuration",
+          "kind": "project_configuration",
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "status": "missing"
+        },
+        {
+          "id": "documentation",
+          "kind": "documentation",
+          "paths": [
+            "README.md"
+          ],
+          "requirement_ids": [
+            "req-7"
+          ],
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "status": "missing",
+          "topics": [
+            "wiring",
+            "usage"
+          ]
+        },
+        {
+          "check_kind": "source_review",
+          "criterion": "Every requested requirement passes independent review against current source.",
+          "id": "check:source",
+          "kind": "acceptance",
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "status": "unverified"
+        },
+        {
+          "check_kind": "build",
+          "criterion": "A firmware build passes for the current source revision.",
+          "id": "check:firmware-build",
+          "kind": "acceptance",
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "status": "unverified"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "tool_result",
+          "ref": "tool://configuration_readiness/result#sha256/307e0a4ea1f502b48bfdbdafc8b159f495ffceac491308abb8ba8f581dc67b93",
+          "status": "completed"
+        }
+      ],
+      "exclusions": [
+        "do not use delay.",
+        "do not flash, upload, reset a device, or open a serial monitor."
+      ],
+      "execution": {
+        "active_milestone": {
+          "key": "task",
+          "paths": [
+            "README.md"
+          ],
+          "requirement_ids": [
+            "req-1",
+            "req-2",
+            "req-3",
+            "req-4",
+            "req-5",
+            "req-6",
+            "req-7",
+            "req-8",
+            "req-9"
+          ],
+          "text": "Complete the requested deliverable"
+        },
+        "blocking_symbols": [],
+        "edit_recovery": null,
+        "instruction": "Complete one coherent milestone using current declarations and actual tool results. Read relevant files once, then implement missing behavior. A read or plan update does not implement code. Do not drop requirements or accepted choices. Only current builds and independent reviews establish completion.",
+        "missing_artifacts": [
+          "README.md"
+        ],
+        "next_action": "Create missing milestone files: README.md",
+        "phase": "configuration",
+        "remaining_requirement_ids": [
+          "req-1",
+          "req-2",
+          "req-3",
+          "req-4",
+          "req-5",
+          "req-6",
+          "req-7",
+          "req-8",
+          "req-9"
+        ],
+        "stalled_turns": 0,
+        "version": 1
+      },
+      "expected_artifacts": [
+        "README.md"
+      ],
+      "failed_approaches": [],
+      "milestone": null,
+      "next_action": "Create or repair platformio.ini with the requested board, framework and environment before continuing source generation.",
+      "recovery_state": {
+        "reorientation_started_at": null,
+        "stalled_turns": 0
+      },
+      "request": "Create a new ESP32 Arduino PlatformIO project named esp32-button-debounce-demo using board esp32dev. Use GPIO4 as an INPUT_PULLUP button and GPIO2 as an LED. Debounce the button with a 35 ms millis-based state machine. Each stable press toggles the LED and increments a press counter. At Serial 115200, report each press and print uptime plus free heap every five seconds. Keep the loop nonblocking and do not use delay. Include pin wiring and build instructions in README.md. Compile the project, but do not flash, upload, reset a device, or open a serial monitor. Write files only within this new project.",
+      "requirements": [
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-1",
+          "stable_key": "345d6841ab72e7abe4c2287b09247c3ec9617c0f9f3d2ef6a85ff80caf981176",
+          "text": "Create a new ESP32 Arduino PlatformIO project named esp32-button-debounce-demo using board esp32dev."
+        },
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-2",
+          "stable_key": "82cde867ca0963d2076b13ace9c529d74ab54ba3dbbd32f80abd04d35ba71303",
+          "text": "Use GPIO4 as an INPUT_PULLUP button and GPIO2 as an LED."
+        },
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-3",
+          "stable_key": "6bd3830ebbb0a68aa11955e8d1684e5a5dc69022af199e6db3d9dd90399a0d8b",
+          "text": "Debounce the button with a 35 ms millis-based state machine."
+        },
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-4",
+          "stable_key": "02d17b8eae32ad296ebdb9e21bd684ec34af5d6d7f1373284513d8a22c83f100",
+          "text": "Each stable press toggles the LED and increments a press counter."
+        },
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-5",
+          "stable_key": "fb607ea4172f9a7fc0ebac329270ae0712efabfb74d4ae302cac31cb1304aab2",
+          "text": "At Serial 115200, report each press and print uptime plus free heap every five seconds."
+        },
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-6",
+          "stable_key": "3e1fd343830b957bf2da5d653e49f47cd9bb5d1e8e17153a926b7bfaba5aa4a4",
+          "text": "Keep the loop nonblocking"
+        },
+        {
+          "evidence_kinds": [
+            "documentation",
+            "source"
+          ],
+          "id": "req-7",
+          "stable_key": "ea0ddc9f03f726171d8ac432f5ef2b6fa4cbac0cc9fa003535362b3030b3e974",
+          "text": "Include pin wiring and build instructions in README.md."
+        },
+        {
+          "evidence_kinds": [
+            "build"
+          ],
+          "id": "req-8",
+          "stable_key": "3ae91c95a6ae3d0f61abe2ba57a8a4d3e9149682698ecaa9fb41e5168de37a93",
+          "text": "Compile the project,"
+        },
+        {
+          "evidence_kinds": [
+            "source"
+          ],
+          "id": "req-9",
+          "stable_key": "64b0af51fc3dbbb97bc2c21cfddddf5b919b412ef5212b6e6bcf6198dc007194",
+          "text": "Write files only within this new project."
+        }
+      ],
+      "revisions": [
+        "5a043d14b506f6b8d8c3b47adb57b954cf617e487f06c2694ee2551ae16115e5",
+        "b9d6eb815f43f36bb2ba7834b04b1b5160ae258e08d41c17ed69fe1d77441b5d"
+      ],
+      "schema_version": 1,
+      "superseded_requirements": []
+    },
+    "tool_execution_count": 0,
+    "updated_at": "2026-10-21T16:50:58.942327Z",
+    "validation_report": {
+      "requirements": {
+        "acceptance": {
+          "checks": [
+            {
+              "criterion": "Every requested requirement passes independent review against current source.",
+              "id": "source",
+              "kind": "source_review",
+              "passed": false,
+              "status": "unverified"
+            },
+            {
+              "criterion": "A firmware build passes for the current source revision.",
+              "id": "firmware-build",
+              "kind": "build",
+              "passed": false,
+              "status": "unverified"
+            }
+          ],
+          "evidence": [],
+          "hardware_verified": false,
+          "passed": false,
+          "schema_version": 2,
+          "source_revision": "workspace:e3b0c44298fc1c149afbf4c8",
+          "task_revision": "b9d6eb815f43f36bb2ba7834b04b1b5160ae258e08d41c17ed69fe1d77441b5d"
+        },
+        "completion_review_required": true
+      },
+      "valid": false
+    }
+  },
+  "settled": true
+}

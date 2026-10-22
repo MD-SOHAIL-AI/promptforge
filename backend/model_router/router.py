@@ -20,6 +20,7 @@ from ..services.llm_service import (
     LLMProvider,
     LLMProviderError,
     LLMRequest,
+    LLMTimeoutError,
     LLMResponse,
     LLMService,
 )
@@ -236,9 +237,12 @@ class ModelRouterService(LLMService):
             if isinstance(provider_id, str) and provider_id
             else route.provider_id
         )
+        explicit_model = request.metadata.get("model_id")
         selected_model = (
-            request.metadata.get("model_id")
-            if isinstance(request.metadata.get("model_id"), str)
+            explicit_model
+            if isinstance(explicit_model, str) and explicit_model.strip()
+            else self.registry.provider(selected_provider).default_model
+            if selected_provider != route.provider_id
             else route.model_id
         )
         routed = ModelRequest(
@@ -320,12 +324,27 @@ class ModelRouterService(LLMService):
         )
         try:
             from .request_recovery import managed, agent_stream, public_stream
+            from .transport_policy import request_transport_policy
+            from .models import execution_value
+            parent_deadline = execution_value(routed, "deadline", "forgex_turn_deadline")
+            deadline = time.monotonic() + request_transport_policy(routed).total_seconds
+            if isinstance(parent_deadline, (int, float)) and not isinstance(parent_deadline, bool):
+                deadline = min(deadline, parent_deadline)
             physical = lambda value: self._physical_stream(value, stream)
             event_stream = agent_stream(routed, physical) if managed(routed) else public_stream(routed, physical)
-            async with aclosing(event_stream) as events:
-                async for event in events:
-                    token_usage.update(event.usage)
-                    yield event
+            try:
+                async with asyncio.timeout_at(deadline):
+                    async with aclosing(event_stream) as events:
+                        async for event in events:
+                            token_usage.update(event.usage)
+                            yield event
+            except TimeoutError as exc:
+                raise LLMTimeoutError(
+                    "The model stream exceeded its overall deadline, including retries.",
+                    provider=PROVIDER_ENUMS.get(provider_id, LLMProvider.OPENROUTER),
+                    code="PROVIDER_REQUEST_DEADLINE_EXCEEDED", retryable=False,
+                    details={"origin": "request_deadline", "timeout_stage": "job_deadline"},
+                ) from exc
             success = True
         except asyncio.CancelledError:
             error_code = "CANCELLED"

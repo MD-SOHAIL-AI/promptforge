@@ -1,0 +1,132 @@
+{
+  "providers_in_workspace_settings": [],
+  "recorded_physical_attempts": 96,
+  "timings": [
+    {
+      "provider": "nvidia_nim",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "attempts": 8,
+      "completed_successfully": 3,
+      "first_event_samples": 8,
+      "first_event_seconds": {
+        "p50": 3.406,
+        "p95": 12.485,
+        "max": 12.485
+      },
+      "successful_completion_seconds": {
+        "p50": 12.875,
+        "p95": 15.578,
+        "max": 15.578
+      },
+      "successful_completion_observed_fraction": {
+        "5": 0.0,
+        "15": 0.667,
+        "30": 1.0,
+        "60": 1.0,
+        "120": 1.0,
+        "180": 1.0,
+        "300": 1.0
+      },
+      "errors": {
+        "MODEL_OUTPUT_TRUNCATED": 2,
+        "PROVIDER_TIMEOUT": 2,
+        "CANCELLED": 1
+      },
+      "timeout_stages": {
+        "stream_idle": 2
+      }
+    },
+    {
+      "provider": "nvidia_nim",
+      "model": "qwen/qwen3-coder-480b-a35b-instruct",
+      "attempts": 1,
+      "completed_successfully": 0,
+      "first_event_samples": 0,
+      "first_event_seconds": {
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "successful_completion_seconds": {
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "successful_completion_observed_fraction": {},
+      "errors": {
+        "PROVIDER_REQUEST_FAILED": 1
+      },
+      "timeout_stages": {}
+    },
+    {
+      "provider": "openrouter",
+      "model": "cohere/north-mini-code:free",
+      "attempts": 56,
+      "completed_successfully": 50,
+      "first_event_samples": 50,
+      "first_event_seconds": {
+        "p50": 6.063,
+        "p95": 59.421,
+        "max": 70.889
+      },
+      "successful_completion_seconds": {
+        "p50": 6.11,
+        "p95": 59.485,
+        "max": 70.921
+      },
+      "successful_completion_observed_fraction": {
+        "5": 0.3,
+        "15": 0.78,
+        "30": 0.92,
+        "60": 0.96,
+        "120": 1.0,
+        "180": 1.0,
+        "300": 1.0
+      },
+      "errors": {
+        "RATE_LIMITED": 6
+      },
+      "timeout_stages": {}
+    },
+    {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "attempts": 31,
+      "completed_successfully": 15,
+      "first_event_samples": 15,
+      "first_event_seconds": {
+        "p50": 8.64,
+        "p95": 77.906,
+        "max": 77.906
+      },
+      "successful_completion_seconds": {
+        "p50": 8.718,
+        "p95": 78.031,
+        "max": 78.031
+      },
+      "successful_completion_observed_fraction": {
+        "5": 0.133,
+        "15": 0.733,
+        "30": 0.8,
+        "60": 0.933,
+        "120": 1.0,
+        "180": 1.0,
+        "300": 1.0
+      },
+      "errors": {
+        "PROVIDER_STREAM_INVALID": 14,
+        "CANCELLED": 1,
+        "PROVIDER_TIMEOUT": 1
+      },
+      "timeout_stages": {
+        "first_event": 1
+      }
+    }
+  ],
+  "configuration_note": "Workspace settings only; historical desktop attempts may use a separate application settings path.",
+  "measurement_limitations": [
+    "Historical local samples, not provider guarantees.",
+    "Completion percentiles/fractions include successful complete attempts only; failed/time-limited attempts are separate.",
+    "First events may be text, reasoning, tools or completion; these are not pure first-visible-text measurements."
+  ]
+}

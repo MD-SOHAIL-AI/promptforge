@@ -407,10 +407,16 @@ class GenerateCodeHandler:
                     workspace_root,
                     plan=plan,
                     context=self._context,
+                    transaction=workspace_transaction,
                 )
             except Exception as exc:
                 if workspace_transaction is not None:
-                    workspace_transaction.rollback()
+                    try:
+                        workspace_transaction.rollback()
+                    except ValueError as rollback_error:
+                        # A concurrent user edit must never be destroyed just
+                        # to conceal a failed generation. Report both errors.
+                        exc = ValueError(f"{exc}; rollback incomplete: {rollback_error}")
                 return self._failure(
                     GenerateCodeStatus.PERSISTENCE_FAILED,
                     started,
@@ -444,7 +450,12 @@ class GenerateCodeHandler:
                 raise
             except Exception as exc:
                 if workspace_transaction is not None:
-                    workspace_transaction.rollback()
+                    try:
+                        workspace_transaction.rollback()
+                    except ValueError as rollback_error:
+                        # A concurrent user edit must never be destroyed just
+                        # to conceal a failed generation. Report both errors.
+                        exc = ValueError(f"{exc}; rollback incomplete: {rollback_error}")
                 return self._failure(
                     GenerateCodeStatus.PERSISTENCE_FAILED,
                     started,
@@ -699,6 +710,7 @@ def _write_project_to_workspace(
     *,
     plan: ExecutionPlan,
     context: ExecutionContext,
+    transaction: WorkspaceGenerationTransaction | None = None,
 ) -> Mapping[str, Any]:
     root = root.expanduser().resolve()
     if not root.exists() or not root.is_dir():
@@ -723,7 +735,13 @@ def _write_project_to_workspace(
         ):
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(generated_file.content, encoding="utf-8")
+        if transaction is not None:
+            transaction.remember(target)
+        from ..services.chunked_generation_writer import _atomic_write
+        payload = generated_file.content.encode("utf-8")
+        _atomic_write(target, payload)
+        if transaction is not None:
+            transaction.record_written(target, hashlib.sha256(payload).hexdigest())
     manifest = {
         "schema_version": 1,
         "project_id": project.project_id,
@@ -737,10 +755,14 @@ def _write_project_to_workspace(
             for item in project.files
         ],
     }
-    (root / ".promptforge-project.json").write_text(
-        json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    manifest_path = root / ".promptforge-project.json"
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    if transaction is not None:
+        transaction.remember(manifest_path)
+    from ..services.chunked_generation_writer import _atomic_write
+    _atomic_write(manifest_path, manifest_bytes)
+    if transaction is not None:
+        transaction.record_written(manifest_path, hashlib.sha256(manifest_bytes).hexdigest())
     summary = _build_generation_artifact_summary(
         project,
         root,

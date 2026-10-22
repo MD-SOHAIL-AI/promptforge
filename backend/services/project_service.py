@@ -7,6 +7,7 @@ It performs no planning, code generation, builds, or tool execution.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ..contracts.generated_project import GeneratedFile, GeneratedProject
+from ..security.workspace_lock import workspace_lock
 from .code_generation_service import CodeGenerationService
 from .platformio_service import PlatformIOService
 
@@ -187,14 +189,14 @@ class ProjectService:
 
         self._validate_generated_project(project)
         async with self._lock:
-            return await asyncio.to_thread(self._create_project_sync, project)
+            return await asyncio.to_thread(self._with_store_lock, self._create_project_sync, project, project_name=project.project_name)
 
     async def load_project(self, project_name: str) -> GeneratedProject:
         """Load a project from disk, using persisted files as source of truth."""
 
         _validate_project_name(project_name)
         async with self._lock:
-            return await asyncio.to_thread(self._load_project_sync, project_name)
+            return await asyncio.to_thread(self._with_store_lock, self._load_project_sync, project_name, project_name=project_name)
 
     async def save_project(
         self,
@@ -204,20 +206,94 @@ class ProjectService:
 
         self._validate_generated_project(project)
         async with self._lock:
-            return await asyncio.to_thread(self._save_project_sync, project)
+            return await asyncio.to_thread(self._with_store_lock, self._save_project_sync, project, project_name=project.project_name)
+
+    async def save_project_if_current(
+        self, updated: GeneratedProject, baseline: GeneratedProject,
+    ) -> ProjectMetadata:
+        """Optimistic concurrency for workspace structural edits.
+
+        Folder creation/deletion and renames previously performed a distinct
+        load and unconditional save. Reject concurrent file edits or ChangeSets
+        instead of overwriting them with an old project snapshot.
+        """
+        self._validate_generated_project(updated)
+        if (updated.project_id, updated.project_name) != (baseline.project_id, baseline.project_name):
+            raise ProjectConflictError('PROJECT_BASELINE_OWNER_MISMATCH')
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._with_store_lock, self._save_project_if_current_sync,
+                updated, baseline, project_name=updated.project_name,
+            )
+
+    def _save_project_if_current_sync(self, updated: GeneratedProject, baseline: GeneratedProject) -> ProjectMetadata:
+        live = self._load_project_sync(baseline.project_name)
+        def version(project: GeneratedProject) -> tuple[tuple[str, str, str], ...]:
+            return tuple(sorted((entry.path, entry.file_type, hashlib.sha256(entry.content.encode('utf-8')).hexdigest())
+                                for entry in project.files))
+        if (
+            live.project_id != baseline.project_id
+            or live.created_at != baseline.created_at
+            or live.target_board != baseline.target_board
+            or live.framework != baseline.framework
+            or live.metadata != baseline.metadata
+            or version(live) != version(baseline)
+        ):
+            raise ProjectConflictError('PROJECT_REVISION_CONFLICT')
+        return self._save_project_sync(updated)
+
+    async def save_file_if_revision_matches(
+        self, project_name: str, project_id: str, path: str, content: str,
+        expected_revision: str, file_type: str | None = None,
+    ) -> GeneratedFile:
+        """Compare and replace a managed file under the existing project save lock.
+
+        A concurrent project_service.save_project cannot interleave its read and
+        write with this operation. An unrelated on-disk writer still needs its
+        own workspace change protocol; the frontend must retain dirty edits.
+        """
+        _validate_project_name(project_name)
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._with_store_lock, self._save_file_if_revision_matches_sync,
+                project_name, project_id, path, content, expected_revision, file_type,
+                project_name=project_name,
+            )
+
+    def _save_file_if_revision_matches_sync(
+        self, project_name: str, project_id: str, path: str,
+        content: str, expected_revision: str, file_type: str | None,
+    ) -> GeneratedFile:
+        from dataclasses import replace
+        project = self._load_project_sync(project_name)
+        if project.project_id != project_id:
+            raise ProjectConflictError("FILE_PROJECT_CHANGED")
+        original = next((item for item in project.files if item.path == path), None)
+        if original is None:
+            raise ProjectNotFoundError("FILE_NOT_FOUND")
+        current_revision = hashlib.sha256(original.content.encode("utf-8")).hexdigest()
+        if expected_revision != current_revision:
+            raise ProjectConflictError("FILE_REVISION_CONFLICT")
+        updated_file = GeneratedFile(path=path, content=content, file_type=file_type or original.file_type)
+        changed = replace(project, files=tuple(
+            updated_file if item.path == path else item for item in project.files
+        ))
+        self._validate_generated_project(changed)
+        self._save_project_sync(changed)
+        return updated_file
 
     async def delete_project(self, project_name: str) -> bool:
         """Delete a managed project and return whether it existed."""
 
         _validate_project_name(project_name)
         async with self._lock:
-            return await asyncio.to_thread(self._delete_project_sync, project_name)
+            return await asyncio.to_thread(self._with_store_lock, self._delete_project_sync, project_name, project_name=project_name)
 
     async def list_projects(self) -> tuple[ProjectMetadata, ...]:
         """Return valid managed projects in deterministic name order."""
 
         async with self._lock:
-            return await asyncio.to_thread(self._list_projects_sync)
+            return await asyncio.to_thread(self._with_store_lock, self._list_projects_sync)
 
     async def validate_project(
         self,
@@ -234,7 +310,58 @@ class ProjectService:
             return
         _validate_project_name(project)
         async with self._lock:
-            await asyncio.to_thread(self._validate_persisted_sync, project)
+            await asyncio.to_thread(self._with_store_lock, self._validate_persisted_sync, project, project_name=project)
+
+    def _with_store_lock(self, operation: Callable[..., Any], *args: Any, project_name: str | None = None) -> Any:
+        """Lock the manifest store and workspace across independent server processes.
+
+        Always acquire store -> workspace in that order, and never reverse it.
+        The ChangeSet publisher only needs the workspace lock, since it does
+        not replace the managed project directory or manifest.
+        """
+        with workspace_lock(self._root):
+            if project_name is not None:
+                with workspace_lock(self._root / project_name):
+                    self._recover_project_backup_sync(project_name)
+                    return operation(*args)
+            # Discovery must recover before hiding backup directories; API
+            # callers resolve project IDs through this list, not by name.
+            self._ensure_root()
+            for backup in sorted(self._root.iterdir()):
+                if backup.name.startswith('.') and backup.name.endswith('.backup'):
+                    name = backup.name[1:-len('.backup')]
+                    try:
+                        _validate_project_name(name)
+                    except ValueError:
+                        continue
+                    with workspace_lock(self._root / name):
+                        self._recover_project_backup_sync(name)
+            return operation(*args)
+
+    def _recover_project_backup_sync(self, project_name: str) -> None:
+        """Reconcile a crash between backing up and publishing a project.
+
+        Recovery is done under the same interprocess lock as normal saves.
+        Never overwrite a valid target with an older backup.
+        """
+        self._ensure_root()
+        target = self._project_path(project_name)
+        backup = target.with_name(f'.{target.name}.backup')
+        if not backup.exists() and not backup.is_symlink():
+            return
+        if backup.is_symlink() or not backup.is_dir():
+            raise ProjectServiceError('PROJECT_BACKUP_UNSAFE')
+        if not target.exists() and not target.is_symlink():
+            manifest = self._read_manifest(backup, expected_name=project_name)
+            self._project_from_manifest(backup, manifest)  # Verify every file first.
+            os.replace(backup, target)
+            return
+        if target.is_symlink():
+            raise ProjectServiceError('PROJECT_TARGET_UNSAFE')
+        # target has been published; validate that it is actually complete
+        # before discarding the previous state.
+        self._project_from_manifest(target, self._read_manifest(target))
+        _remove_tree(backup)
 
     def _create_project_sync(self, project: GeneratedProject) -> ProjectMetadata:
         self._ensure_root()
@@ -464,7 +591,7 @@ class ProjectService:
             metadata=manifest["metadata"],
         )
 
-    def _read_manifest(self, project_path: Path) -> dict[str, Any]:
+    def _read_manifest(self, project_path: Path, *, expected_name: str | None = None) -> dict[str, Any]:
         self._assert_managed_directory(project_path)
         manifest_path = project_path / _MANIFEST_NAME
         if not manifest_path.is_file() or manifest_path.is_symlink():
@@ -473,7 +600,7 @@ class ProjectService:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ProjectStructureError("project manifest is invalid") from exc
-        return _validate_manifest(raw, expected_name=project_path.name)
+        return _validate_manifest(raw, expected_name=expected_name or project_path.name)
 
     def _find_by_id(self, project_id: str) -> Path | None:
         for metadata in self._list_projects_sync():

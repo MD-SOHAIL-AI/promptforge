@@ -86,7 +86,7 @@ export function CodeCanvas({
             </div>
           </div>
         </div> : null}
-        <div className="min-h-0 flex-1"><EditorWorkbench activeProject={workspace.activeProject} selectedFile={workspace.selectedFile} tabs={workspace.tabs} activePath={workspace.activePath} onSelectTab={workspace.openFile} onCloseTab={workspace.closeTab} onChange={workspace.updateTabContent} onSave={(path) => void workspace.saveFile(path)} editorSettings={editorSettings} /></div>
+        <div className="min-h-0 flex-1"><EditorWorkbench activeProject={workspace.activeProject} selectedFile={workspace.selectedFile} tabs={workspace.tabs} activePath={workspace.activePath} onSelectTab={workspace.openFile} onCloseTab={workspace.closeTab} onChange={workspace.updateTabContent} onSave={(path, content) => void workspace.saveFile(path, content)} editorSettings={editorSettings} /></div>
       </div>
     </div>
   </div>;
@@ -111,6 +111,7 @@ export function BuildCanvas({ workspace, run, onBack, onOpenTerminal, onFlash }:
   const hasDirect = observation.projectId === workspace.activeProject?.project_id && observation.state !== "idle";
   const state = hasDirect ? observation.state : metrics ? metrics.success ? workspace.tabs.some(tab => tab.dirty) ? "stale" : agentEvidence?.key === evidenceKey ? agentEvidence.state : "stale" : "failed" : "idle";
   const success = state === "passed";
+  const flashReady = success && (hasDirect ? direct?.metadata && typeof direct.metadata === "object" && (direct.metadata as Record<string, unknown>).flash_ready === true : scopedRun?.build_result && (scopedRun.build_result as Record<string, unknown>).metadata && typeof (scopedRun.build_result as Record<string, unknown>).metadata === "object" && ((scopedRun.build_result as Record<string, unknown>).metadata as Record<string, unknown>).flash_ready === true);
   const size = success ? hasDirect ? Number(direct?.build_size_bytes ?? 0) : metrics?.size ?? 0 : 0;
   const warnings = hasDirect ? Number(direct?.warnings_count ?? 0) : metrics?.warnings;
   const board = metrics?.board || String(direct?.board ?? workspace.activeProject?.target_board ?? "Unknown board");
@@ -131,7 +132,7 @@ export function BuildCanvas({ workspace, run, onBack, onOpenTerminal, onFlash }:
               <span className={`grid h-10 w-10 place-items-center rounded-lg ${success ? "bg-[var(--fx-success-soft)] text-[var(--fx-success)]" : "bg-[var(--fx-panel-elevated)] text-[var(--fx-text-muted)]"}`}>{workspace.toolAction === "build" ? <LoaderCircle className="h-4.5 w-4.5 animate-spin" /> : success ? <Check className="h-4.5 w-4.5" /> : <Hammer className="h-4.5 w-4.5" />}</span>
               <div><SectionEyebrow>{state === "running" ? "Building" : `Build ${state}`}</SectionEyebrow><div className="mt-1 text-[15px] font-semibold tracking-[-.02em] text-[var(--fx-text)]">{title}</div><p className="mt-1 max-w-[580px] text-[11px] leading-5 text-[var(--fx-text-muted)]">{message}</p></div>
             </div>
-            {success && (hasDirect || !scopedRun?.active_workspace_unchanged) ? <button onClick={onFlash} className="fx-primary-action"><Rocket className="h-4 w-4" /> Flash device</button> : null}
+            {flashReady && (hasDirect || !scopedRun?.active_workspace_unchanged) ? <button onClick={onFlash} className="fx-primary-action"><Rocket className="h-4 w-4" /> Flash device</button> : null}
           </div>
         </NexusSurface>
 

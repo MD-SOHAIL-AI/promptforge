@@ -49,6 +49,7 @@ class WorkspaceGenerationTransaction:
             raise ValueError(f"Workspace root is not available: {root}")
         self.root = root
         self._originals: dict[Path, _OriginalFile] = {}
+        self._expected_hashes: dict[Path, str | None] = {}
         self._finished = False
 
     def remember(self, target: Path) -> None:
@@ -56,19 +57,32 @@ class WorkspaceGenerationTransaction:
             return
         if target.is_symlink():
             raise ValueError(f"Workspace file cannot be a symlink: {target.relative_to(self.root)}")
+        original_bytes = target.read_bytes() if target.is_file() else None
         self._originals[target] = _OriginalFile(
-            existed=target.is_file(),
-            content=target.read_bytes() if target.is_file() else None,
+            existed=original_bytes is not None,
+            content=original_bytes,
         )
+        self._expected_hashes[target] = hashlib.sha256(original_bytes).hexdigest() if original_bytes is not None else None
+
+    def record_written(self, target: Path, digest: str) -> None:
+        if self._finished or target not in self._originals:
+            raise ValueError("GENERATION_TRANSACTION_NOT_TRACKED")
+        self._expected_hashes[target] = digest
 
     def commit(self) -> None:
         self._originals.clear()
+        self._expected_hashes.clear()
         self._finished = True
 
     def rollback(self) -> bool:
         if self._finished:
             return False
         changed = bool(self._originals)
+        # Validate the whole rollback set before restoring any file. A user
+        # edit after generation started is NEVER silently overwritten.
+        for target, expected in self._expected_hashes.items():
+            if target.is_symlink() or (_hash_file(target) if target.is_file() else None) != expected:
+                raise ValueError("GENERATION_ROLLBACK_CONFLICT: workspace file changed after generation write")
         for target, original in reversed(tuple(self._originals.items())):
             if original.existed:
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +91,7 @@ class WorkspaceGenerationTransaction:
                 target.unlink()
                 _remove_empty_parents(target.parent, self.root)
         self._originals.clear()
+        self._expected_hashes.clear()
         self._finished = True
         return changed
 
@@ -111,6 +126,8 @@ class ChunkedGenerationWriter:
 
         target.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write(target, encoded)
+        if self.transaction is not None:
+            self.transaction.record_written(target, new_hash)
 
         return ChunkedFileWrite(
             path=_normalize_path(generated_file.path),

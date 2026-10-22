@@ -1,0 +1,8 @@
+{
+  "runtime_and_api_tests_passed": 175,
+  "permission_recovery_tests_passed": 6,
+  "total_tests_passed": 181,
+  "source_fingerprint": "170a52b5da15d64abdfb245ed17103158dc198640cc617883d8436bfc1af0f5d",
+  "rate_limit_policy_changed": false,
+  "hardware_flashed": false
+}

@@ -364,6 +364,24 @@ async function executeSDK(input, transport, emit, signal) {
   }
 }
 
+function unavailableModel(status, providerId, text, body) {
+  if (status === 410) return true;
+  if (status !== 404) return false;
+  let payload = body;
+  if (typeof body === "string" && body.length <= 16_384) {
+    try { payload = JSON.parse(body); } catch { payload = null; }
+  }
+  const detail = payload && typeof payload === "object" ? payload.error ?? payload : null;
+  const code = String(detail?.code ?? detail?.type ?? "").toLowerCase();
+  if (["model_not_found", "model_not_available", "model_unavailable", "unknown_model", "model_not_exist"].includes(code)) return true;
+  // OpenRouter uses 404 for unavailable free variants. Do not mistake an
+  // unknown URL, privacy filter or generic provider outage for retirement.
+  const message = typeof detail?.message === "string" ? detail.message : String(text);
+  return providerId === "openrouter" && (
+    /\bmodel (?:is )?unavailable for free\b/i.test(message)
+    || /\bmodel (?:has been |was |is )?(?:retired|removed|not found|does not exist)\b/i.test(message));
+}
+
 export function normalizeError(error, providerId) {
   if (error instanceof MessageHistoryError) {
     return { category: "invalid_request", message: error.message,
@@ -380,8 +398,8 @@ export function normalizeError(error, providerId) {
   const invalidStream = !invalidTool && (reason._tag === "InvalidProviderOutput"
     || [error.name, reason.name].some(name => ["AI_TypeValidationError", "AI_JSONParseError", "TypeValidationError"].includes(name))
     || /^Invalid [\w/-]+ stream event/.test(String(text)));
-  if (status === 410) {
-    return { category: "model_unavailable", message: "The provider retired the selected model. Choose another model to continue the saved draft.",
+  if (unavailableModel(status, providerId, text, body)) {
+    return { category: "model_unavailable", message: "The selected model is unavailable. Choose another model explicitly to continue the saved draft.",
       status_code: status, retryable: false, code: "MODEL_RETIRED",
       response_headers: http?.headers ?? error.responseHeaders, request_id: reason.http?.requestId };
   }

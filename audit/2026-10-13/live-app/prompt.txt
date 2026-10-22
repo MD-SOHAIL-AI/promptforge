@@ -1,0 +1,309 @@
+Build a complete mid-range ESP32 IoT project called:
+
+ESP32 Smart Environment, Lighting & Security Monitoring System The project must be structured like a real embedded-systems project rather than a simple Arduino demo. Use clean, modular, non-blocking C++ code suitable for an ESP32.
+
+Hardware Use the following components and GPIO assignments: ESP32 development board DHT11 temperature/humidity sensor → GPIO 4 LDR/light sensor → ADC GPIO 34 PIR motion sensor → GPIO 27 Buzzer → GPIO 25 Red LED → GPIO 26 Green LED → GPIO 33 Push button → GPIO 32 0.96" I2C OLED display SDA → GPIO 21 SCL → GPIO 22 I2C address → 0x3C Use appropriate pull-up/pull-down configuration where required.
+
+Main Objective The ESP32 should behave like a small intelligent monitoring/control system. It must continuously monitor:
+
+Temperature Humidity Ambient light Motion User button input The system must then determine the current environmental/security state and control:
+
+OLED Red LED Green LED Buzzer Serial monitor Do not make this a simple sequential Arduino sketch.
+
+Create a proper state-based architecture.
+
+Temperature Monitoring Use the DHT11 sensor. Temperature thresholds:
+
+Temperature > 30°C → HIGH TEMPERATURE Temperature < 18°C → LOW TEMPERATURE 18°C–30°C → NORMAL Humidity should also be measured and displayed, even though no automatic humidity alarm is required initially.
+
+If the temperature is outside the normal range:
+
+Red LED ON Green LED OFF OLED displays warning Buzzer may generate an alert pattern If temperature is normal:
+
+Green LED should indicate normal system status unless another alarm condition exists. 4. Light Monitoring Read the LDR through GPIO 34.
+
+Convert the raw ADC reading into an approximate percentage:
+
+0–100%.
+
+Define:
+
+Light < 30% → DARK Light > 70% → BRIGHT 30–70% → NORMAL LIGHT Display both:
+
+Raw ADC value Calculated light percentage on Serial Monitor.
+
+OLED only needs to show the percentage/state.
+
+Design the LDR conversion so that it can easily be calibrated later.
+
+Motion/Security Monitoring Use the PIR sensor on GPIO 27. When motion is detected:
+
+Record the motion detection time. Display MOTION DETECTED. Turn RED LED ON. Turn GREEN LED OFF. Activate the buzzer. Keep the security warning active for 30 seconds. Do not simply turn the alarm off immediately when the PIR goes LOW.
+
+The alarm must remain active until:
+
+currentTime - motionDetectedTime >= 30000 ms If new motion is detected during the 30-second window, restart/extend the timer.
+
+Push Button Button GPIO: GPIO 32
+
+Implement proper software debouncing.
+
+Debounce interval:
+
+200 ms
+
+The button should allow the user to acknowledge/mute the buzzer.
+
+Example:
+
+Motion occurs:
+
+text
+
+MOTION DETECTED Buzzer: ON Red LED: ON User presses button:
+
+text
+
+Alarm acknowledged Buzzer: OFF Red LED: remains ON while security warning is active Motion monitoring must continue.
+
+A new motion event may reactivate the buzzer.
+
+Do not use long blocking delays for debouncing.
+
+OLED Interface Use an SSD1306-compatible OLED library. Create multiple OLED screens/pages instead of cramming everything onto one screen.
+
+Suggested pages:
+
+Screen 1 — System Status Display:
+
+text
+
+SMART MONITOR
+
+STATUS: NORMAL or:
+
+STATUS: ALERT Screen 2 — Environment Display:
+
+text
+
+TEMP: 27 C HUM : 62 % LIGHT: 48 % Screen 3 — Security Display:
+
+text
+
+SECURITY
+
+MOTION: NO or:
+
+text
+
+!!! ALERT !!!
+
+MOTION DETECTED Automatically rotate normal information screens every few seconds.
+
+During an alarm, the alarm screen should receive priority.
+
+Avoid blocking delays when switching OLED pages.
+
+LED Logic Green LED Green means: SYSTEM NORMAL Turn it ON when:
+
+Temperature is normal No active security alert No serious system error Red LED Red indicates:
+
+WARNING / ALARM Turn it ON when:
+
+Temperature too high Temperature too low Motion/security alarm active Important sensor failure occurs If any warning condition exists, RED must have priority over GREEN.
+
+Buzzer Patterns Do not simply leave the buzzer continuously HIGH. Implement different non-blocking alarm patterns.
+
+Example:
+
+Security alarm BEEP BEEP BEEP Fast repeating pattern.
+
+Temperature warning text
+
+BEEEEEP pause BEEEEEP Slower warning pattern.
+
+Implement buzzer timing using millis().
+
+Do not use blocking delay() calls.
+
+Serial Monitoring Print a system report every 5 seconds. Example:
+
+text
+
+============================ ESP32 SMART MONITOR Temperature : 27.4 C Humidity : 64 % Light ADC : 2350 Light : 46 %
+
+Light State : NORMAL Motion : NO Security : SAFE
+
+Temperature State : NORMAL Alarm Active : NO Buzzer Muted : NO
+
+Uptime: 00:03:25 If an event occurs between reports, immediately print an event message.
+
+Example:
+
+text
+
+[EVENT] Motion detected [EVENT] Security alarm activated [EVENT] Alarm acknowledged [EVENT] Temperature exceeded 30C 11. Non-Blocking Architecture This requirement is important.
+
+Avoid using:
+
+cpp
+
+delay() for application logic.
+
+Use:
+
+cpp
+
+millis() for:
+
+Sensor sampling OLED refresh Screen switching Button debounce Motion timeout Serial logging Buzzer patterns The ESP32 must be capable of monitoring all sensors simultaneously.
+
+State Management Create proper states/enums such as: cpp
+
+enum TemperatureState { TEMP_LOW, TEMP_NORMAL, TEMP_HIGH };
+
+enum LightState { LIGHT_DARK, LIGHT_NORMAL, LIGHT_BRIGHT };
+
+enum SecurityState { SECURITY_SAFE, SECURITY_ALERT };
+
+enum SystemState { SYSTEM_NORMAL, SYSTEM_WARNING, SYSTEM_ALARM }; Centralize system-state evaluation instead of allowing every sensor function to directly fight over LEDs/buzzer.
+
+For example:
+
+cpp
+
+readSensors(); updateTemperatureState(); updateLightState(); updateSecurityState(); updateSystemState(); handleButton(); updateIndicators(); updateBuzzer(); updateOLED(); printSerialReport(); 13. Recommended Timing Use approximately:
+
+cpp
+
+DHT_READ_INTERVAL = 2000 ms LDR_READ_INTERVAL = 500 ms OLED_UPDATE_INTERVAL = 500 ms SCREEN_CHANGE_INTERVAL = 3000 ms SERIAL_REPORT_INTERVAL = 5000 ms MOTION_ALERT_DURATION = 30000 ms BUTTON_DEBOUNCE = 200 ms Store all timing constants clearly near the configuration section.
+
+Sensor Error Handling The system must not crash if the DHT11 fails. Check for:
+
+cpp
+
+isnan(temperature) isnan(humidity) If a sensor read fails:
+
+Keep the previous valid value if appropriate Record sensor error status Print an error message Show sensor error on OLED Do not fill variables with invalid values Example:
+
+[ERROR] DHT11 sensor read failed 15. Code Architecture Prefer multiple files.
+
+Example project structure:
+
+text
+
+ESP32_Smart_Monitor/ │ ├── platformio.ini │ ├── include/ │ ├── Config.h │ ├── SystemState.h │ ├── SensorManager.h │ ├── DisplayManager.h │ ├── AlarmManager.h │ └── ButtonManager.h │ └── src/ ├── main.cpp ├── SensorManager.cpp ├── DisplayManager.cpp ├── AlarmManager.cpp └── ButtonManager.cpp If Arduino IDE compatibility is required, explain how the files can be placed into Arduino tabs.
+
+Coding Standards Use: Classes where they improve modularity Enums for states constexpr for configuration constants unsigned long / suitable fixed-width types for timing Descriptive variable names Functions with single responsibilities Comments for important embedded logic Avoid:
+
+Giant loop() Giant setup() Magic numbers Repeated GPIO numbers Global-state chaos Blocking delays Unnecessary dynamic allocation Excessive String usage where it could cause fragmentation 17. PlatformIO Target:
+
+ESP32 Arduino framework.
+
+Create a valid platformio.ini.
+
+Include all required libraries such as:
+
+DHT sensor library Adafruit Unified Sensor if required Adafruit GFX Adafruit SSD1306 Use stable compatible library versions where appropriate.
+
+Startup Sequence When the ESP32 boots: OLED should display:
+
+text
+
+SMART MONITOR Initializing... Then initialize:
+
+GPIO Serial I2C OLED DHT11 Sensors Alarm system Button After successful initialization:
+
+System Ready Then enter normal monitoring.
+
+Serial should provide useful startup diagnostics.
+
+System Priority Use this priority system: text
+
+SENSOR FAILURE ↓ SECURITY ALERT ↓ TEMPERATURE WARNING ↓ NORMAL Higher-priority events should override lower-priority display/alarm behavior where appropriate.
+
+Light condition should normally be informational rather than generating a critical alarm.
+
+Expected Normal Operation Example: text
+
+Temperature: 26C Humidity: 60% Light: 55% Motion: NO
+
+System: NORMAL
+
+Green LED: ON Red LED: OFF Buzzer: OFF 21. Expected Security Event Example:
+
+text
+
+PIR detects movement
+
+↓
+
+Security state = ALERT
+
+↓
+
+Red LED ON Green LED OFF
+
+↓
+
+Security buzzer pattern starts
+
+↓
+
+OLED: MOTION DETECTED
+
+↓
+
+30-second security timer starts Button press:
+
+Buzzer muted but:
+
+Security alert remains active until the 30-second timer expires.
+
+Expected Temperature Event Example: text
+
+Temperature = 33C
+
+↓
+
+TEMP_HIGH
+
+↓
+
+System Warning
+
+↓
+
+Red LED ON Green LED OFF
+
+↓
+
+Temperature warning buzzer
+
+↓
+
+OLED:
+
+HIGH TEMP 33 C When temperature falls back into the normal range, return the system to normal automatically unless another alarm exists.
+
+Testing Mode Add an optional compile-time test/debug mode. Example:
+
+cpp
+
+#define DEBUG_MODE 1 When enabled, provide additional serial logging so individual sensor/state transitions can be inspected.
+
+Do not make debug output interfere with the actual control logic.
+
+Future Expansion Design the architecture so these features can later be added without rewriting the core system: Wi-Fi MQTT Blynk ThingSpeak Firebase Web dashboard Mobile application Telegram alerts Cloud data logging AI/ML anomaly detection Additional gas/smoke sensors Relay control Fan automation Automatic lights SD-card logging OTA firmware updates Do NOT implement all of these now unless they are required for the base project.
+
+The architecture should simply make future expansion easy.
+
+Deliverables Generate the project in this order: Explain the complete system architecture. Show the GPIO/wiring table. Show the control/state logic. Show the project directory structure. Generate platformio.ini. Generate every .h file. Generate every .cpp file. Generate main.cpp. Explain how the state machine works. Explain how the non-blocking timing works. Explain how to wire every component. Provide a complete testing procedure. Provide expected Serial Monitor outputs. List common hardware/software problems and solutions. Provide instructions for compiling and flashing to ESP32. The generated project must compile.
+
+Do not provide pseudo-code in place of required implementation.
+
+Do not leave major functions as TODOs or placeholders.
+
+Before completing the task, perform a consistency review checking:
+
+GPIO conflicts Missing includes Undefined functions Missing class implementations Incorrect constructors Timing overflow issues ESP32 ADC handling I2C initialization OLED address DHT timing Button debounce logic Alarm priority Motion timeout behavior PlatformIO dependency compatibility The final result should feel like a mid-range embedded systems project suitable for a college IoT project/demo, while still being structured well enough to evolve into a more advanced IoT system later.

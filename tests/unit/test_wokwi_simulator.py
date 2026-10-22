@@ -466,7 +466,11 @@ def test_cancellation_is_propagated(tmp_path: Path) -> None:
 
 def test_convenience_function_and_registry_use_supplied_manager(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from backend.tools import tool_registry
+    monkeypatch.setattr(tool_registry, "_TOOLS", {})
+    tool_registry.register_defaults()
     _, artifact = make_artifact(tmp_path)
     manager = successful_manager()
 

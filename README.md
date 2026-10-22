@@ -75,6 +75,15 @@ Install these on the development machine:
 
 ## First-time setup
 
+On Windows, double-click `install_dependencies.bat` to install the dependencies
+and build the desktop components. It installs missing Python 3.13 and a compatible
+Node.js LTS through WinGet when available, and saves an installation log under
+`reports/`. It reuses compatible installed packages and tries local npm caches
+before downloading missing or mismatched dependencies. It does not clear
+`node_modules` or upgrade pip. New Python environments can reuse packages already
+installed for the selected Python 3.13 interpreter. Internet access is needed only
+for dependencies unavailable locally. The installer stops if any step fails.
+
 From the repository root on Windows:
 
 ```bash

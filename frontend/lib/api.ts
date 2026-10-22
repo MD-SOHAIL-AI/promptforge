@@ -228,6 +228,7 @@ export const forgeXApi = {
     project_id: string;
     path: string;
     content?: string;
+    expected_revision?: string;
     new_path?: string;
     kind?: "file" | "folder";
     file_type?: string;

@@ -4,7 +4,8 @@ import asyncio
 import time
 from collections.abc import Mapping
 
-from ..services.llm_service import LLMError
+from ..services.llm_service import LLMError, LLMTimeoutError, LLMProvider
+from .transport_policy import request_transport_policy
 from .models import ModelRequest, ModelResponse, RouteAttempt, RouteDecision, execution_value
 from .providers.base import BaseModelProvider
 from .resolver import ModelResolver, ResolvedModel
@@ -52,33 +53,49 @@ class ModelRuntime:
             metadata=dict(request.metadata),
             execution_context=request.execution_context,
         )
-        attempts: list[RouteAttempt] = []
-        for attempt in range(1, self.retry_policy.max_attempts + 1):
-            try:
-                if self.attempt_slot is None:
-                    response = await provider.generate(routed)
-                else:
-                    async with self.attempt_slot(routed):
-                        response = await provider.generate(routed)
-                attempts.append(RouteAttempt(resolved.provider_id, resolved.model_id, attempt, "selected" if attempt == 1 else "same_model_retry", True))
-                self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
-                return response
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                attempts.append(RouteAttempt(resolved.provider_id, resolved.model_id, attempt, "selected" if attempt == 1 else "same_model_retry", False, str(getattr(exc, "code", type(exc).__name__))))
-                if managed(routed):
-                    if await retry_wait(routed, exc, attempt):
-                        continue
-                    self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
-                    raise
-                decision = self.retry_policy.decide(exc, attempt)
-                deadline = execution_value(routed, "deadline", "forgex_turn_deadline")
-                state = execution_value(routed, "attempts", "forgex_request_attempts", {})
-                exhausted = bool(state) and (int(state.get("used", 0)) >= int(state.get("limit", 6)) or attempt >= int(state.get("limit", 6)))
-                if not decision.retry or exhausted or isinstance(deadline, (float, int)) and time.monotonic() + decision.delay_ms / 1000 >= deadline:
-                    self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
-                    raise
-                if decision.delay_ms:
-                    await asyncio.sleep(decision.delay_ms / 1000)
-        raise RuntimeError("unreachable")
+        # A logical request has one absolute timeout, including provider admission,
+        # physical attempts and retry backoff. A missing parent deadline must not
+        # permit six unbounded expensive attempts.
+        parent_deadline = execution_value(routed, "deadline", "forgex_turn_deadline")
+        deadline = time.monotonic() + request_transport_policy(routed).total_seconds
+        if isinstance(parent_deadline, (int, float)) and not isinstance(parent_deadline, bool):
+            deadline = min(deadline, parent_deadline)
+        try:
+            async with asyncio.timeout_at(deadline):
+                attempts: list[RouteAttempt] = []
+                for attempt in range(1, self.retry_policy.max_attempts + 1):
+                    try:
+                        if self.attempt_slot is None:
+                            response = await provider.generate(routed)
+                        else:
+                            async with self.attempt_slot(routed):
+                                response = await provider.generate(routed)
+                        attempts.append(RouteAttempt(resolved.provider_id, resolved.model_id, attempt, "selected" if attempt == 1 else "same_model_retry", True))
+                        self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
+                        return response
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        attempts.append(RouteAttempt(resolved.provider_id, resolved.model_id, attempt, "selected" if attempt == 1 else "same_model_retry", False, str(getattr(exc, "code", type(exc).__name__))))
+                        if managed(routed):
+                            if await retry_wait(routed, exc, attempt):
+                                continue
+                            self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
+                            raise
+                        decision = self.retry_policy.decide(exc, attempt)
+                        retry_deadline = deadline
+                        state = execution_value(routed, "attempts", "forgex_request_attempts", {})
+                        exhausted = bool(state) and (int(state.get("used", 0)) >= int(state.get("limit", 6)) or attempt >= int(state.get("limit", 6)))
+                        if not decision.retry or exhausted or isinstance(deadline, (float, int)) and time.monotonic() + decision.delay_ms / 1000 >= retry_deadline:
+                            self.last_decision = RouteDecision(resolved.provider_id, resolved.model_id, tuple(attempts), False)
+                            raise
+                        if decision.delay_ms:
+                            await asyncio.sleep(decision.delay_ms / 1000)
+                raise RuntimeError("unreachable")
+        except TimeoutError as exc:
+            raise LLMTimeoutError(
+                "The model request exceeded its overall deadline, including retries.",
+                provider=LLMProvider.OPENROUTER,
+                code="PROVIDER_REQUEST_DEADLINE_EXCEEDED", retryable=False,
+                details={"origin": "request_deadline", "timeout_stage": "job_deadline"},
+            ) from exc
